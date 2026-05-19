@@ -22,8 +22,7 @@ import {
   User,
   Settings,
   HelpCircle,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Menu,
   ChevronRight,
   Wand2,
   BarChart3,
@@ -487,8 +486,16 @@ export default function EditResumePage() {
   }
 
   function downloadResume() {
-    window.print();
-  }
+  const printContent = document.getElementById("resume-a4");
+  const originalContent = document.body.innerHTML;
+
+  if (!printContent) return;
+
+  document.body.innerHTML = printContent.outerHTML;
+  window.print();
+  document.body.innerHTML = originalContent;
+  window.location.reload();
+}
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#dfe7da] text-[#243026]">
@@ -503,52 +510,38 @@ export default function EditResumePage() {
       <div className="absolute bottom-[8%] left-[30%] h-96 w-96 rounded-full bg-[#f4e8b5]/25 blur-3xl" />
 
       <div className="relative z-10 flex min-h-screen">
-        {/* Sidebar */}
-        <aside
-          className={`flex h-screen shrink-0 flex-col rounded-r-[2.2rem] border-r border-white/45 bg-white/35 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.14)] backdrop-blur-2xl transition-all duration-300 ${
-            sidebarOpen ? "w-[230px]" : "w-[72px]"
-          }`}
-        >
-          <div
-            className={`mb-6 flex items-center ${
-              sidebarOpen ? "justify-between" : "justify-center"
-            } px-1 pt-4`}
+
+      {/* Sidebar */}
+      <aside
+        className={`flex h-screen shrink-0 flex-col rounded-r-[0.5rem] border-r border-white/45 bg-white/35 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.14)] backdrop-blur-2xl transition-all duration-300 ${
+          sidebarOpen ? "w-[230px]" : "w-[70px]"
+        }`}
+      >
+
+        {/* Sidebar Top / Brand + Toggle */}
+        <div className = "mb-6 flex items-center gap-3 px-1 pt-4"> 
+          
+          {/* Toggle button */}
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#243026] text-lg font-black leading-none text-white shadow-lg transition duration-300 hover:scale-105"
           >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#243026] text-sm font-black text-white shadow-lg">
-                R
-              </div>
+            <Menu size={18} strokeWidth={3.5} />
+          </button>
 
-              {sidebarOpen && (
-                <div>
-                  <p className="text-sm font-black tracking-tight text-[#243026]">
-                    Reeracify
-                  </p>
-                  <p className="text-[10px] font-semibold text-[#243026]/45">
-                    Resume Workspace
-                  </p>
-                </div>
-              )}
+            {/* Brand text */}
+          <div
+            className={`min-w-[130px] transition-all duration-500 ease-in-out ${
+              sidebarOpen
+                ? "translate-x-0 opacity-100"
+                : "-translate-x-3 opacity-0"
+            }`}
+          >
+              <p className="whitespace-nowrap text-[20px] font-black tracking-tight text-[#243026]">
+                   Reeracify
+              </p>
             </div>
-
-            {sidebarOpen && (
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="rounded-full p-2 text-[#243026]/60 transition hover:bg-white/50 hover:text-[#243026]"
-              >
-                <PanelLeftClose size={18} />
-              </button>
-            )}
-          </div>
-
-          {!sidebarOpen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="mb-5 rounded-full p-2 text-[#243026]/60 transition hover:bg-white/50 hover:text-[#243026]"
-            >
-              <PanelLeftOpen size={18} />
-            </button>
-          )}
+        </div>
 
           <nav className="space-y-1">
             <SidebarItem
@@ -564,17 +557,10 @@ export default function EditResumePage() {
             />
           </nav>
 
-          <div className="my-5 h-px bg-[#243026]/10" />
-
           <nav className="space-y-1">
             <SidebarItem
               icon={<MessageCircle size={18} />}
-              label="Message"
-              open={sidebarOpen}
-            />
-            <SidebarItem
-              icon={<Bell size={18} />}
-              label="Notification"
+              label="Newsletter"
               open={sidebarOpen}
             />
           </nav>
@@ -582,11 +568,6 @@ export default function EditResumePage() {
           <div className="flex-1" />
 
           <nav className="space-y-1">
-            <SidebarItem
-              icon={<User size={18} />}
-              label="My Profile"
-              open={sidebarOpen}
-            />
             <SidebarItem
               icon={<Settings size={18} />}
               label="Settings"
@@ -611,38 +592,16 @@ export default function EditResumePage() {
         </aside>
 
         {/* Main content */}
-        <section className="grid min-w-0 flex-1 grid-cols-[1fr_340px] gap-5 px-5 py-5">
+        <section className="grid min-w-0 flex-1 grid-cols-[1fr_340px] gap-5 py-0 pl-5 pr-0">
+          
           {/* Resume workspace */}
-          <div className="flex min-w-0 flex-col rounded-[2rem] border border-white/35 bg-white/28 p-5 shadow-[0_25px_90px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
+          <div className="flex h-screen min-w-0 flex-col rounded-[0.5rem] border-y-0 border-white/35 bg-white/28 p-5 shadow-[0_25px_90px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
+            
             {/* Header + toolbar */}
-            <div className="mb-4 rounded-[1.4rem] border border-white/40 bg-white/55 px-4 py-3 shadow-sm backdrop-blur-xl">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <h1 className="text-2xl font-black tracking-tight text-[#243026]">
-                  .
-                  </h1>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={evaluateResume}
-                    disabled={isLoading}
-                    className="rounded-full bg-[#243026] px-5 py-2 text-xs font-bold text-white shadow-lg transition hover:scale-[1.02] disabled:opacity-50"
-                  >
-                    {isLoading ? "Evaluating..." : "Evaluate"}
-                  </button>
-
-                  <button
-                    onClick={downloadResume}
-                    className="flex items-center gap-2 rounded-full border border-white/60 bg-white/55 px-4 py-2 text-xs font-bold text-[#243026] transition hover:bg-white"
-                  >
-                    Download
-                    <Download size={15} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between rounded-full border border-white/50 bg-white/45 px-4 py-2 shadow-sm backdrop-blur-xl">
+            <div className="mb-4">
+              <div className="flex items-center justify-between gap-4 rounded-full border border-white/50 bg-white/45 px-5 py-3 shadow-sm backdrop-blur-xl">
+                
+                {/* Left tools */}
                 <div className="flex items-center gap-2">
                   <ToolButton
                     icon={<RotateCcw size={17} />}
@@ -656,7 +615,7 @@ export default function EditResumePage() {
                     onClick={goNextSuggestion}
                   />
 
-                  <div className="mx-2 h-6 w-px bg-[#243026]/15" />
+                  <div className="mx-3 h-6 w-px bg-[#243026]/15" />
 
                   <ToolButton
                     icon={<ZoomOut size={17} />}
@@ -673,6 +632,25 @@ export default function EditResumePage() {
                     label="Zoom in"
                     onClick={zoomIn}
                   />
+                </div>
+
+                {/* Right actions */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={evaluateResume}
+                    disabled={isLoading}
+                    className="rounded-full bg-[#243026] px-7 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.02] disabled:opacity-50"
+                  >
+                    {isLoading ? "Evaluating..." : "Evaluate"}
+                  </button>
+
+                  <button
+                    onClick={downloadResume}
+                    className="flex items-center gap-2 rounded-full px-4 py-3 text-sm font-black text-[#243026] transition hover:bg-white/70"
+                  >
+                    Download
+                    <Download size={18} strokeWidth={2.4} />
+                  </button>
                 </div>
               </div>
 
@@ -696,11 +674,12 @@ export default function EditResumePage() {
             {/* One resume section only */}
             <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto rounded-[1.4rem] bg-white/18 px-8 py-8 backdrop-blur-xl">
               <div
+              id = "resume-a4"
                 style={{
                   transform: `scale(${zoom})`,
                   transformOrigin: "top center",
                 }}
-                className="h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)]"
+                className="h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)] print:shadow-none"
               >
                 <ResumeDocument
                   activeSuggestion={activeSuggestion}
@@ -714,7 +693,7 @@ export default function EditResumePage() {
           </div>
 
           {/* Right evaluation panel */}
-          <aside className="flex min-h-0 flex-col rounded-[2rem] border border-white/35 bg-white/30 p-5 shadow-[0_25px_90px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
+          <aside className="flex h-screen min-h-0 flex-col overflow-y-auto rounded-l-[0.5rem]rounded-r-none border-y-0 border-r-0 border-white/45 bg-white/35 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
             <section className="border-b border-[#243026]/10 pb-5">
               <div className="flex items-start justify-between">
                 <div>

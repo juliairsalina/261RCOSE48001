@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -15,8 +15,15 @@ import {
   UserCircle,
 } from "lucide-react";
 
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+const PREPROCESS_API_URL = process.env.NEXT_PUBLIC_PREPROCESS_API_URL;
+
+
 export default function HomePage() {
   const router = useRouter();
+
+  const [mounted, setMounted] = useState(false);
 
   const [showLogin, setShowLogin] = useState(false);
   const [showLinkedIn, setShowLinkedIn] = useState(false);
@@ -25,6 +32,12 @@ export default function HomePage() {
   const [resumeFile, setResumeFile] = useState(null);
   const [vacancyLink, setVacancyLink] = useState("");
   const [loginMessage, setLoginMessage] = useState("");
+
+    useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -35,9 +48,8 @@ export default function HomePage() {
     setLoginMessage("");
   };
 
-  const handleResumeUpload = (e) => {
+  const handleResumeUpload = async (e) => {
     const file = e.target.files?.[0];
-
     if (!file) return;
 
     setResumeFile(file);
@@ -46,9 +58,51 @@ export default function HomePage() {
       setLoginMessage("Please log in for the best service.");
       setShowLogin(true);
     }
+
+    try {
+      const formData = new FormData();
+      formData.append("resume", file);
+
+      // STEP 1: send resume to preprocessing/parser
+      const parseRes = await fetch(`${PREPROCESS_API_URL}/parse-resume`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!parseRes.ok) {
+        throw new Error("Preprocessing failed");
+      }
+
+      const parsedJson = await parseRes.json();
+
+      console.log("Parsed JSON:", parsedJson);
+
+      // STEP 2: send parsed JSON to FastAPI evaluation backend
+      const evalRes = await fetch(`${API_BASE_URL}/evaluate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(parsedJson),
+      });
+
+      if (!evalRes.ok) {
+        throw new Error("Evaluation failed");
+      }
+
+      const result = await evalRes.json();
+      console.log("Evaluation result:", result);
+
+      // later use this to update your UI
+      // setBackendResult(result);
+    } catch (error) {
+      console.error(error);
+      alert("Cannot connect to backend. Please check your API URL.");
+    }
   };
 
-  const handleContinue = () => {
+
+    const handleContinue = () => {
     if (!resumeFile) {
       alert("Please upload your resume first.");
       return;
@@ -121,7 +175,7 @@ export default function HomePage() {
             width={900}
             height={270}
             priority
-            className="h-auto w-[min(92vw,760px)] drop-shadow-2xl"
+            className="h-auto w-[min(92vw,560px)] drop-shadow-2xl"
           />
         </div>
 
@@ -299,6 +353,7 @@ export default function HomePage() {
     </main>
   );
 }
+
 
 function ProcessCard({ icon, title, desc }) {
   return (
