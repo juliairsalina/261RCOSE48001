@@ -8,14 +8,16 @@ from typing import Any
 
 
 def _set_heading_style(paragraph, font_size: int = 12, bold: bool = True) -> None:
-    """Apply heading styling to a paragraph."""
+    from docx.shared import Pt
     for run in paragraph.runs:
         run.bold = bold
         run.font.size = Pt(font_size)
 
 
 def _add_horizontal_rule(document) -> None:
-    """Add a horizontal rule (border) below a paragraph."""
+    from docx.shared import Pt
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
     para = document.add_paragraph()
     para.paragraph_format.space_before = Pt(0)
     para.paragraph_format.space_after = Pt(2)
