@@ -141,6 +141,11 @@ export default function EditResumePage() {
   // Active rewrite highlight in resume preview
   const [activeRewriteId, setActiveRewriteId] = useState(null);
 
+  // Find Jobs tab
+  const [jobResults, setJobResults] = useState([]);
+  const [jobSearchLoading, setJobSearchLoading] = useState(false);
+  const [jobLocation, setJobLocation] = useState("");
+
   const suggestions = backendSuggestions || [];
 
   const currentSuggestion =
@@ -627,6 +632,85 @@ export default function EditResumePage() {
     setSelectedRewriteSuggestion("");
   }
 
+  async function findJobs() {
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
+    if (!rid) {
+      setErrorMessage("Upload your resume first before searching for jobs.");
+      return;
+    }
+    setJobSearchLoading(true);
+    setErrorMessage("");
+    try {
+      const result = await callBackend("/jobs/search-web", {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid, resume_id: rid, location: jobLocation }),
+      });
+      setJobResults(result.jobs || []);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setJobSearchLoading(false);
+    }
+  }
+
+  async function evaluateAgainstJob(job) {
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
+    if (!rid) return;
+    try {
+      setLoadingState(`Evaluating against ${job.role_title} at ${job.company_name}…`);
+      setVacancyLink(job.job_url);
+      localStorage.setItem("reeracifyVacancyLink", job.job_url);
+
+      const app = await callBackend("/applications/create", {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid, resume_id: rid, job_post_id: job.job_post_id }),
+      });
+      const appId = app.id;
+      setApplicationId(appId);
+      localStorage.setItem("reeracifyApplicationId", appId);
+
+      setLoadingState("Retrieving resume context…");
+      await callBackend(`/applications/${appId}/retrieve-context`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+
+      setLoadingState("Evaluating ATS score…");
+      const evalResult = await callBackend(`/applications/${appId}/evaluate`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+
+      const score = evalResult.score || 0;
+      setAtsScoreValue(score);
+      setResumeLevel(getRankLabel(evalResult.rank));
+      setJobSummary(`${job.role_title} at ${job.company_name}`);
+      const matched = evalResult.matched_skills?.length || 0;
+      const missing = evalResult.missing_skills?.length || 0;
+      const total = matched + missing || 1;
+      setMetrics({
+        clarity: score, keywordFit: Math.round((matched / total) * 100),
+        structure: score, impact: score,
+      });
+
+      setLoadingState("Generating rewrite suggestions…");
+      const rwResult = await callBackend(`/applications/${appId}/rewrite-suggestions`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+      setRewriteList(rwResult.suggestions || []);
+
+      setIsLoading(false);
+      setStatusMessage(`Evaluated: ${job.role_title} — ATS score ${score}/100`);
+      setActiveTab("rewrites");
+    } catch (error) {
+      setIsLoading(false);
+      setErrorMessage(error.message);
+    }
+  }
+
   function handleResumeUpload(event) {
     const file = event.target.files?.[0];
 
@@ -881,17 +965,17 @@ export default function EditResumePage() {
 
             {/* Tab bar */}
             <div className="flex shrink-0 gap-1 border-b border-[#243026]/10 px-4 pt-4">
-              {["analysis", "rewrites", "cover-letter"].map((tab) => (
+              {["analysis", "rewrites", "cover-letter", "find-jobs"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`rounded-t-xl px-4 py-2 text-xs font-black transition ${
+                  className={`rounded-t-xl px-3 py-2 text-xs font-black transition ${
                     activeTab === tab
                       ? "bg-white/70 text-[#243026] shadow-sm"
                       : "text-[#243026]/45 hover:text-[#243026]"
                   }`}
                 >
-                  {tab === "analysis" ? "Analysis" : tab === "rewrites" ? "Rewrites" : "Cover Letter"}
+                  {tab === "analysis" ? "Analysis" : tab === "rewrites" ? "Rewrites" : tab === "cover-letter" ? "Cover Letter" : "Find Jobs"}
                 </button>
               ))}
             </div>
@@ -1149,6 +1233,89 @@ export default function EditResumePage() {
                       </button>
                     </>
                   )}
+                </section>
+              )}
+
+              {/* ── Find Jobs tab ── */}
+              {activeTab === "find-jobs" && (
+                <section className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-black text-[#243026]">Find Jobs</h2>
+                    <div className="rounded-2xl bg-[#dfe9ff]/80 p-2 text-[#2f5fa8]">
+                      <Target size={18} />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-[#243026]/55 leading-5">
+                    AI searches the web for real job postings that match your resume. Click any result to evaluate your fit.
+                  </p>
+
+                  <input
+                    type="text"
+                    value={jobLocation}
+                    onChange={(e) => setJobLocation(e.target.value)}
+                    placeholder="Location (e.g. Seoul, Remote)"
+                    className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 px-4 py-2.5 text-sm text-[#243026] outline-none placeholder:text-[#243026]/40 focus:border-[#243026]/30"
+                  />
+
+                  <button
+                    onClick={findJobs}
+                    disabled={jobSearchLoading || !resumeId}
+                    className="w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.01] disabled:opacity-50"
+                  >
+                    {jobSearchLoading ? "Searching the web…" : jobResults.length > 0 ? "Search Again" : "Search for Jobs"}
+                  </button>
+
+                  {!resumeId && (
+                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                      Upload your resume on the home page first.
+                    </p>
+                  )}
+
+                  {jobSearchLoading && (
+                    <p className="text-center text-xs text-[#243026]/50 animate-pulse">
+                      AI is searching the web for relevant job openings…
+                    </p>
+                  )}
+
+                  <div className="flex flex-col gap-3">
+                    {jobResults.map((job, i) => (
+                      <div
+                        key={job.job_post_id || i}
+                        className="rounded-[1.2rem] border border-white/45 bg-white/40 p-4"
+                      >
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40">
+                          {job.location || "Location not specified"}
+                        </p>
+                        <h3 className="mt-1 text-sm font-black text-[#243026]">{job.role_title}</h3>
+                        <p className="text-xs font-semibold text-[#243026]/65">{job.company_name}</p>
+                        {job.job_description && (
+                          <p className="mt-2 text-xs leading-5 text-[#243026]/55 line-clamp-3">
+                            {job.job_description}
+                          </p>
+                        )}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            onClick={() => evaluateAgainstJob(job)}
+                            disabled={isLoading}
+                            className="flex-1 rounded-full bg-[#243026] py-2 text-xs font-black text-white transition hover:scale-[1.01] disabled:opacity-50"
+                          >
+                            Evaluate Fit
+                          </button>
+                          {job.job_url && (
+                            <a
+                              href={job.job_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-center rounded-full border border-[#243026]/20 bg-white/50 px-4 py-2 text-xs font-black text-[#243026] transition hover:bg-white/80"
+                            >
+                              View
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </section>
               )}
 

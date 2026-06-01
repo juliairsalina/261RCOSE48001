@@ -171,11 +171,98 @@ class JSearchProvider(JobSearchProvider):
         return all_results[:limit]
 
 
+# ── OpenAI web search provider (MCP web_search_preview) ────────────────────
+
+class OpenAIWebSearchProvider(JobSearchProvider):
+    """Job search via OpenAI Responses API with built-in web_search_preview tool.
+
+    Uses OpenAI's MCP-based web search to find real, current job postings
+    without requiring a separate job board API key.
+    """
+
+    async def search(
+        self,
+        queries: list[str],
+        location: str = "",
+        job_type: str = "",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        import json
+        import re
+
+        from app.services.openai_client import get_client
+
+        client = get_client()
+        results: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        for query in queries[:4]:
+            if len(results) >= limit:
+                break
+
+            search_query = " ".join(filter(None, [query, location, job_type])).strip()
+
+            prompt = (
+                f'Search the web for current job openings matching: "{search_query}"\n\n'
+                "Find 3-5 real, currently open job postings from company career pages or job boards "
+                "(LinkedIn, Indeed, Glassdoor, company sites). "
+                "For each job return a JSON object with these exact keys:\n"
+                "- company_name: the hiring company\n"
+                "- role_title: exact job title\n"
+                "- location: city/country or Remote\n"
+                "- job_url: direct URL to the job posting\n"
+                "- job_description: 2-3 sentences covering key requirements and responsibilities\n\n"
+                "Return ONLY a valid JSON array. No markdown, no explanation."
+            )
+
+            try:
+                response = await client.responses.create(
+                    model="gpt-4o",
+                    tools=[{"type": "web_search_preview"}],
+                    input=prompt,
+                )
+
+                # Extract text content from response output
+                text = ""
+                for item in response.output:
+                    if hasattr(item, "content"):
+                        for block in item.content:
+                            if hasattr(block, "text"):
+                                text += block.text
+
+                # Parse JSON array from response
+                match = re.search(r"\[.*?\]", text, re.DOTALL)
+                if not match:
+                    logger.warning("OpenAI web search: no JSON array in response for query '%s'", query)
+                    continue
+
+                jobs: list[dict] = json.loads(match.group())
+                for job in jobs:
+                    url = job.get("job_url", "")
+                    if url and url not in seen:
+                        seen.add(url)
+                        results.append({
+                            "source": "openai_web_search",
+                            "job_url": url,
+                            "company_name": job.get("company_name", ""),
+                            "role_title": job.get("role_title", ""),
+                            "location": job.get("location", ""),
+                            "job_description": job.get("job_description", ""),
+                        })
+
+            except Exception as exc:
+                logger.warning("OpenAI web search failed for query '%s': %s", query, exc)
+                continue
+
+        return results[:limit]
+
+
 # ── Provider registry ───────────────────────────────────────────────────────
 # Register new providers here. Key = value of JOB_SEARCH_PROVIDER in .env.
 
 _PROVIDERS: dict[str, type[JobSearchProvider]] = {
     "jsearch": JSearchProvider,
+    "openai_web": OpenAIWebSearchProvider,
     "dummy": DummyProvider,
 }
 
@@ -191,6 +278,32 @@ def get_provider() -> JobSearchProvider:
 
 
 # ── Public API ──────────────────────────────────────────────────────────────
+
+def _flatten_skills_from_dict(skills: object) -> list[str]:
+    """Flatten skills field (list of str, list of dicts, or dict) to flat list."""
+    if not skills:
+        return []
+    if isinstance(skills, str):
+        return [skills]
+    if isinstance(skills, dict):
+        out: list[str] = []
+        for v in skills.values():
+            out.extend(_flatten_skills_from_dict(v))
+        return out
+    if isinstance(skills, list):
+        out = []
+        for s in skills:
+            if isinstance(s, str):
+                out.append(s)
+            elif isinstance(s, dict):
+                for v in s.values():
+                    if isinstance(v, str):
+                        out.append(v)
+                    elif isinstance(v, list):
+                        out.extend(str(x) for x in v if x)
+        return out
+    return []
+
 
 async def search_jobs(
     queries: list[str],
