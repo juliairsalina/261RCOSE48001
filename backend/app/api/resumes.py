@@ -98,8 +98,9 @@ async def upload_resume(
     # ── Ensure user row exists (satisfies FK) ─────────────────────────────
     supabase_client.ensure_user(user_id)
 
-    # ── Upload file to Supabase Storage ────────────────────────────────────
+    # ── Upload file to Supabase Storage (non-fatal) ───────────────────────
     storage_path = f"{user_id}/{uuid.uuid4()}/{filename}"
+    file_url = ""
     try:
         file_url = supabase_client.upload_file(
             bucket=settings.supabase_bucket,
@@ -108,8 +109,7 @@ async def upload_resume(
             content_type=content_type,
         )
     except Exception as exc:
-        logger.exception("Failed to upload file to Supabase: %s", exc)
-        raise HTTPException(status_code=500, detail=f"File upload failed: {exc}")
+        logger.warning("File storage upload failed (non-fatal): %s", exc)
 
     # ── Insert resume row ──────────────────────────────────────────────────
     db = supabase_client.get_client()
