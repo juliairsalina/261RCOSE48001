@@ -1482,7 +1482,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
   const skills = flattenSkills(resumeData.skills);
   const education = resumeData.education || [];
-  const experience = resumeData.experience || [];
+  const experience = resumeData.experience || resumeData.work_experience || [];
   const projects = resumeData.projects || [];
   const pendingCount = rewriteList.filter(r => r.status === "pending").length;
 
@@ -1526,12 +1526,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           {education.map((edu, i) => (
             <div key={i} className="mt-2">
               <div className="flex justify-between">
-                <h3 className="font-bold">{edu.school}</h3>
+                <h3 className="font-bold">{edu.school || edu.institution}</h3>
                 <span className="text-gray-500">{[edu.start_date, edu.end_date].filter(Boolean).join(" – ")}</span>
               </div>
               {(edu.degree || edu.field) && (
                 <p className="text-gray-600">
-                  {[edu.degree, edu.field].filter(Boolean).join(" · ")}
+                  {[edu.degree, edu.field, edu.field_of_study, edu.program].filter(Boolean).join(" · ")}
                 </p>
               )}
 
@@ -1559,8 +1559,8 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
             <div key={i} className="mt-3">
               <div className="flex justify-between">
                 <div>
-                  <h3 className="font-bold">{exp.role}</h3>
-                  <p className="text-gray-600">{exp.company}</p>
+                  <h3 className="font-bold">{exp.role || exp.title}</h3>
+                  <p className="text-gray-600">{exp.company || exp.organization}</p>
                 </div>
                 <span className="shrink-0 text-gray-500 ml-2">
                   {[exp.start_date, exp.end_date].filter(Boolean).join(" – ")}
@@ -1571,10 +1571,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   {exp.description}
                 </p>
               )}
-              {(exp.bullets || []).length > 0 && (
+              {(exp.bullets || exp.responsibilities || []).length > 0 && (
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
-                  {exp.bullets.map((b, j) => (
-                    <li key={j}><RewritableBullet text={b} /></li>
+                  {(exp.bullets || exp.responsibilities || []).map((b, j) => (
+                    <li key={j}>
+                      <RewritableBullet text={b} />
+                    </li>
                   ))}
                 </ul>
               )}
@@ -1617,7 +1619,24 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           ))}
         </section>
       )}
+{/* Languages */}
+{resumeData.languages?.length > 0 && (
+  <section className="mt-4">
+    <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
+      Languages
+    </h2>
 
+    {resumeData.languages.map((lang, i) => (
+      <p key={i} className="mt-1">
+        {lang.language || lang.name}: {
+          lang.level
+            ? `${lang.level} (${lang.proficiency})`
+            : lang.proficiency
+        }
+      </p>
+    ))}
+  </section>
+)}
     </article>
   );
 }
