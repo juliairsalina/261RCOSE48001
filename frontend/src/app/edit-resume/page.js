@@ -531,7 +531,8 @@ export default function EditResumePage() {
 
       setIsLoading(false);
       setStatusMessage(`Evaluation complete — ATS score: ${score}/100`);
-      setActiveTab("analysis");
+      // Switch to Rewrites tab so user sees highlights immediately
+      setActiveTab("rewrites");
 
     } catch (error) {
       setIsLoading(false);
@@ -824,6 +825,16 @@ export default function EditResumePage() {
                   </button>
                 </div>
               </div>
+
+              {/* Ready-to-evaluate prompt */}
+              {!isLoading && !atsScoreValue && resumeId && !errorMessage && (
+                <div className="mt-3 flex items-center gap-3 rounded-2xl border border-[#243026]/15 bg-white/55 px-4 py-2.5">
+                  <span className="flex h-2 w-2 shrink-0 rounded-full bg-green-500" />
+                  <p className="text-xs font-bold text-[#243026]/70">
+                    Resume loaded{resumeData?.name ? ` — ${resumeData.name}` : ""}. Click <span className="text-[#243026]">Evaluate</span> to analyze and highlight rewrite suggestions.
+                  </p>
+                </div>
+              )}
 
               {(statusMessage || errorMessage) && (
                 <div className="mt-3">

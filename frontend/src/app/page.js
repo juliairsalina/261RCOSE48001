@@ -30,6 +30,9 @@ export default function HomePage() {
   const [resumeFile, setResumeFile] = useState(null);
   const [vacancyLink, setVacancyLink] = useState("");
   const [loginMessage, setLoginMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [parsedName, setParsedName] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -49,8 +52,10 @@ export default function HomePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setResumeFile(file);
+    setUploading(true);
+    setUploadError("");
+    setParsedName("");
 
-    // Generate or reuse a stable anonymous user ID
     let userId = localStorage.getItem("reeracifyUserId");
     if (!userId) {
       userId = crypto.randomUUID();
@@ -76,14 +81,20 @@ export default function HomePage() {
       localStorage.setItem("reeracifyResumeId", data.resume_id);
       localStorage.setItem("reeracifyParsedResume", JSON.stringify(data.parsed_json));
 
+      const name = data.parsed_json?.name || "";
+      setParsedName(name);
+
       if (data.parse_status === "failed") {
-        alert("Resume uploaded, but AI parsing failed. We'll still try to evaluate using the raw text.");
+        setUploadError("Parsed with limited data — AI parsing failed. Evaluation will use raw text.");
       } else if (!data.chunks_ok) {
-        alert("Resume uploaded and parsed, but embedding storage failed. Context retrieval may be limited.");
+        setUploadError("Uploaded, but embedding storage failed. Context retrieval may be limited.");
       }
     } catch (error) {
       console.error(error);
-      alert(`Upload failed: ${error.message}`);
+      setUploadError(error.message);
+      setResumeFile(null);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -173,17 +184,39 @@ export default function HomePage() {
         {/* Upload + link */}
         <div className="mt-18 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
           {/* Upload Resume Box */}
-          <label className="flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-full border border-white/25 bg-[#98946a]/85 px-5 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:scale-[1.01]">
-            <Upload size={18} />
-
-            <span className="truncate">
-              {resumeFile ? resumeFile.name : "Here's upload your resume"}
-            </span>
-
+          <label className={`flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-full border px-5 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:scale-[1.01] ${
+            parsedName
+              ? "border-green-300/60 bg-green-600/70"
+              : uploading
+              ? "border-white/25 bg-[#98946a]/70 cursor-wait"
+              : "border-white/25 bg-[#98946a]/85"
+          }`}>
+            {uploading ? (
+              <>
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
+                </svg>
+                <span>Parsing resume…</span>
+              </>
+            ) : parsedName ? (
+              <>
+                <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                <span className="truncate">{parsedName} — parsed</span>
+              </>
+            ) : (
+              <>
+                <Upload size={18} />
+                <span className="truncate">
+                  {resumeFile ? resumeFile.name : "Upload your resume"}
+                </span>
+              </>
+            )}
             <input
               type="file"
               accept=".pdf,.doc,.docx"
               className="hidden"
+              disabled={uploading}
               onChange={handleResumeUpload}
             />
           </label>
@@ -196,17 +229,35 @@ export default function HomePage() {
               type="url"
               value={vacancyLink}
               onChange={(e) => setVacancyLink(e.target.value)}
-              placeholder="Paste Vacancy Link"
+              placeholder="Paste Vacancy Link (optional)"
               className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/70"
             />
 
             <button
               onClick={handleContinue}
-              className="flex h-8 w-11 shrink-0 items-center justify-center rounded-full bg-white/72 text-slate-900 transition hover:scale-105"
+              disabled={uploading || !resumeFile}
+              className="flex h-8 w-11 shrink-0 items-center justify-center rounded-full bg-white/72 text-slate-900 transition hover:scale-105 disabled:opacity-40"
             >
               <ArrowRight size={18} />
             </button>
           </div>
+        </div>
+
+        {/* Upload feedback */}
+        <div className="mt-4 w-full max-w-2xl">
+          {uploadError && (
+            <p className="rounded-2xl border border-yellow-300/40 bg-yellow-400/20 px-4 py-2 text-center text-xs font-semibold text-white backdrop-blur-xl">
+              ⚠ {uploadError}
+            </p>
+          )}
+          {parsedName && !uploadError && (
+            <button
+              onClick={handleContinue}
+              className="w-full rounded-2xl border border-white/30 bg-white/20 px-4 py-3 text-sm font-bold text-white shadow-xl backdrop-blur-xl transition hover:bg-white/30"
+            >
+              Continue to resume editor →
+            </button>
+          )}
         </div>
 
         <p className="-mt-55 mb-70 text-center text-sm text-white/75"></p>
