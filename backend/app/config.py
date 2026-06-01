@@ -19,12 +19,13 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o"
+    openai_model: str = "gpt-5"
     openai_embedding_model: str = "text-embedding-3-small"
 
     # Supabase
     supabase_url: str = ""
     supabase_service_role_key: str = ""
+    supabase_anon_key: str = ""          # frontend-safe key (never used by backend logic)
     supabase_bucket: str = "resumes"
 
     # LangChain / LangSmith

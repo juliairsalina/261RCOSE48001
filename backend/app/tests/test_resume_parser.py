@@ -169,3 +169,34 @@ def test_extract_text_unsupported_type_raises():
 
     with pytest.raises(ValueError, match="Unsupported file type"):
         extract_text(b"dummy content", "txt")
+
+
+@pytest.mark.asyncio
+async def test_resume_chunks_are_embedded():
+    """Resume text is split into chunks and each chunk gets a 1536-dim embedding vector."""
+    dummy_embedding = [0.1] * 1536
+    resume_text = (
+        "Jane Doe — Software Engineer\n"
+        "Skills: Python, FastAPI, PostgreSQL\n"
+        "Experience: Built REST APIs at Acme Corp. Reduced latency by 40%.\n"
+        "Education: B.Sc. Computer Science, MIT 2020.\n"
+        "Projects: OpenResume — open source resume builder with 1000+ stars."
+    )
+
+    with patch(
+        "app.services.openai_client.get_embedding",
+        new=AsyncMock(return_value=dummy_embedding),
+    ):
+        from app.services.embedding_service import generate_embeddings_batch
+
+        # Simulate splitting the resume into chunks (same as the upload route does)
+        chunks = [resume_text[i:i + 200] for i in range(0, len(resume_text), 200)]
+        assert len(chunks) >= 1, "Expected at least one chunk"
+
+        embeddings = await generate_embeddings_batch(chunks)
+
+    assert len(embeddings) == len(chunks), "One embedding per chunk"
+    for emb in embeddings:
+        assert isinstance(emb, list), "Each embedding must be a list"
+        assert len(emb) == 1536, "Embedding must be 1536-dimensional"
+        assert all(isinstance(v, float) for v in emb), "All values must be floats"
