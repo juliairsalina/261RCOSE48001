@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # The supabase package is imported lazily inside get_client() so that this
 # module can be imported (and patched in tests) without supabase installed.
@@ -38,15 +41,15 @@ def upload_file(
 
 
 def ensure_user(user_id: str) -> None:
-    """Upsert a user row so FK constraints are satisfied for anonymous sessions."""
+    """Insert a user row (ignore if already exists) to satisfy FK constraints."""
     try:
         client = get_client()
-        client.table("users").upsert(
+        client.table("users").insert(
             {"id": user_id, "email": f"user-{user_id[:8]}@reeracify.local"},
-            on_conflict="id",
+            ignore_duplicates=True,
         ).execute()
-    except Exception:
-        pass  # non-fatal — FK will catch it if truly missing
+    except Exception as exc:
+        logger.warning("ensure_user failed (non-fatal): %s", exc)
 
 
 def get_public_url(bucket: str, path: str) -> str:
