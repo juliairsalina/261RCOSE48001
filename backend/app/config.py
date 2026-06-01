@@ -5,13 +5,17 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Resolve .env relative to this file: backend/app/config.py → backend/.env
-_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+# Resolve env files relative to this file: backend/app/config.py → backend/
+_BASE_DIR = Path(__file__).resolve().parent.parent
+_ENV_EXAMPLE_FILE = _BASE_DIR / ".env.example"  # defaults / template
+_ENV_FILE = _BASE_DIR / ".env"                  # real secrets (gitignored)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(_ENV_FILE),
+        # .env.example is loaded first (provides defaults); .env overrides it.
+        # If .env doesn't exist pydantic-settings silently skips it.
+        env_file=(str(_ENV_EXAMPLE_FILE), str(_ENV_FILE)),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -34,7 +38,6 @@ class Settings(BaseSettings):
     langchain_project: str = "career-application-agent"
 
     # Job Search
-    job_search_api_key: str = ""
     job_search_provider: str = "adzuna"
     adzuna_app_id: str = ""
     adzuna_app_key: str = ""
