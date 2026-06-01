@@ -158,7 +158,10 @@ async def upload_resume(
         logger.warning("Failed to save parsed_json: %s", exc)
 
     # ── Chunk and embed ────────────────────────────────────────────────────
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+    except ImportError:
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
     chunks = splitter.split_text(raw_text)
 
