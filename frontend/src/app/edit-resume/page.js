@@ -429,10 +429,6 @@ export default function EditResumePage() {
   }
 
   async function evaluateResume() {
-    if (!vacancyLink.trim()) {
-      setErrorMessage("Please paste a vacancy link first.");
-      return;
-    }
     if (!resumeId) {
       setErrorMessage("Please upload your resume on the home page first.");
       return;
@@ -442,11 +438,12 @@ export default function EditResumePage() {
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
 
     try {
-      // Step 1: Create job post from URL
-      setLoadingState("Extracting job details from URL...");
+      // Step 1: Create job post from URL (vacancy link is optional)
+      const hasLink = vacancyLink.trim().length > 0;
+      setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing evaluation...");
       const jobPost = await callBackend("/job-posts/create", {
         method: "POST",
-        body: JSON.stringify({ job_url: vacancyLink, user_id: uid }),
+        body: JSON.stringify({ job_url: vacancyLink.trim(), user_id: uid }),
       });
 
       // Step 2: Create application
@@ -480,7 +477,11 @@ export default function EditResumePage() {
       const score = evalResult.score || 0;
       setAtsScoreValue(score);
       setResumeLevel(getRankLabel(evalResult.rank));
-      setJobSummary(`${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`);
+      setJobSummary(
+        hasLink
+          ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
+          : "General resume evaluation — no job posting provided."
+      );
 
       const matched = evalResult.matched_skills?.length || 0;
       const missing = evalResult.missing_skills?.length || 0;

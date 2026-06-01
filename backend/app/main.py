@@ -83,3 +83,11 @@ async def health_openai() -> dict:
     from app.services.openai_client import ping
     result = await ping()
     return result
+
+@app.get("/")
+def root():
+    return {
+        "message": "Career Application Agent API is running",
+        "docs": "/docs",
+        "health": "/health"
+    }

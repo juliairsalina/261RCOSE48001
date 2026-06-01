@@ -32,7 +32,7 @@ def _strip_html(html: str) -> str:
 
 
 class JobPostCreateRequest(BaseModel):
-    job_url: str
+    job_url: str = ""
     user_id: str
     company_name: str = ""
     role_title: str = ""
@@ -84,11 +84,12 @@ async def create_job_post(request: JobPostCreateRequest) -> dict:
         except Exception as exc:
             logger.warning("Failed to extract job from URL %s: %s", request.job_url, exc)
 
+    # No URL and no description — create a general (no-job) placeholder so the
+    # application can still run a resume-only analysis.
     if not job_description:
-        raise HTTPException(
-            status_code=422,
-            detail="Could not extract job description from the URL. Try pasting it manually.",
-        )
+        job_description = "General resume evaluation — no specific job posting provided."
+        company_name = company_name or ""
+        role_title = role_title or "General"
 
     # Ensure user exists (FK)
     supabase_client.ensure_user(request.user_id)
