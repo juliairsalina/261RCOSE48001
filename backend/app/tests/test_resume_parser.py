@@ -92,6 +92,7 @@ async def test_parse_resume_returns_valid_schema():
 
 def test_extract_text_from_pdf():
     """Test PDF text extraction returns a non-empty string from valid PDF bytes."""
+    pytest.importorskip("pypdf", reason="pypdf not installed")
     from pypdf import PdfWriter
     from pypdf.generic import NameObject
 
@@ -111,6 +112,7 @@ def test_extract_text_from_pdf():
 
 def test_extract_text_from_docx():
     """Test DOCX text extraction returns a string from a minimal DOCX."""
+    pytest.importorskip("docx", reason="python-docx not installed")
     from docx import Document
 
     doc = Document()
@@ -132,6 +134,7 @@ def test_extract_text_from_docx():
 
 def test_extract_text_dispatcher_pdf():
     """extract_text dispatches correctly for PDF content type."""
+    pytest.importorskip("pypdf", reason="pypdf not installed")
     from pypdf import PdfWriter
 
     writer = PdfWriter()
@@ -148,6 +151,7 @@ def test_extract_text_dispatcher_pdf():
 
 def test_extract_text_dispatcher_docx():
     """extract_text dispatches correctly for DOCX content type."""
+    pytest.importorskip("docx", reason="python-docx not installed")
     from docx import Document
 
     doc = Document()
