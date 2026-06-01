@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 # Requires: npm install -g @playwright/mcp   (or npx will auto-install on first run)
 _PLAYWRIGHT_MCP_SERVER = {
     "command": "npx",
-    "args": ["@playwright/mcp@latest", "--headless"],
+    "args": ["--yes", "@playwright/mcp@latest", "--headless"],
     "transport": "stdio",
 }
 
