@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.supabase_client import get_client
+
 
 def store_resume_chunks(
     resume_id: str,
@@ -28,7 +30,6 @@ def store_resume_chunks(
     chunks_with_embeddings: list[dict[str, Any]],
 ) -> None:
     """Insert resume chunks with embeddings into the resume_chunks table."""
-    from app.services.supabase_client import get_client
     client = get_client()
     rows = [
         {
@@ -57,7 +58,6 @@ def retrieve_similar_chunks(
     Returns:
         List of dicts with keys: id, chunk_text, section, similarity.
     """
-    from app.services.supabase_client import get_client
     client = get_client()
     response = client.rpc(
         "match_resume_chunks",

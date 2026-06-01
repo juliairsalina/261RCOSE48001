@@ -144,10 +144,12 @@ def test_confidence_label_thresholds():
 
 @pytest.mark.asyncio
 async def test_dummy_jobs_returned_when_api_key_missing():
-    """When no Adzuna credentials are set, return the dummy job list."""
-    with patch("app.config.settings") as mock_settings:
-        mock_settings.adzuna_app_id = ""
-        mock_settings.adzuna_app_key = ""
+    """When no JSearch API key is set, return the dummy job list."""
+    with patch("app.services.job_search_service.settings") as mock_settings:
+        mock_settings.job_search_provider = "jsearch"
+        mock_settings.jsearch_api_key = ""
+        mock_settings.jsearch_country = "kr"
+        mock_settings.jsearch_language = "en"
 
         from app.services.job_search_service import search_jobs, DUMMY_JOBS
 
