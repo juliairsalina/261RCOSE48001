@@ -133,6 +133,7 @@ async def upload_resume(
         raise HTTPException(status_code=500, detail=f"Database insert failed: {exc}")
 
     # ── Parse resume JSON via GPT-4o ───────────────────────────────────────
+    parse_status = "ok"
     try:
         messages = [
             {"role": "system", "content": RESUME_PARSER_SYSTEM_PROMPT},
@@ -147,7 +148,7 @@ async def upload_resume(
         parsed_json = ResumeJSON(**parsed_dict)
     except Exception as exc:
         logger.exception("Failed to parse resume JSON: %s", exc)
-        # Don't fail the upload — store raw_text and continue
+        parse_status = "failed"
         parsed_dict = {}
         parsed_json = ResumeJSON()
 
@@ -166,6 +167,7 @@ async def upload_resume(
     chunks = splitter.split_text(raw_text)
 
     chunks_stored = 0
+    chunks_ok = True
     if chunks:
         try:
             embeddings = await generate_embeddings_batch(chunks)
@@ -185,6 +187,7 @@ async def upload_resume(
             chunks_stored = len(chunks_with_embeddings)
         except Exception as exc:
             logger.warning("Failed to store resume chunks: %s", exc)
+            chunks_ok = False
 
     return ResumeUploadResponse(
         resume_id=resume_id,
@@ -195,6 +198,8 @@ async def upload_resume(
         raw_text_length=len(raw_text),
         parsed_json=parsed_json,
         chunks_stored=chunks_stored,
+        parse_status=parse_status,
+        chunks_ok=chunks_ok,
     )
 
 

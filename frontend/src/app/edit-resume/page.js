@@ -634,16 +634,14 @@ export default function EditResumePage() {
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
     try {
       setLoadingState("Preparing download...");
-      const response = await fetch(`${API_BASE_URL}/applications/${applicationId}/export-resume`, {
+      const data = await callBackend(`/applications/${applicationId}/export-resume`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: uid }),
       });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.detail || `Export failed: ${response.status}`);
-      }
-      const blob = await response.blob();
+      // Backend returns { file_url: "..." } — fetch the actual file
+      const fileRes = await fetch(data.file_url);
+      if (!fileRes.ok) throw new Error(`Could not fetch exported file: ${fileRes.status}`);
+      const blob = await fileRes.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -1275,7 +1273,7 @@ function ResumeDocument({
         </h2>
 
         <p className="mt-2">
-          {(resumeData.skills || []).join(" • ")}
+          {flattenSkills(resumeData.skills).join(" • ")}
         </p>
       </section>
 
@@ -1436,6 +1434,29 @@ function ResumeDocument({
       </div>
     </article>
   );
+}
+
+function flattenSkills(skills) {
+  if (!skills) return [];
+  if (typeof skills === "string") return [skills];
+  if (Array.isArray(skills)) {
+    return skills.flatMap((s) => {
+      if (typeof s === "string") return [s];
+      if (s && typeof s === "object") {
+        const vals = Object.values(s);
+        return vals.flatMap((v) =>
+          Array.isArray(v) ? v.map(String) : [String(v)]
+        );
+      }
+      return [];
+    });
+  }
+  if (typeof skills === "object") {
+    return Object.values(skills).flatMap((v) =>
+      Array.isArray(v) ? v.map(String) : [String(v)]
+    );
+  }
+  return [];
 }
 
 function RewriteModal({

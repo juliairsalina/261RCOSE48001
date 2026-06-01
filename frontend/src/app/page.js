@@ -75,6 +75,12 @@ export default function HomePage() {
       const data = await res.json();
       localStorage.setItem("reeracifyResumeId", data.resume_id);
       localStorage.setItem("reeracifyParsedResume", JSON.stringify(data.parsed_json));
+
+      if (data.parse_status === "failed") {
+        alert("Resume uploaded, but AI parsing failed. We'll still try to evaluate using the raw text.");
+      } else if (!data.chunks_ok) {
+        alert("Resume uploaded and parsed, but embedding storage failed. Context retrieval may be limited.");
+      }
     } catch (error) {
       console.error(error);
       alert(`Upload failed: ${error.message}`);

@@ -72,6 +72,8 @@ class ResumeUploadResponse(BaseModel):
     raw_text_length: int
     parsed_json: ResumeJSON
     chunks_stored: int
+    parse_status: str = "ok"   # "ok" | "failed"
+    chunks_ok: bool = True
     message: str = "Resume uploaded and processed successfully"
 
 

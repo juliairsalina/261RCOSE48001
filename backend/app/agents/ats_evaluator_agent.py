@@ -27,6 +27,30 @@ def _normalise(text: str) -> str:
     return text.lower().strip()
 
 
+def _flatten_skills(skills: object) -> list[str]:
+    """Convert skills field (str list, dict list, or dict) to a flat list of strings."""
+    if not skills:
+        return []
+    if isinstance(skills, dict):
+        result: list[str] = []
+        for v in skills.values():
+            result.extend(_flatten_skills(v))
+        return result
+    if isinstance(skills, list):
+        out: list[str] = []
+        for s in skills:
+            if isinstance(s, str):
+                out.append(s)
+            elif isinstance(s, dict):
+                for v in s.values():
+                    if isinstance(v, str):
+                        out.append(v)
+                    elif isinstance(v, list):
+                        out.extend(str(x) for x in v if x)
+        return out
+    return [str(skills)]
+
+
 def _compute_ats_score(
     resume_json: dict[str, Any],
     job_json: dict[str, Any],
@@ -59,7 +83,7 @@ def _compute_ats_score(
         ).lower()
 
     # Flatten resume text
-    resume_skills = [_normalise(s) for s in resume_json.get("skills", [])]
+    resume_skills = [_normalise(s) for s in _flatten_skills(resume_json.get("skills", []))]
     resume_text = " ".join(resume_skills)
 
     # Add work experience text
