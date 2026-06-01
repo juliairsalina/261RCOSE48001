@@ -39,8 +39,8 @@ def upload_file(
 
 def ensure_user(user_id: str) -> None:
     """Upsert a user row so FK constraints are satisfied for anonymous sessions."""
-    client = get_client()
     try:
+        client = get_client()
         client.table("users").upsert(
             {"id": user_id, "email": f"user-{user_id[:8]}@reeracify.local"},
             on_conflict="id",
