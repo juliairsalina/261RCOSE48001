@@ -1483,7 +1483,8 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
   const skills = flattenSkills(resumeData.skills);
   const education = resumeData.education || [];
   const experience = resumeData.experience || resumeData.work_experience || [];
-  console.log("EXPERIENCE DATA:", experience);
+  console.log("RESUME DATA:", resumeData);
+  console.log("EXPERIENCE:", experience);
   const projects = resumeData.projects || [];
   const pendingCount = rewriteList.filter(r => r.status === "pending").length;
 
@@ -1509,78 +1510,6 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Summary</h2>
           <p className="mt-2"><RewritableBullet text={resumeData.summary} /></p>
-        </section>
-      )}
-
-      {/* Skills */}
-      {skills.length > 0 && (
-        <section className="mt-4">
-          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Skills</h2>
-          <p className="mt-2">{skills.join(" · ")}</p>
-        </section>
-      )}
-
-      {/* Education */}
-      {education.length > 0 && (
-        <section className="mt-4">
-          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Education</h2>
-          {education.map((edu, i) => (
-            <div key={i} className="mt-2">
-              <div className="flex justify-between">
-                <div>
-                  <h3 className="font-bold">
-                    {edu.school || edu.institution}
-                  </h3>
-
-                  {(edu.degree || edu.program) && (
-                    <p className="text-gray-600">
-                      {edu.degree || edu.program}
-                    </p>
-                  )}
-
-                  {edu.field_of_study && (
-                    <p className="text-gray-600">
-                      {edu.field_of_study}
-                    </p>
-                  )}
-
-                  {edu.focus && (
-                    <p className="mt-1 text-gray-700">
-                      {Array.isArray(edu.focus)
-                        ? edu.focus.join(", ")
-                        : edu.focus}
-                    </p>
-                  )}
-
-                  {edu.highlights?.length > 0 && (
-                    <ul className="mt-1 list-disc pl-5">
-                      {edu.highlights.map((h, i) => (
-                        <li key={i}>{h}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                <span className="text-gray-500 shrink-0 ml-2">
-                  {[edu.start_date, edu.end_date]
-                    .filter(Boolean)
-                    .join(" – ")}
-                </span>
-              </div>
-
-              {edu.gpa && (
-                <p className="text-gray-600">
-                  GPA: {edu.gpa}
-                </p>
-              )}
-
-              {edu.description && (
-                <p className="mt-1 text-gray-700">
-                  {edu.description}
-                </p>
-              )}
-            </div>
-          ))}
         </section>
       )}
 
@@ -1684,6 +1613,78 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           ))}
         </section>
       )}
+
+      {/* Education */}
+            {education.length > 0 && (
+              <section className="mt-4">
+                <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Education</h2>
+                {education.map((edu, i) => (
+                  <div key={i} className="mt-2">
+                    <div className="flex justify-between">
+                      <div>
+                        <h3 className="font-bold">
+                          {edu.school || edu.institution}
+                        </h3>
+
+                        {(edu.degree || edu.program) && (
+                          <p className="text-gray-600">
+                            {edu.degree || edu.program}
+                          </p>
+                        )}
+
+                        {edu.field_of_study && (
+                          <p className="text-gray-600">
+                            {edu.field_of_study}
+                          </p>
+                        )}
+
+                        {edu.focus && (
+                          <p className="mt-1 text-gray-700">
+                            {Array.isArray(edu.focus)
+                              ? edu.focus.join(", ")
+                              : edu.focus}
+                          </p>
+                        )}
+
+                        {edu.highlights?.length > 0 && (
+                          <ul className="mt-1 list-disc pl-5">
+                            {edu.highlights.map((h, i) => (
+                              <li key={i}>{h}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      <span className="text-gray-500 shrink-0 ml-2">
+                        {[edu.start_date, edu.end_date]
+                          .filter(Boolean)
+                          .join(" – ")}
+                      </span>
+                    </div>
+
+                    {edu.gpa && (
+                      <p className="text-gray-600">
+                        GPA: {edu.gpa}
+                      </p>
+                    )}
+
+                    {edu.description && (
+                      <p className="mt-1 text-gray-700">
+                        {edu.description}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </section>
+            )}
+            {/* Skills */}
+            {skills.length > 0 && (
+              <section className="mt-4">
+                <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Skills</h2>
+                <p className="mt-2">{skills.join(" · ")}</p>
+              </section>
+            )}
+
 {/* Languages */}
 {resumeData.languages?.length > 0 && (
   <section className="mt-4">

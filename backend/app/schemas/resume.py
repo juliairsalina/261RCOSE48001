@@ -24,7 +24,7 @@ class EducationEntry(BaseModel):
     gpa: Optional[str] = None
     description: str = ""
 
-    @field_validator("description", "institution", "degree", "field_of_study", "start_date", "end_date" mode="before")
+    @field_validator("description", "institution", "degree", "field_of_study", "start_date", "end_date", mode="before")
     @classmethod
     def coerce_str_fields(cls, v: Any) -> str:
         return _coerce_str(v)

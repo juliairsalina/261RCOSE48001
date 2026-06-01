@@ -10,88 +10,161 @@ from app.services import openai_client, supabase_client
 logger = logging.getLogger(__name__)
 
 RESUME_PARSER_SYSTEM_PROMPT = """
-You are an expert resume parser.
+You are an expert ATS resume parser.
 
-Extract ALL information from the resume and preserve as much detail as possible.
+Your task is to extract resume information into structured JSON WITHOUT losing information.
 
-Return ONLY valid JSON.
+CRITICAL RULES
 
-Use this exact structure:
+1. Preserve ALL information from the resume.
+2. Preserve ALL bullet points exactly.
+3. Preserve ALL project descriptions exactly.
+4. Preserve ALL work experience descriptions exactly.
+5. Preserve ALL education descriptions exactly.
+6. Preserve ALL languages and proficiency levels.
+7. Preserve ALL certifications and achievements.
+8. Preserve ALL URLs, GitHub links, portfolio links, and LinkedIn links.
+9. Preserve ALL dates exactly as written.
+10. Do NOT summarize resume content EXCEPT for the "summary" field.
+11. Do NOT rewrite.
+12. Do NOT shorten.
+13. Do NOT infer missing information.
+14. Do NOT invent dates.
+15. Do NOT replace end dates with "Current" unless the resume explicitly says "Current" or "Present".
+16. If information is missing, use empty strings "" or empty arrays [].
+17. Return ONLY valid JSON.
+18. Every section found in the resume must be represented in the JSON.
+19. Generate a professional summary if the resume does not explicitly contain one.
+20. The summary must be 2-4 sentences and based only on information present in the resume.
+21. The summary must not invent experience, skills, achievements, or qualifications not found in the resume.
+22. Store the generated summary in the "summary" field.
+
+
+CRITICAL SCHEMA RULES
+
+You MUST ONLY use the fields defined in the schema below.
+
+DO NOT create any additional fields.
+
+Forbidden examples:
+
+* status
+* highlights
+* focus
+* focus_areas
+* organization
+* responsibilities
+* context
+* outcomes
+* results
+* repository
+* organization_or_course
+* dates
+* details
+* year
+
+Map information into existing schema fields instead.
+
+Examples:
+
+Work experience responsibilities
+→ bullets
+
+Work experience summary
+→ description
+
+Education highlights
+→ description
+
+Education bullet points
+→ bullets
+
+Project outcomes
+→ bullets
+
+Project results
+→ description or bullets
+
+Project repository links
+→ url
+
+Language levels
+→ proficiency
+
+Return ONLY the following schema:
 
 {
-  "name": "",
-  "email": "",
-  "phone": "",
+"name": "",
+"email": "",
+"phone": "",
+"summary": "",
 
-  "education": [
-    {
-      "institution": "",
-      "degree": "",
-      "field_of_study": "",
-      "start_date": "",
-      "end_date": "",
-      "gpa": "",
-      "description": ""
-    }
-  ],
-
-  "work_experience": [
-    {
-      "company": "",
-      "title": "",
-      "location": "",
-      "start_date": "",
-      "end_date": "",
-      "is_current": false,
-      "description": "",
-      "bullets": []
-    }
-  ],
-
-  "projects": [
-    {
-      "name": "",
-      "description": "",
-      "technologies": [],
-      "url": "",
-      "bullets": []
-      "start_date": "",
-      "end_date": ""
-    }
-  ],
-
-  "skills": [],
-
-  "languages": [],
-
-  "certifications": [
-    {
-      "name": "",
-      "issuer": "",
-      "date": ""
-    }
-  ],
-
-  "achievements": [
-    {
-      "title": "",
-      "description": "",
-      "date": ""
-    }
-  ]
+"education": [
+{
+"institution": "",
+"degree": "",
+"field_of_study": "",
+"start_date": "",
+"end_date": "",
+"gpa": "",
+"description": "",
+"bullets": []
 }
+],
 
-IMPORTANT:
+"work_experience": [
+{
+"company": "",
+"title": "",
+"location": "",
+"start_date": "",
+"end_date": "",
+"is_current": false,
+"description": "",
+"bullets": []
+}
+],
 
-- Preserve ALL project descriptions.
-- Preserve ALL work experience bullet points.
-- Preserve ALL project bullet points.
-- Preserve ALL education details.
-- Do not summarize.
-- Do not remove information.
-- If information is missing, use empty strings or empty arrays.
-- Return only JSON.
+"projects": [
+{
+"name": "",
+"description": "",
+"technologies": [],
+"url": "",
+"start_date": "",
+"end_date": "",
+"bullets": []
+}
+],
+
+"skills": [],
+
+"languages": [
+{
+"language": "",
+"proficiency": ""
+}
+],
+
+"certifications": [
+{
+"name": "",
+"issuer": "",
+"date": "",
+"description": ""
+}
+],
+
+"achievements": [
+{
+"title": "",
+"date": "",
+"description": ""
+}
+]
+}
 """
+
 
 async def _log_agent_run(
     user_id: str,
