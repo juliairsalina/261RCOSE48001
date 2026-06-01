@@ -44,11 +44,16 @@ async def chat_completion(
     client = get_client()
     resolved_model = model or settings.openai_model
 
+    # o1, o3, and gpt-5 family models only support temperature=1 (the default)
+    _no_temp_models = ("o1", "o3", "gpt-5")
+    supports_temperature = not any(resolved_model.startswith(m) for m in _no_temp_models)
+
     kwargs: dict[str, Any] = {
         "model": resolved_model,
         "messages": messages,
-        "temperature": temperature,
     }
+    if supports_temperature:
+        kwargs["temperature"] = temperature
     if response_format is not None:
         kwargs["response_format"] = response_format
 
