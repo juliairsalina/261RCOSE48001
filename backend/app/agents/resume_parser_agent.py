@@ -38,10 +38,11 @@ Use this exact structure:
   "work_experience": [
     {
       "company": "",
-      "position": "",
+      "title": "",
+      "location": "",
       "start_date": "",
       "end_date": "",
-      "location": "",
+      "is_current": false,
       "description": "",
       "bullets": []
     }
@@ -49,12 +50,13 @@ Use this exact structure:
 
   "projects": [
     {
-      "title": "",
-      "start_date": "",
-      "end_date": "",
+      "name": "",
       "description": "",
       "technologies": [],
+      "url": "",
       "bullets": []
+      "start_date": "",
+      "end_date": ""
     }
   ],
 
