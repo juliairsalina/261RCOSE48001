@@ -1483,6 +1483,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
   const skills = flattenSkills(resumeData.skills);
   const education = resumeData.education || [];
   const experience = resumeData.experience || resumeData.work_experience || [];
+  console.log("EXPERIENCE DATA:", experience);
   const projects = resumeData.projects || [];
   const pendingCount = rewriteList.filter(r => r.status === "pending").length;
 
@@ -1526,14 +1527,46 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           {education.map((edu, i) => (
             <div key={i} className="mt-2">
               <div className="flex justify-between">
-                <h3 className="font-bold">{edu.school || edu.institution}</h3>
-                <span className="text-gray-500">{[edu.start_date, edu.end_date].filter(Boolean).join(" – ")}</span>
+                <div>
+                  <h3 className="font-bold">
+                    {edu.school || edu.institution}
+                  </h3>
+
+                  {(edu.degree || edu.program) && (
+                    <p className="text-gray-600">
+                      {edu.degree || edu.program}
+                    </p>
+                  )}
+
+                  {edu.field_of_study && (
+                    <p className="text-gray-600">
+                      {edu.field_of_study}
+                    </p>
+                  )}
+
+                  {edu.focus && (
+                    <p className="mt-1 text-gray-700">
+                      {Array.isArray(edu.focus)
+                        ? edu.focus.join(", ")
+                        : edu.focus}
+                    </p>
+                  )}
+
+                  {edu.highlights?.length > 0 && (
+                    <ul className="mt-1 list-disc pl-5">
+                      {edu.highlights.map((h, i) => (
+                        <li key={i}>{h}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <span className="text-gray-500 shrink-0 ml-2">
+                  {[edu.start_date, edu.end_date]
+                    .filter(Boolean)
+                    .join(" – ")}
+                </span>
               </div>
-              {(edu.degree || edu.field) && (
-                <p className="text-gray-600">
-                  {[edu.degree, edu.field, edu.field_of_study, edu.program].filter(Boolean).join(" · ")}
-                </p>
-              )}
 
               {edu.gpa && (
                 <p className="text-gray-600">
@@ -1571,9 +1604,13 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   {exp.description}
                 </p>
               )}
-              {(exp.bullets || exp.responsibilities || []).length > 0 && (
+              {(exp.bullets?.length
+                ? exp.bullets
+                : exp.responsibilities || []).length > 0 && (
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
-                  {(exp.bullets || exp.responsibilities || []).map((b, j) => (
+                  {(exp.bullets?.length
+                    ? exp.bullets
+                    : exp.responsibilities || []).map((b, j) => (
                     <li key={j}>
                       <RewritableBullet text={b} />
                     </li>
@@ -1600,6 +1637,34 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
               {proj.description && (
                 <p className="mt-1 text-gray-700">
                   {proj.description}
+                </p>
+              )}
+
+              {proj.contributions?.length > 0 && (
+                <ul className="mt-1 list-disc pl-5">
+                  {proj.contributions.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              )}
+
+              {(proj.results || proj.outcomes)?.length > 0 && (
+                <ul className="mt-1 list-disc pl-5">
+                  {(proj.results || proj.outcomes).map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              )}
+
+              {proj.repository && (
+                <p className="mt-1 text-blue-600 break-all">
+                  {proj.repository}
+                </p>
+              )}
+
+              {proj.links?.length > 0 && (
+                <p className="mt-1 text-blue-600 break-all">
+                  {proj.links[0]}
                 </p>
               )}
 
