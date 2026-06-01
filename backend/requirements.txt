@@ -9,6 +9,7 @@ postgrest==0.16.11
 storage3==0.7.7
 gotrue==2.7.0
 langchain>=0.3.0
+langchain-text-splitters>=0.3.0
 langchain-openai>=0.2.0
 langgraph>=0.2.0
 langsmith>=0.1.0

@@ -138,6 +138,9 @@ export default function EditResumePage() {
   const [coverLetterText, setCoverLetterText] = useState("");
   const [coverLetterLoading, setCoverLetterLoading] = useState(false);
 
+  // Active rewrite highlight in resume preview
+  const [activeRewriteId, setActiveRewriteId] = useState(null);
+
   const suggestions = backendSuggestions || [];
 
   const currentSuggestion =
@@ -202,6 +205,13 @@ export default function EditResumePage() {
       localStorage.setItem("reeracifyVacancyLink", vacancyLink);
     }
   }, [vacancyLink]);
+
+  useEffect(() => {
+    if (activeRewriteId && activeTab === "rewrites") {
+      const el = document.getElementById(`rewrite-${activeRewriteId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [activeRewriteId, activeTab]);
 
   const zoomIn = () => {
     setZoom((prev) => Math.min(prev + 0.08, 1.05));
@@ -521,7 +531,8 @@ export default function EditResumePage() {
 
       setIsLoading(false);
       setStatusMessage(`Evaluation complete — ATS score: ${score}/100`);
-      setActiveTab("analysis");
+      // Switch to Rewrites tab so user sees highlights immediately
+      setActiveTab("rewrites");
 
     } catch (error) {
       setIsLoading(false);
@@ -634,16 +645,14 @@ export default function EditResumePage() {
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
     try {
       setLoadingState("Preparing download...");
-      const response = await fetch(`${API_BASE_URL}/applications/${applicationId}/export-resume`, {
+      const data = await callBackend(`/applications/${applicationId}/export-resume`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: uid }),
       });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.detail || `Export failed: ${response.status}`);
-      }
-      const blob = await response.blob();
+      // Backend returns { file_url: "..." } — fetch the actual file
+      const fileRes = await fetch(data.file_url);
+      if (!fileRes.ok) throw new Error(`Could not fetch exported file: ${fileRes.status}`);
+      const blob = await fileRes.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -817,6 +826,16 @@ export default function EditResumePage() {
                 </div>
               </div>
 
+              {/* Ready-to-evaluate prompt */}
+              {!isLoading && !atsScoreValue && resumeId && !errorMessage && (
+                <div className="mt-3 flex items-center gap-3 rounded-2xl border border-[#243026]/15 bg-white/55 px-4 py-2.5">
+                  <span className="flex h-2 w-2 shrink-0 rounded-full bg-green-500" />
+                  <p className="text-xs font-bold text-[#243026]/70">
+                    Resume loaded{resumeData?.name ? ` — ${resumeData.name}` : ""}. Click <span className="text-[#243026]">Evaluate</span> to analyze and highlight rewrite suggestions.
+                  </p>
+                </div>
+              )}
+
               {(statusMessage || errorMessage) && (
                 <div className="mt-3">
                   {statusMessage && (
@@ -845,12 +864,13 @@ export default function EditResumePage() {
                 className="h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)] print:shadow-none"
               >
                 <ResumeDocument
-                  resumeData = {resumeData}
-                  activeSuggestion={activeSuggestion}
-                  currentSuggestion={currentSuggestion}
-                  resumeBullets={resumeBullets}
-                  weakBulletIds={weakBulletIds}
-                  onBulletClick={requestRewriteForBullet}
+                  resumeData={resumeData}
+                  rewriteList={rewriteList}
+                  activeRewriteId={activeRewriteId}
+                  onRewriteClick={(rw) => {
+                    setActiveRewriteId(rw.id);
+                    setActiveTab("rewrites");
+                  }}
                 />
               </div>
             </div>
@@ -1021,12 +1041,16 @@ export default function EditResumePage() {
                     rewriteList.map((s) => (
                       <div
                         key={s.id}
-                        className={`rounded-[1.2rem] border p-4 transition ${
-                          s.status === "approved"
+                        id={`rewrite-${s.id}`}
+                        onClick={() => setActiveRewriteId(s.id)}
+                        className={`cursor-pointer rounded-[1.2rem] border p-4 transition ${
+                          activeRewriteId === s.id
+                            ? "border-yellow-400 bg-yellow-50/80 shadow-[0_0_0_2px_rgba(250,204,21,0.4)]"
+                            : s.status === "approved"
                             ? "border-green-300 bg-green-50/70"
                             : s.status === "rejected"
                             ? "border-red-200 bg-red-50/60 opacity-60"
-                            : "border-white/45 bg-white/35"
+                            : "border-white/45 bg-white/35 hover:bg-white/55"
                         }`}
                       >
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40">
@@ -1222,220 +1246,201 @@ function HighlightBox({ active, children, onClick }) {
   );
 }
 
-function ResumeDocument({
-  resumeData,
-  activeSuggestion,
-  currentSuggestion,
-  resumeBullets = [],
-  weakBulletIds = new Set(),
-  onBulletClick,
-}) {
-  const groupedBullets = useMemo(() => {
-    return resumeBullets.reduce((acc, bullet) => {
-      const section = bullet.section || "other";
-      if (!acc[section]) acc[section] = [];
-      acc[section].push(bullet);
-      return acc;
-    }, {});
-  }, [resumeBullets]);
+function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick }) {
+  // Build lookup: normalised original_text → rewrite object
+  const rewriteMap = useMemo(() => {
+    const m = new Map();
+    for (const rw of rewriteList) {
+      if (rw.original_text) m.set(rw.original_text.trim(), rw);
+    }
+    return m;
+  }, [rewriteList]);
 
-  if (resumeData) {
-  return (
+  // Returns the matching rewrite for a piece of text (if any)
+  function matchRewrite(text) {
+    if (!text) return null;
+    const t = text.trim();
+    for (const [orig, rw] of rewriteMap) {
+      if (t === orig || t.includes(orig) || orig.includes(t)) return rw;
+    }
+    return null;
+  }
 
-    <article className="text-[12px] leading-[1.45]">
-
-      {/* Header */}
-      <div className="border-b pb-3 text-center">
-        <h1 className="text-[22px] font-black">
-          {resumeData.name}
-        </h1>
-
-        <p className="mt-1 text-[11px] text-gray-600">
-          {resumeData.email}
-          {" • "}
-          {resumeData.phone}
-        </p>
-      </div>
-
-      {/* Summary */}
-      <section className="mt-5">
-        <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
-          Summary
-        </h2>
-
-        <p className="mt-2">
-          {resumeData.summary}
-        </p>
-      </section>
-
-      {/* Skills */}
-      <section className="mt-5">
-        <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
-          Skills
-        </h2>
-
-        <p className="mt-2">
-          {(resumeData.skills || []).join(" • ")}
-        </p>
-      </section>
-
-      {/* Education */}
-      <section className="mt-5">
-        <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
-          Education
-        </h2>
-
-        {(resumeData.education || []).map((edu, index) => (
-
-          <div key={index} className="mt-3">
-
-            <div className="flex justify-between">
-              <h3 className="font-bold">
-                {edu.school}
-              </h3>
-
-              <span>
-                {edu.start_date} - {edu.end_date}
-              </span>
-            </div>
-
-            <p>
-              {edu.degree} in {edu.field}
-            </p>
-
-          </div>
-
-        ))}
-      </section>
-
-      {/* Experience */}
-      <section className="mt-5">
-        <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
-          Experience
-        </h2>
-
-        {(resumeData.experience || []).map((exp, index) => (
-
-          <div key={index} className="mt-3">
-
-            <div className="flex justify-between">
-              <div>
-                <h3 className="font-bold">
-                  {exp.role}
-                </h3>
-
-                <p>{exp.company}</p>
-              </div>
-
-              <span>
-                {exp.start_date} - {exp.end_date}
-              </span>
-            </div>
-
-            <ul className="mt-2 list-disc pl-5">
-              {(exp.bullets || []).map((bullet, i) => (
-                <li key={i}>{bullet}</li>
-              ))}
-            </ul>
-
-          </div>
-
-        ))}
-      </section>
-
-      {/* Projects */}
-      <section className="mt-5">
-        <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
-          Projects
-        </h2>
-
-        {(resumeData.projects || []).map((project, index) => (
-
-          <div key={index} className="mt-3">
-
-            <div className="flex justify-between">
-              <h3 className="font-bold">
-                {project.name}
-              </h3>
-
-              <span>
-                {project.start_date} - {project.end_date}
-              </span>
-            </div>
-
-            <ul className="mt-2 list-disc pl-5">
-              {(project.bullets || []).map((bullet, i) => (
-                <li key={i}>{bullet}</li>
-              ))}
-            </ul>
-
-          </div>
-
-        ))}
-      </section>
-
-    </article>
-
-  );
-}
-
-  if (resumeBullets.length > 0) {
+  function RewritableBullet({ text }) {
+    const rw = matchRewrite(text);
+    if (!rw) return <>{text}</>;
+    const isActive = rw.id === activeRewriteId;
     return (
-      <article className="text-[12px] leading-[1.45]">
-        <h1 className="text-center text-[20px] font-black tracking-wide">
-          REERACIFY RESUME
-        </h1>
-        <p className="text-center text-[10px]">
-          Click highlighted parts to view AI rewrite suggestions
-        </p>
+      <span
+        onClick={(e) => { e.stopPropagation(); onRewriteClick?.(rw); }}
+        title="Click to view rewrite suggestion"
+        className={`cursor-pointer rounded px-0.5 transition ${
+          isActive
+            ? "bg-yellow-300 shadow-[0_0_0_2px_rgba(250,204,21,0.7)]"
+            : rw.status === "approved"
+            ? "bg-green-200"
+            : rw.status === "rejected"
+            ? "line-through opacity-50"
+            : "bg-yellow-100 hover:bg-yellow-200"
+        }`}
+      >
+        {text}
+      </span>
+    );
+  }
 
-        {Object.entries(groupedBullets).map(([section, bullets]) => (
-          <section key={section} className="mt-4">
-            <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
-              {section}
-            </h2>
+  const hasData = resumeData && (
+    resumeData.name || resumeData.email ||
+    (resumeData.experience || []).length > 0 ||
+    (resumeData.education || []).length > 0 ||
+    (resumeData.projects || []).length > 0 ||
+    flattenSkills(resumeData.skills).length > 0
+  );
 
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              {bullets.map((bullet, index) => {
-                const isWeak = weakBulletIds.has(bullet.id);
-                const isActive =
-                  activeSuggestion === bullet.id ||
-                  currentSuggestion?.bulletId === bullet.id;
-
-                return (
-                  <li
-                    key={bullet.id || index}
-                    onClick={() => onBulletClick?.(bullet)}
-                    className={`rounded-sm px-1 transition ${
-                      isWeak || isActive
-                        ? "cursor-pointer bg-yellow-300 shadow-[0_0_0_2px_rgba(250,204,21,0.65)]"
-                        : "cursor-pointer hover:bg-yellow-100"
-                    }`}
-                    title="Click to rewrite this part"
-                  >
-                    {bullet.text}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
+  if (!hasData) {
+    return (
+      <article className="flex h-full items-center justify-center text-center text-[#243026]/50">
+        <div>
+          <h2 className="text-xl font-black text-[#243026]">Resume preview</h2>
+          <p className="mt-2 text-sm">Upload your resume on the home page, then click Evaluate.</p>
+        </div>
       </article>
     );
   }
 
+  const skills = flattenSkills(resumeData.skills);
+  const education = resumeData.education || [];
+  const experience = resumeData.experience || [];
+  const projects = resumeData.projects || [];
+  const pendingCount = rewriteList.filter(r => r.status === "pending").length;
+
   return (
-    <article className="flex h-full items-center justify-center text-center text-[#243026]/50">
-      <div>
-        <h2 className="text-xl font-black text-[#243026]">
-          No resume evaluated yet
-        </h2>
-        <p className="mt-2 text-sm">
-          Upload your resume and paste a vacancy link, then click Evaluate.
+    <article className="text-[12px] leading-[1.45]">
+
+      {/* Header */}
+      <div className="border-b pb-3 text-center">
+        <h1 className="text-[22px] font-black">{resumeData.name || "—"}</h1>
+        <p className="mt-1 text-[11px] text-gray-500">
+          {[resumeData.email, resumeData.phone].filter(Boolean).join(" · ")}
         </p>
       </div>
+
+      {pendingCount > 0 && (
+        <p className="mt-3 rounded-lg bg-yellow-50 px-3 py-1.5 text-[10px] font-bold text-yellow-700">
+          ✦ {pendingCount} rewrite suggestion{pendingCount > 1 ? "s" : ""} highlighted — click to review
+        </p>
+      )}
+
+      {/* Summary */}
+      {resumeData.summary && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Summary</h2>
+          <p className="mt-2"><RewritableBullet text={resumeData.summary} /></p>
+        </section>
+      )}
+
+      {/* Skills */}
+      {skills.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Skills</h2>
+          <p className="mt-2">{skills.join(" · ")}</p>
+        </section>
+      )}
+
+      {/* Education */}
+      {education.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Education</h2>
+          {education.map((edu, i) => (
+            <div key={i} className="mt-2">
+              <div className="flex justify-between">
+                <h3 className="font-bold">{edu.school}</h3>
+                <span className="text-gray-500">{[edu.start_date, edu.end_date].filter(Boolean).join(" – ")}</span>
+              </div>
+              {(edu.degree || edu.field) && (
+                <p className="text-gray-600">{[edu.degree, edu.field].filter(Boolean).join(" · ")}</p>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Experience */}
+      {experience.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Experience</h2>
+          {experience.map((exp, i) => (
+            <div key={i} className="mt-3">
+              <div className="flex justify-between">
+                <div>
+                  <h3 className="font-bold">{exp.role}</h3>
+                  <p className="text-gray-600">{exp.company}</p>
+                </div>
+                <span className="shrink-0 text-gray-500 ml-2">
+                  {[exp.start_date, exp.end_date].filter(Boolean).join(" – ")}
+                </span>
+              </div>
+              {(exp.bullets || []).length > 0 && (
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
+                  {exp.bullets.map((b, j) => (
+                    <li key={j}><RewritableBullet text={b} /></li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Projects */}
+      {projects.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Projects</h2>
+          {projects.map((proj, i) => (
+            <div key={i} className="mt-3">
+              <div className="flex justify-between">
+                <h3 className="font-bold">{proj.name}</h3>
+                <span className="shrink-0 text-gray-500 ml-2">
+                  {[proj.start_date, proj.end_date].filter(Boolean).join(" – ")}
+                </span>
+              </div>
+              {(proj.bullets || []).length > 0 && (
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
+                  {proj.bullets.map((b, j) => (
+                    <li key={j}><RewritableBullet text={b} /></li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+
     </article>
   );
+}
+
+function flattenSkills(skills) {
+  if (!skills) return [];
+  if (typeof skills === "string") return [skills];
+  if (Array.isArray(skills)) {
+    return skills.flatMap((s) => {
+      if (typeof s === "string") return [s];
+      if (s && typeof s === "object") {
+        const vals = Object.values(s);
+        return vals.flatMap((v) =>
+          Array.isArray(v) ? v.map(String) : [String(v)]
+        );
+      }
+      return [];
+    });
+  }
+  if (typeof skills === "object") {
+    return Object.values(skills).flatMap((v) =>
+      Array.isArray(v) ? v.map(String) : [String(v)]
+    );
+  }
+  return [];
 }
 
 function RewriteModal({

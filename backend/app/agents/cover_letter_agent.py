@@ -71,7 +71,7 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
                     f"Company Background:\n{json.dumps(company_background, ensure_ascii=False)}\n\n"
                     f"Candidate's Most Relevant Experience:\n{context_text[:2000]}\n\n"
                     f"Full Resume Summary:\n"
-                    f"Skills: {', '.join(resume_json.get('skills', [])[:15])}\n"
+                    f"Skills: {', '.join(str(s) for s in (resume_json.get('skills') or [])[:15])}\n"
                     f"Experience: {len(resume_json.get('work_experience', []))} positions\n"
                     f"Education: {', '.join(e.get('institution', '') for e in resume_json.get('education', []))}\n\n"
                     "Write the cover letter now:"

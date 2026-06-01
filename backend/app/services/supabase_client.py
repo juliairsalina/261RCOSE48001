@@ -44,9 +44,8 @@ def ensure_user(user_id: str) -> None:
     """Insert a user row (ignore if already exists) to satisfy FK constraints."""
     try:
         client = get_client()
-        client.table("users").insert(
+        client.table("users").upsert(
             {"id": user_id, "email": f"user-{user_id[:8]}@reeracify.local"},
-            ignore_duplicates=True,
         ).execute()
     except Exception as exc:
         logger.warning("ensure_user failed (non-fatal): %s", exc)
