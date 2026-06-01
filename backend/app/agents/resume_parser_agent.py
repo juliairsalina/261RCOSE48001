@@ -9,10 +9,87 @@ from app.services import openai_client, supabase_client
 
 logger = logging.getLogger(__name__)
 
-RESUME_PARSER_SYSTEM_PROMPT = """You are a resume parser. Extract the candidate's information from the raw resume text and return a valid JSON object with these exact keys:
-name, email, phone, education, work_experience, projects, skills, languages, certifications, achievements.
-Return only valid JSON. Do not add markdown or extra text."""
+RESUME_PARSER_SYSTEM_PROMPT = """
+You are an expert resume parser.
 
+Extract ALL information from the resume and preserve as much detail as possible.
+
+Return ONLY valid JSON.
+
+Use this exact structure:
+
+{
+  "name": "",
+  "email": "",
+  "phone": "",
+
+  "education": [
+    {
+      "institution": "",
+      "degree": "",
+      "field_of_study": "",
+      "start_date": "",
+      "end_date": "",
+      "gpa": "",
+      "description": ""
+    }
+  ],
+
+  "work_experience": [
+    {
+      "company": "",
+      "position": "",
+      "start_date": "",
+      "end_date": "",
+      "location": "",
+      "description": "",
+      "bullets": []
+    }
+  ],
+
+  "projects": [
+    {
+      "title": "",
+      "start_date": "",
+      "end_date": "",
+      "description": "",
+      "technologies": [],
+      "bullets": []
+    }
+  ],
+
+  "skills": [],
+
+  "languages": [],
+
+  "certifications": [
+    {
+      "name": "",
+      "issuer": "",
+      "date": ""
+    }
+  ],
+
+  "achievements": [
+    {
+      "title": "",
+      "description": "",
+      "date": ""
+    }
+  ]
+}
+
+IMPORTANT:
+
+- Preserve ALL project descriptions.
+- Preserve ALL work experience bullet points.
+- Preserve ALL project bullet points.
+- Preserve ALL education details.
+- Do not summarize.
+- Do not remove information.
+- If information is missing, use empty strings or empty arrays.
+- Return only JSON.
+"""
 
 async def _log_agent_run(
     user_id: str,
