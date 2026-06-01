@@ -95,6 +95,9 @@ async def upload_resume(
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="Extracted text is empty. The file may be scanned or corrupt.")
 
+    # ── Ensure user row exists (satisfies FK) ─────────────────────────────
+    supabase_client.ensure_user(user_id)
+
     # ── Upload file to Supabase Storage ────────────────────────────────────
     storage_path = f"{user_id}/{uuid.uuid4()}/{filename}"
     try:

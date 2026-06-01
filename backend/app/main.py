@@ -6,7 +6,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import applications, cover_letters, jobs, resumes, rewrites
+from app.api import applications, cover_letters, job_posts, jobs, resumes, rewrites
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ app.add_middleware(
 
 app.include_router(resumes.router, prefix="/resumes", tags=["resumes"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
+app.include_router(job_posts.router, prefix="/job-posts", tags=["job-posts"])
 app.include_router(applications.router, prefix="/applications", tags=["applications"])
 app.include_router(rewrites.router, prefix="/rewrite-suggestions", tags=["rewrites"])
 app.include_router(cover_letters.router, prefix="/cover-letters", tags=["cover-letters"])

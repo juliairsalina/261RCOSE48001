@@ -123,6 +123,21 @@ export default function EditResumePage() {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Backend session state
+  const [userId, setUserId] = useState("");
+  const [resumeId, setResumeId] = useState("");
+  const [applicationId, setApplicationId] = useState("");
+
+  // Right panel tab
+  const [activeTab, setActiveTab] = useState("analysis");
+
+  // Rewrites tab
+  const [rewriteList, setRewriteList] = useState([]);
+
+  // Cover letter tab
+  const [coverLetterText, setCoverLetterText] = useState("");
+  const [coverLetterLoading, setCoverLetterLoading] = useState(false);
+
   const suggestions = backendSuggestions || [];
 
   const currentSuggestion =
@@ -130,10 +145,55 @@ export default function EditResumePage() {
 
   useEffect(() => {
     const savedVacancyLink = localStorage.getItem("reeracifyVacancyLink");
-
     if (savedVacancyLink) {
       setVacancyLink(savedVacancyLink);
-      setJobSummary("Vacancy link loaded. Upload your resume to evaluate it.");
+      setJobSummary("Vacancy link loaded. Click Evaluate to analyze it.");
+    }
+
+    const savedUserId = localStorage.getItem("reeracifyUserId");
+    if (savedUserId) setUserId(savedUserId);
+
+    const savedResumeId = localStorage.getItem("reeracifyResumeId");
+    if (savedResumeId) setResumeId(savedResumeId);
+
+    const savedAppId = localStorage.getItem("reeracifyApplicationId");
+    if (savedAppId) setApplicationId(savedAppId);
+
+    const savedParsed = localStorage.getItem("reeracifyParsedResume");
+    if (savedParsed) {
+      try {
+        const parsed = JSON.parse(savedParsed);
+        // Map backend fields to frontend resumeData shape
+        setResumeData({
+          name: parsed.name || "",
+          email: parsed.email || "",
+          phone: parsed.phone || "",
+          summary: parsed.summary || "",
+          skills: parsed.skills || [],
+          education: (parsed.education || []).map(e => ({
+            school: e.institution || e.school || "",
+            degree: e.degree || "",
+            field: e.field_of_study || e.field || "",
+            start_date: e.start_date || "",
+            end_date: e.end_date || "",
+          })),
+          experience: (parsed.work_experience || []).map(e => ({
+            role: e.title || e.role || "",
+            company: e.company || "",
+            start_date: e.start_date || "",
+            end_date: e.is_current ? "Present" : (e.end_date || ""),
+            bullets: e.bullets || [],
+          })),
+          projects: (parsed.projects || []).map(p => ({
+            name: p.name || "",
+            start_date: p.start_date || "",
+            end_date: p.end_date || "",
+            bullets: p.bullets || [],
+          })),
+        });
+      } catch (e) {
+        console.warn("Could not parse saved resume:", e);
+      }
     }
   }, []);
 
@@ -362,166 +422,194 @@ export default function EditResumePage() {
     setStatusMessage("Evaluation completed.");
   }
 
+  function getRankLabel(rank) {
+    if (rank === "상") return "Advanced";
+    if (rank === "중") return "Intermediate";
+    return "Beginner";
+  }
+
   async function evaluateResume() {
     if (!vacancyLink.trim()) {
-      setErrorMessage("Please paste the vacancy link first.");
+      setErrorMessage("Please paste a vacancy link first.");
+      return;
+    }
+    if (!resumeId) {
+      setErrorMessage("Please upload your resume on the home page first.");
       return;
     }
 
-    if (!resumeFile) {
-      setErrorMessage("Please upload your resume first.");
-      return;
-    }
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
 
     try {
-      setLoadingState("Pre-processing uploaded...");
-
-      const formData = new FormData();
-      formData.append("resume", resumeFile);
-      formData.append("vacancy_link", vacancyLink);
-
-      const data = await callBackend("/evaluate", {
+      // Step 1: Create job post from URL
+      setLoadingState("Extracting job details from URL...");
+      const jobPost = await callBackend("/job-posts/create", {
         method: "POST",
-        body: formData,
+        body: JSON.stringify({ job_url: vacancyLink, user_id: uid }),
       });
 
-      if(data.final_json){
-        setResumeData(data.final_json);
-      }
+      // Step 2: Create application
+      setLoadingState("Creating application...");
+      const app = await callBackend("/applications/create", {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: uid,
+          resume_id: rid,
+          job_post_id: jobPost.job_post_id,
+        }),
+      });
+      const appId = app.id;
+      setApplicationId(appId);
+      localStorage.setItem("reeracifyApplicationId", appId);
 
-      renderBackendData(data);
+      // Step 3: RAG retrieval
+      setLoadingState("Retrieving resume context...");
+      await callBackend(`/applications/${appId}/retrieve-context`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+
+      // Step 4: ATS evaluation
+      setLoadingState("Evaluating ATS score...");
+      const evalResult = await callBackend(`/applications/${appId}/evaluate`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+
+      const score = evalResult.score || 0;
+      setAtsScoreValue(score);
+      setResumeLevel(getRankLabel(evalResult.rank));
+      setJobSummary(`${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`);
+
+      const matched = evalResult.matched_skills?.length || 0;
+      const missing = evalResult.missing_skills?.length || 0;
+      const total = matched + missing || 1;
+      setMetrics({
+        clarity: score,
+        keywordFit: Math.round((matched / total) * 100),
+        structure: score,
+        impact: score,
+      });
+
+      const suggestions = [
+        ...(evalResult.missing_skills || []).map((s, i) => ({
+          id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
+          text: `"${s}" is required but not found in your resume.`,
+          suggestion: `Add "${s}" to your skills or experience section.`,
+        })),
+        ...(evalResult.weaknesses || []).map((w, i) => ({
+          id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
+          text: w, suggestion: w,
+        })),
+        ...(evalResult.improvement_priority || []).map((p, i) => ({
+          id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
+          text: p, suggestion: p,
+        })),
+      ];
+      setBackendSuggestions(suggestions);
+      if (suggestions.length > 0) setActiveSuggestion(suggestions[0].id);
+
+      // Step 5: Rewrite suggestions
+      setLoadingState("Generating rewrite suggestions...");
+      const rewriteResult = await callBackend(`/applications/${appId}/rewrite-suggestions`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+      setRewriteList(rewriteResult.suggestions || []);
+
+      setIsLoading(false);
+      setStatusMessage(`Evaluation complete — ATS score: ${score}/100`);
+      setActiveTab("analysis");
+
     } catch (error) {
       setIsLoading(false);
-      setErrorMessage(
-        `${error.message}. If /evaluate is not ready yet, connect this endpoint to resume + vacancy link processing.`
-      );
+      setErrorMessage(error.message);
     }
   }
 
   async function reevaluateResume() {
+    setErrorMessage("Re-evaluate: paste a new vacancy link and click Evaluate.");
+  }
+
+  async function approveRewrite(suggestionId) {
     try {
-      setLoadingState("Re-evaluating resume...");
-
-      const data = await callBackend("/reevaluate-file", {
-        method: "POST",
-        body: JSON.stringify({
-          vacancy_link: vacancyLink,
-        }),
+      await callBackend(`/rewrite-suggestions/${suggestionId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "approved" }),
       });
-
-      renderBackendData(data);
+      setRewriteList(prev =>
+        prev.map(s => s.id === suggestionId ? { ...s, status: "approved" } : s)
+      );
     } catch (error) {
-      setIsLoading(false);
       setErrorMessage(error.message);
     }
   }
 
-  async function requestRewriteForBullet(bullet) {
-    if (!latestRuleBasedSignals || !latestEvaluationAgentResult) {
-      setErrorMessage("Please evaluate the resume first.");
+  async function rejectRewrite(suggestionId) {
+    try {
+      await callBackend(`/rewrite-suggestions/${suggestionId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "rejected" }),
+      });
+      setRewriteList(prev =>
+        prev.map(s => s.id === suggestionId ? { ...s, status: "rejected" } : s)
+      );
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function generateCoverLetter() {
+    if (!applicationId) {
+      setErrorMessage("Run Evaluate first to create an application.");
       return;
     }
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    setCoverLetterLoading(true);
+    setErrorMessage("");
+    try {
+      const result = await callBackend(`/applications/${applicationId}/cover-letter`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+      setCoverLetterText(result.content || "");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setCoverLetterLoading(false);
+    }
+  }
 
+  function requestRewriteForBullet(bullet) {
     setSelectedBullet(bullet);
     setSelectedRewriteSuggestion("");
-    setRewriteSuggestions([]);
+    setRewriteSuggestions(
+      rewriteList
+        .filter(s => s.original_text && bullet.text?.includes(s.original_text.slice(0, 20)))
+        .map(s => ({ suggestion: s.suggested_text, why_it_is_better: s.reason }))
+    );
     setRewriteModalOpen(true);
-
-    const payload = {
-      vacancy_link: vacancyLink,
-      selected_bullet: bullet.text,
-      rule_based_signals: latestRuleBasedSignals,
-      evaluation_agent_result: latestEvaluationAgentResult,
-      user_instruction:
-        "Rewrite this bullet to better match the vacancy link. Make it stronger, clearer, and ATS-friendly. Do not invent fake numbers, tools, or achievements.",
-    };
-
-    try {
-      const data = await callBackend("/rewrite", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
-      setRewriteSuggestions(data.rewrite_suggestions || []);
-    } catch (error) {
-      setErrorMessage(error.message);
-    }
   }
 
-  async function openSuggestionRewrite() {
-    const bulletId = currentSuggestion?.bulletId;
-
-    if (!bulletId) {
-      setSelectedBullet({
-        id: currentSuggestion.id,
-        text: currentSuggestion.text,
-      });
-      setRewriteSuggestions([
-        {
-          suggestion: currentSuggestion.suggestion,
-          why_it_is_better:
-            "This is a general AI suggestion. Evaluate with backend to get bullet-specific rewrite options.",
-        },
-      ]);
-      setSelectedRewriteSuggestion("");
-      setRewriteModalOpen(true);
-      return;
-    }
-
-    const bullet = resumeBullets.find((item) => item.id === bulletId);
-
-    if (!bullet) {
-      setErrorMessage("Cannot find the related bullet in the resume.");
-      return;
-    }
-
-    requestRewriteForBullet(bullet);
+  function openSuggestionRewrite() {
+    if (!currentSuggestion) return;
+    setSelectedBullet({ id: currentSuggestion.id, text: currentSuggestion.text });
+    setRewriteSuggestions([{
+      suggestion: currentSuggestion.suggestion,
+      why_it_is_better: "AI suggestion based on job requirements.",
+    }]);
+    setSelectedRewriteSuggestion("");
+    setRewriteModalOpen(true);
   }
 
-  async function acceptRewrite() {
-    if (!selectedBullet || !selectedRewriteSuggestion) {
-      setErrorMessage("Please select one rewrite suggestion first.");
-      return;
-    }
-
-    try {
-      setLoadingState("Saving rewrite and updating score...");
-
-      const payload = {
-        bullet_id: selectedBullet.id,
-        accepted_bullet: selectedRewriteSuggestion,
-        vacancy_link: vacancyLink,
-      };
-
-      const data = await callBackend("/accept-rewrite", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
-      setRewriteModalOpen(false);
-      setSelectedBullet(null);
-      setSelectedRewriteSuggestion("");
-
-      if (data.reevaluation_result) {
-        renderBackendData(data.reevaluation_result);
-      } else {
-        await reevaluateResume();
-      }
-    } catch (error) {
-      setIsLoading(false);
-      setErrorMessage(error.message);
-    }
+  function acceptRewrite() {
+    setRewriteModalOpen(false);
+    setSelectedBullet(null);
+    setSelectedRewriteSuggestion("");
   }
 
-  async function ignoreRewrite() {
-    try {
-      await callBackend("/ignore-rewrite", {
-        method: "POST",
-      });
-    } catch (error) {
-      console.warn(error);
-    }
-
+  function ignoreRewrite() {
     setRewriteModalOpen(false);
     setSelectedBullet(null);
     setSelectedRewriteSuggestion("");
@@ -537,17 +625,39 @@ export default function EditResumePage() {
     setErrorMessage("");
   }
 
-  function downloadResume() {
-  const printContent = document.getElementById("resume-a4");
-  const originalContent = document.body.innerHTML;
-
-  if (!printContent) return;
-
-  document.body.innerHTML = printContent.outerHTML;
-  window.print();
-  document.body.innerHTML = originalContent;
-  window.location.reload();
-}
+  async function downloadResume() {
+    if (!applicationId) {
+      setErrorMessage("Run Evaluate first to generate an application before downloading.");
+      return;
+    }
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    try {
+      setLoadingState("Preparing download...");
+      const response = await fetch(`${API_BASE_URL}/applications/${applicationId}/export-resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: uid }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || `Export failed: ${response.status}`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "resume.docx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setIsLoading(false);
+      setStatusMessage("Resume downloaded.");
+    } catch (error) {
+      setIsLoading(false);
+      setErrorMessage(error.message);
+    }
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#dfe7da] text-[#243026]">
@@ -746,144 +856,278 @@ export default function EditResumePage() {
           </div>
 
           {/* Right evaluation panel */}
-          <aside className="flex h-screen min-h-0 flex-col overflow-y-auto rounded-l-[0.5rem]rounded-r-none border-y-0 border-r-0 border-white/45 bg-white/35 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
-            <section className="border-b border-[#243026]/10 pb-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                    Resume Level
-                  </p>
-                  <h2 className="mt-2 text-3xl font-black text-[#243026]">
-                    {resumeLevel}
-                  </h2>
-                </div>
+          <aside className="flex h-screen min-h-0 flex-col rounded-l-[0.5rem] border-y-0 border-r-0 border-white/45 bg-white/35 shadow-[0_24px_80px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
 
-                <div className="rounded-2xl bg-[#dfe9ff]/80 p-3 text-[#2f5fa8]">
-                  <Target size={22} />
-                </div>
-              </div>
+            {/* Tab bar */}
+            <div className="flex shrink-0 gap-1 border-b border-[#243026]/10 px-4 pt-4">
+              {["analysis", "rewrites", "cover-letter"].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`rounded-t-xl px-4 py-2 text-xs font-black transition ${
+                    activeTab === tab
+                      ? "bg-white/70 text-[#243026] shadow-sm"
+                      : "text-[#243026]/45 hover:text-[#243026]"
+                  }`}
+                >
+                  {tab === "analysis" ? "Analysis" : tab === "rewrites" ? "Rewrites" : "Cover Letter"}
+                </button>
+              ))}
+            </div>
 
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                <LevelPill label="Beginner" active={resumeLevel === "Beginner"} />
-                <LevelPill
-                  label="Intermediate"
-                  active={resumeLevel === "Intermediate"}
-                />
-                <LevelPill label="Advanced" active={resumeLevel === "Advanced"} />
-              </div>
-            </section>
+            {/* Tab content */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
 
-            <section className="border-b border-[#243026]/10 py-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                    ATS Score
-                  </p>
-                  <h2 className="mt-2 text-4xl font-black">{atsScoreValue}%</h2>
-                </div>
-
-                <div className="rounded-2xl bg-white/50 p-3">
-                  <BarChart3 size={23} />
-                </div>
-              </div>
-
-              <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/60">
-                <div
-                  className="h-full rounded-full bg-[#243026]"
-                  style={{
-                    width: `${Math.max(0, Math.min(atsScoreValue, 100))}%`,
-                  }}
-                />
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <MetricBox title="Clarity" value={metrics.clarity} />
-                <MetricBox title="Keyword" value={metrics.keywordFit} />
-                <MetricBox title="Structure" value={metrics.structure} />
-                <MetricBox title="Impact" value={metrics.impact} />
-              </div>
-            </section>
-
-            <section className="border-b border-[#243026]/10 py-5">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                Job Link Summary
-              </p>
-              <p className="mt-3 text-sm leading-6 text-[#243026]/65">
-                {jobSummary}
-              </p>
-            </section>
-
-            <section className="flex min-h-0 flex-1 flex-col py-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                    AI Comments
-                  </p>
-                  <h2 className="mt-1 text-xl font-black">Suggestions</h2>
-                </div>
-
-                <div className="rounded-2xl bg-yellow-300/80 p-3 text-black">
-                  <Wand2 size={21} />
-                </div>
-              </div>
-
-              <div className="space-y-2 overflow-auto pr-1">
-                {suggestions.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveSuggestion(item.id)}
-                    className={`w-full rounded-[1.1rem] border px-4 py-3 text-left transition ${
-                      activeSuggestion === item.id
-                        ? "border-yellow-300 bg-yellow-100/85 shadow-[0_12px_30px_rgba(234,179,8,0.15)]"
-                        : "border-white/35 bg-white/25 hover:bg-white/50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
+              {/* ── Analysis tab ── */}
+              {activeTab === "analysis" && (
+                <>
+                  <section className="border-b border-[#243026]/10 pb-5">
+                    <div className="flex items-start justify-between">
                       <div>
-                        <p className="text-sm font-black text-[#243026]">
-                          {item.title}
+                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
+                          Resume Level
                         </p>
-                        <p className="mt-1 text-[11px] font-bold text-[#243026]/45">
-                          {item.type} · {item.label}
-                        </p>
+                        <h2 className="mt-2 text-3xl font-black text-[#243026]">
+                          {resumeLevel}
+                        </h2>
                       </div>
+                      <div className="rounded-2xl bg-[#dfe9ff]/80 p-3 text-[#2f5fa8]">
+                        <Target size={22} />
+                      </div>
+                    </div>
+                    <div className="mt-5 grid grid-cols-3 gap-2">
+                      <LevelPill label="Beginner" active={resumeLevel === "Beginner"} />
+                      <LevelPill label="Intermediate" active={resumeLevel === "Intermediate"} />
+                      <LevelPill label="Advanced" active={resumeLevel === "Advanced"} />
+                    </div>
+                  </section>
 
-                      {activeSuggestion === item.id ? (
-                        <AlertTriangle
-                          size={16}
-                          className="shrink-0 text-yellow-700"
-                        />
-                      ) : (
-                        <ChevronRight
-                          size={16}
-                          className="shrink-0 text-[#243026]/40"
-                        />
+                  <section className="border-b border-[#243026]/10 py-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
+                          ATS Score
+                        </p>
+                        <h2 className="mt-2 text-4xl font-black">{atsScoreValue}%</h2>
+                      </div>
+                      <div className="rounded-2xl bg-white/50 p-3">
+                        <BarChart3 size={23} />
+                      </div>
+                    </div>
+                    <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/60">
+                      <div
+                        className="h-full rounded-full bg-[#243026]"
+                        style={{ width: `${Math.max(0, Math.min(atsScoreValue, 100))}%` }}
+                      />
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <MetricBox title="Clarity" value={metrics.clarity} />
+                      <MetricBox title="Keyword" value={metrics.keywordFit} />
+                      <MetricBox title="Structure" value={metrics.structure} />
+                      <MetricBox title="Impact" value={metrics.impact} />
+                    </div>
+                  </section>
+
+                  <section className="border-b border-[#243026]/10 py-5">
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
+                      Job Link Summary
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-[#243026]/65">{jobSummary}</p>
+                  </section>
+
+                  <section className="flex min-h-0 flex-1 flex-col py-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
+                          AI Comments
+                        </p>
+                        <h2 className="mt-1 text-xl font-black">Suggestions</h2>
+                      </div>
+                      <div className="rounded-2xl bg-yellow-300/80 p-3 text-black">
+                        <Wand2 size={21} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 overflow-auto pr-1">
+                      {suggestions.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => setActiveSuggestion(item.id)}
+                          className={`w-full rounded-[1.1rem] border px-4 py-3 text-left transition ${
+                            activeSuggestion === item.id
+                              ? "border-yellow-300 bg-yellow-100/85 shadow-[0_12px_30px_rgba(234,179,8,0.15)]"
+                              : "border-white/35 bg-white/25 hover:bg-white/50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-black text-[#243026]">{item.title}</p>
+                              <p className="mt-1 text-[11px] font-bold text-[#243026]/45">
+                                {item.type} · {item.label}
+                              </p>
+                            </div>
+                            {activeSuggestion === item.id ? (
+                              <AlertTriangle size={16} className="shrink-0 text-yellow-700" />
+                            ) : (
+                              <ChevronRight size={16} className="shrink-0 text-[#243026]/40" />
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                      {suggestions.length === 0 && (
+                        <p className="rounded-2xl bg-white/35 px-4 py-4 text-sm text-[#243026]/50">
+                          Run Evaluate to see AI suggestions.
+                        </p>
                       )}
                     </div>
+                  </section>
+
+                  {currentSuggestion && (
+                    <section className="border-t border-[#243026]/10 pt-5">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={17} />
+                        <h3 className="text-sm font-black">{currentSuggestion.title}</h3>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-[#243026]/65">
+                        {currentSuggestion.text}
+                      </p>
+                      <button
+                        onClick={openSuggestionRewrite}
+                        className="mt-4 w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-xs font-bold text-white shadow-lg transition hover:scale-[1.01]"
+                      >
+                        Show Rewrite Suggestion
+                      </button>
+                    </section>
+                  )}
+                </>
+              )}
+
+              {/* ── Rewrites tab ── */}
+              {activeTab === "rewrites" && (
+                <section className="flex flex-col gap-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h2 className="text-xl font-black text-[#243026]">Rewrite Suggestions</h2>
+                    <div className="rounded-2xl bg-yellow-300/80 p-2 text-black">
+                      <Wand2 size={18} />
+                    </div>
+                  </div>
+
+                  {rewriteList.length === 0 ? (
+                    <p className="rounded-2xl bg-white/35 px-4 py-6 text-center text-sm text-[#243026]/50">
+                      Run Evaluate to generate rewrite suggestions.
+                    </p>
+                  ) : (
+                    rewriteList.map((s) => (
+                      <div
+                        key={s.id}
+                        className={`rounded-[1.2rem] border p-4 transition ${
+                          s.status === "approved"
+                            ? "border-green-300 bg-green-50/70"
+                            : s.status === "rejected"
+                            ? "border-red-200 bg-red-50/60 opacity-60"
+                            : "border-white/45 bg-white/35"
+                        }`}
+                      >
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40">
+                          {s.section}
+                        </p>
+
+                        <p className="mt-2 text-xs leading-5 text-[#243026]/55 line-through">
+                          {s.original_text}
+                        </p>
+
+                        <p className="mt-2 text-sm font-semibold leading-5 text-[#243026]">
+                          {s.suggested_text}
+                        </p>
+
+                        {s.reason && (
+                          <p className="mt-2 text-xs leading-5 text-[#243026]/50">{s.reason}</p>
+                        )}
+
+                        {s.status === "pending" && (
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              onClick={() => approveRewrite(s.id)}
+                              className="flex-1 rounded-full bg-[#243026] py-2 text-xs font-black text-white transition hover:scale-[1.02]"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => rejectRewrite(s.id)}
+                              className="flex-1 rounded-full border border-[#243026]/20 bg-white/50 py-2 text-xs font-black text-[#243026] transition hover:bg-white/80"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+
+                        {s.status !== "pending" && (
+                          <p className={`mt-2 text-xs font-black uppercase tracking-wide ${
+                            s.status === "approved" ? "text-green-600" : "text-red-500"
+                          }`}>
+                            {s.status}
+                          </p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </section>
+              )}
+
+              {/* ── Cover Letter tab ── */}
+              {activeTab === "cover-letter" && (
+                <section className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-black text-[#243026]">Cover Letter</h2>
+                    <div className="rounded-2xl bg-[#dfe9ff]/80 p-2 text-[#2f5fa8]">
+                      <FileText size={18} />
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={generateCoverLetter}
+                    disabled={coverLetterLoading || !applicationId}
+                    className="w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.01] disabled:opacity-50"
+                  >
+                    {coverLetterLoading ? "Generating..." : coverLetterText ? "Regenerate" : "Generate Cover Letter"}
                   </button>
-                ))}
-              </div>
-            </section>
 
-            <section className="border-t border-[#243026]/10 pt-5">
-              <div className="flex items-center gap-2">
-                <Sparkles size={17} />
-                <h3 className="text-sm font-black">
-                  {currentSuggestion?.title}
-                </h3>
-              </div>
+                  {!applicationId && (
+                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                      Run Evaluate first to enable cover letter generation.
+                    </p>
+                  )}
 
-              <p className="mt-3 text-sm leading-6 text-[#243026]/65">
-                {currentSuggestion?.text}
-              </p>
+                  {coverLetterText && (
+                    <>
+                      <textarea
+                        value={coverLetterText}
+                        onChange={(e) => setCoverLetterText(e.target.value)}
+                        rows={18}
+                        className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 p-4 text-sm leading-6 text-[#243026] outline-none focus:border-[#243026]/30 focus:bg-white/70"
+                      />
+                      <button
+                        onClick={() => {
+                          const blob = new Blob([coverLetterText], { type: "text/plain" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = "cover-letter.txt";
+                          document.body.appendChild(a);
+                          a.click();
+                          a.remove();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="w-full rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80"
+                      >
+                        Download as .txt
+                      </button>
+                    </>
+                  )}
+                </section>
+              )}
 
-              <button
-                onClick={openSuggestionRewrite}
-                className="mt-4 w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-xs font-bold text-white shadow-lg transition hover:scale-[1.01]"
-              >
-                Show Rewrite Suggestion
-              </button>
-            </section>
+            </div>
           </aside>
         </section>
       </div>

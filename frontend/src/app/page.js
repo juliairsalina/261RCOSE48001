@@ -48,45 +48,36 @@ export default function HomePage() {
   const handleResumeUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setResumeFile(file);
 
-    if (!isLoggedIn) {
-      setLoginMessage("Please log in for the best service.");
-      setShowLogin(true);
+    // Generate or reuse a stable anonymous user ID
+    let userId = localStorage.getItem("reeracifyUserId");
+    if (!userId) {
+      userId = crypto.randomUUID();
+      localStorage.setItem("reeracifyUserId", userId);
     }
 
     try {
       const formData = new FormData();
-      formData.append("resume", file);
+      formData.append("file", file);
+      formData.append("user_id", userId);
 
-      const parseRes = await fetch(`${PREPROCESS_API_URL}/parse-resume`, {
+      const res = await fetch(`${API_BASE_URL}/resumes/upload`, {
         method: "POST",
         body: formData,
       });
 
-      if (!parseRes.ok) {
-        throw new Error("Preprocessing failed");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Upload failed");
       }
 
-      const parsedJson = await parseRes.json();
-
-      const evalRes = await fetch(`${API_BASE_URL}/evaluate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(parsedJson),
-      });
-
-      if (!evalRes.ok) {
-        throw new Error("Evaluation failed");
-      }
-
-      await evalRes.json();
+      const data = await res.json();
+      localStorage.setItem("reeracifyResumeId", data.resume_id);
+      localStorage.setItem("reeracifyParsedResume", JSON.stringify(data.parsed_json));
     } catch (error) {
       console.error(error);
-      alert("Cannot connect to backend. Please check your API URL.");
+      alert(`Upload failed: ${error.message}`);
     }
   };
 
@@ -96,8 +87,9 @@ export default function HomePage() {
       alert("Please upload your resume first.");
       return;
     }
-
-    // Vacancy link boleh kosong, so still continue
+    if (vacancyLink.trim()) {
+      localStorage.setItem("reeracifyVacancyLink", vacancyLink.trim());
+    }
     router.push("/edit-resume");
   };
 

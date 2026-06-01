@@ -313,15 +313,24 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
     if updated_state.get("errors"):
         logger.warning("Rewrite suggestion errors: %s", updated_state["errors"])
 
-    suggestions_raw = updated_state.get("rewrite_suggestions") or []
+    # Fetch saved suggestions from DB to include their IDs
+    saved = (
+        db.table("rewrite_suggestions")
+        .select("id, section, original_text, suggested_text, reason, status")
+        .eq("application_id", application_id)
+        .order("created_at")
+        .execute()
+    )
     suggestions = [
         RewriteSuggestion(
-            section=s.get("section", ""),
-            original_text=s.get("original_text", ""),
-            suggested_text=s.get("suggested_text", ""),
-            reason=s.get("reason", ""),
+            id=row["id"],
+            section=row.get("section", ""),
+            original_text=row.get("original_text", ""),
+            suggested_text=row.get("suggested_text", ""),
+            reason=row.get("reason", ""),
+            status=row.get("status", "pending"),
         )
-        for s in suggestions_raw
+        for row in (saved.data or [])
     ]
 
     _update_application_status(db, application_id, ApplicationStatus.rewrite_pending.value)

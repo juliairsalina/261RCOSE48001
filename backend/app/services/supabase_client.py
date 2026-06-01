@@ -37,6 +37,18 @@ def upload_file(
     return get_public_url(bucket, path)
 
 
+def ensure_user(user_id: str) -> None:
+    """Upsert a user row so FK constraints are satisfied for anonymous sessions."""
+    client = get_client()
+    try:
+        client.table("users").upsert(
+            {"id": user_id, "email": f"user-{user_id[:8]}@reeracify.local"},
+            on_conflict="id",
+        ).execute()
+    except Exception:
+        pass  # non-fatal — FK will catch it if truly missing
+
+
 def get_public_url(bucket: str, path: str) -> str:
     """Return the public URL for a file in Supabase Storage."""
     client = get_client()
