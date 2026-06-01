@@ -99,31 +99,24 @@ class DummyProvider(JobSearchProvider):
         return DUMMY_JOBS[:limit]
 
 
-# ── Adzuna provider ─────────────────────────────────────────────────────────
+# ── JSearch provider ────────────────────────────────────────────────────────
 
-class AdzunaProvider(JobSearchProvider):
-    """Job search via the Adzuna API — https://developer.adzuna.com"""
+class JSearchProvider(JobSearchProvider):
+    """Job search via the JSearch API on RapidAPI — https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch"""
 
-    def _build_url(self, query: str, location: str, results_per_page: int) -> str:
-        base = "https://api.adzuna.com/v1/api/jobs/us/search/1"
-        params = (
-            f"?app_id={settings.adzuna_app_id}&app_key={settings.adzuna_app_key}"
-            f"&results_per_page={results_per_page}"
-            f"&what={query.replace(' ', '+')}"
-        )
-        if location:
-            params += f"&where={location.replace(' ', '+')}"
-        return base + params
+    _BASE_URL = "https://jsearch.p.rapidapi.com/search"
 
     @staticmethod
     def _normalize(item: dict[str, Any]) -> dict[str, Any]:
         return {
-            "source": "adzuna",
-            "job_url": item.get("redirect_url", ""),
-            "company_name": item.get("company", {}).get("display_name", ""),
-            "role_title": item.get("title", ""),
-            "location": item.get("location", {}).get("display_name", ""),
-            "job_description": item.get("description", ""),
+            "source": "jsearch",
+            "job_url": item.get("job_apply_link") or item.get("job_google_link", ""),
+            "company_name": item.get("employer_name", ""),
+            "role_title": item.get("job_title", ""),
+            "location": ", ".join(
+                filter(None, [item.get("job_city"), item.get("job_country")])
+            ),
+            "job_description": item.get("job_description", ""),
         }
 
     async def search(
@@ -135,10 +128,14 @@ class AdzunaProvider(JobSearchProvider):
     ) -> list[dict[str, Any]]:
         import httpx
 
-        if not settings.adzuna_app_id or not settings.adzuna_app_key:
-            logger.warning("Adzuna credentials missing — falling back to dummy jobs.")
+        if not settings.jsearch_api_key:
+            logger.warning("JSearch API key missing — falling back to dummy jobs.")
             return DUMMY_JOBS[:limit]
 
+        headers = {
+            "X-RapidAPI-Key": settings.jsearch_api_key,
+            "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
+        }
         results_per_query = max(1, limit // max(len(queries), 1))
         seen: set[str] = set()
         all_results: list[dict[str, Any]] = []
@@ -147,11 +144,19 @@ class AdzunaProvider(JobSearchProvider):
             for query in queries:
                 if len(all_results) >= limit:
                     break
-                url = self._build_url(query, location, results_per_query)
+                params: dict[str, Any] = {
+                    "query": f"{query} {location}".strip(),
+                    "num_pages": 1,
+                    "page": 1,
+                    "language": settings.jsearch_language,
+                    "country": settings.jsearch_country,
+                }
+                if job_type:
+                    params["employment_types"] = job_type.upper()
                 try:
-                    resp = await client.get(url)
+                    resp = await client.get(self._BASE_URL, headers=headers, params=params)
                     resp.raise_for_status()
-                    for item in resp.json().get("results", []):
+                    for item in resp.json().get("data", []):
                         normalized = self._normalize(item)
                         job_url = normalized["job_url"]
                         if job_url and job_url not in seen:
@@ -160,7 +165,7 @@ class AdzunaProvider(JobSearchProvider):
                         if len(all_results) >= limit:
                             break
                 except httpx.HTTPError as exc:
-                    logger.warning("Adzuna request failed for query '%s': %s", query, exc)
+                    logger.warning("JSearch request failed for query '%s': %s", query, exc)
                     continue
 
         return all_results[:limit]
@@ -170,14 +175,14 @@ class AdzunaProvider(JobSearchProvider):
 # Register new providers here. Key = value of JOB_SEARCH_PROVIDER in .env.
 
 _PROVIDERS: dict[str, type[JobSearchProvider]] = {
-    "adzuna": AdzunaProvider,
+    "jsearch": JSearchProvider,
     "dummy": DummyProvider,
 }
 
 
 def get_provider() -> JobSearchProvider:
     """Instantiate and return the provider configured in JOB_SEARCH_PROVIDER."""
-    key = (settings.job_search_provider or "adzuna").lower()
+    key = (settings.job_search_provider or "jsearch").lower()
     provider_class = _PROVIDERS.get(key)
     if provider_class is None:
         logger.warning("Unknown JOB_SEARCH_PROVIDER '%s' — falling back to DummyProvider.", key)

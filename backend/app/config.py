@@ -38,9 +38,10 @@ class Settings(BaseSettings):
     langchain_project: str = "career-application-agent"
 
     # Job Search
-    job_search_provider: str = "adzuna"
-    adzuna_app_id: str = ""
-    adzuna_app_key: str = ""
+    job_search_provider: str = "jsearch"
+    jsearch_api_key: str = ""
+    jsearch_country: str = "kr"
+    jsearch_language: str = "en"
 
     # App
     app_env: str = "development"
