@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Optional
-
-from openai import AsyncOpenAI
 
 from app.config import settings
 
-_client: Optional[AsyncOpenAI] = None
+# The openai package is imported lazily inside get_client() so that this
+# module can be imported (and patched in tests) without openai installed.
+_client: Optional[Any] = None
 
 
-def get_client() -> AsyncOpenAI:
+def get_client():
     """Return a singleton AsyncOpenAI client."""
     global _client
     if _client is None:
+        from openai import AsyncOpenAI
         _client = AsyncOpenAI(api_key=settings.openai_api_key)
     return _client
 

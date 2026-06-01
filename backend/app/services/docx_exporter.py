@@ -3,11 +3,8 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, RGBColor
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+# All python-docx imports are deferred inside generate_resume_docx so that
+# this module can be imported in tests without the package installed.
 
 
 def _set_heading_style(paragraph, font_size: int = 12, bold: bool = True) -> None:
@@ -17,7 +14,7 @@ def _set_heading_style(paragraph, font_size: int = 12, bold: bool = True) -> Non
         run.font.size = Pt(font_size)
 
 
-def _add_horizontal_rule(document: Document) -> None:
+def _add_horizontal_rule(document) -> None:
     """Add a horizontal rule (border) below a paragraph."""
     para = document.add_paragraph()
     para.paragraph_format.space_before = Pt(0)
@@ -95,6 +92,12 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
     Returns:
         DOCX file as bytes.
     """
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
     data = _apply_rewrites(resume_json, approved_rewrites)
     doc = Document()
 

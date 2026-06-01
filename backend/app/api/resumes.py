@@ -6,7 +6,6 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from app.config import settings
 from app.schemas.candidate import CandidateProfileResponse
@@ -156,6 +155,7 @@ async def upload_resume(
         logger.warning("Failed to save parsed_json: %s", exc)
 
     # ── Chunk and embed ────────────────────────────────────────────────────
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
     chunks = splitter.split_text(raw_text)
 
