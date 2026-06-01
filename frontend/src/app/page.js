@@ -151,7 +151,7 @@ export default function HomePage() {
         {/* Logo image */}
         <div className="mt-10 flex justify-center">
           <Image
-            src="/logo.svg"
+            src="/reeracify-logo.png"
             alt="Reeracify"
             width={900}
             height={270}
