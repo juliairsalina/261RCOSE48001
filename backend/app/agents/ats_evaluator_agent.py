@@ -106,31 +106,36 @@ def _compute_ats_score(
         has_contact = bool(resume_json.get("name") and resume_json.get("email"))
         has_education = bool(resume_json.get("education"))
 
-        skill_score  = min(30, skill_count * 3)      # 0-30: up to 10 skills
-        exp_score    = min(25, exp_count * 12)        # 0-25: up to 2 experiences
-        bullet_score = min(20, bullet_count * 2)      # 0-20: up to 10 bullets
-        proj_score   = min(15, proj_count * 8)        # 0-15: up to 2 projects
-        base_score   = (10 if has_contact else 0) + (5 if has_education else 0)  # 0-15
+        # Generous thresholds — a solid student resume should reach 70-80
+        skill_score  = min(30, 15 + skill_count * 2)   # 15 base + 2/skill up to 30
+        exp_score    = min(25, 10 + exp_count * 8)      # 10 base + 8/role up to 25
+        bullet_score = min(20, 5 + bullet_count * 2)    # 5 base + 2/bullet up to 20
+        proj_score   = min(15, 5 + proj_count * 5)      # 5 base + 5/project up to 15
+        base_score   = (8 if has_contact else 0) + (7 if has_education else 0)  # up to 15
 
         total = min(100, skill_score + exp_score + bullet_score + proj_score + base_score)
         return total, resume_skills[:10], []
 
     # ── Job-based scoring ─────────────────────────────────────────────────
+    # Each category has a base floor so partial matches still give credit
     required_skills = [_normalise(s) for s in requirements.get("required_skills", [])]
     if required_skills:
         matched_required = [s for s in required_skills if s in resume_text]
-        required_score = int((len(matched_required) / len(required_skills)) * 40)
+        match_ratio = len(matched_required) / len(required_skills)
+        # Floor of 10 pts + up to 30 more for full match
+        required_score = 10 + int(match_ratio * 30)
     else:
         matched_required = []
-        required_score = 0
+        required_score = 20  # no required skills listed → assume basic fit
 
     preferred_skills = [_normalise(s) for s in requirements.get("preferred_skills", [])]
     if preferred_skills:
         matched_preferred = [s for s in preferred_skills if s in resume_text]
-        preferred_score = int((len(matched_preferred) / len(preferred_skills)) * 20)
+        match_ratio = len(matched_preferred) / len(preferred_skills)
+        preferred_score = 5 + int(match_ratio * 15)
     else:
         matched_preferred = []
-        preferred_score = 0
+        preferred_score = 10
 
     responsibilities = [_normalise(r) for r in requirements.get("responsibilities", [])]
     if responsibilities:
@@ -138,21 +143,22 @@ def _compute_ats_score(
             1 for r in responsibilities
             if any(word in resume_text for word in r.split() if len(word) > 4)
         )
-        resp_score = int((resp_matches / len(responsibilities)) * 20)
+        match_ratio = resp_matches / len(responsibilities)
+        resp_score = 5 + int(match_ratio * 15)  # floor 5, max 20
     else:
-        resp_score = 0
+        resp_score = 10  # no responsibilities listed → assume basic fit
 
     keywords = [_normalise(k) for k in requirements.get("keywords", [])]
     if keywords:
         matched_keywords = [k for k in keywords if k in resume_text]
-        keyword_score = int((len(matched_keywords) / len(keywords)) * 10)
+        match_ratio = len(matched_keywords) / len(keywords)
+        keyword_score = 3 + int(match_ratio * 7)  # floor 3, max 10
     else:
         matched_keywords = []
-        keyword_score = 0
-        keyword_score = 5
+        keyword_score = 5  # no keywords listed → neutral
 
-    # ── Resume clarity — bullet count (10 pts) ────────────────────────────
-    clarity_score = min(10, len(all_bullets))
+    # ── Resume clarity — bullet count (10 pts, floor 3) ──────────────────
+    clarity_score = min(10, 3 + len(all_bullets))
 
     total = min(100, required_score + preferred_score + resp_score + keyword_score + clarity_score)
 
