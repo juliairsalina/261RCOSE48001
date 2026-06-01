@@ -16,6 +16,7 @@ class AgentState(TypedDict):
     candidate_profile: Optional[dict]
     job_json: Optional[dict]
     retrieved_context: Optional[list]
+    company_background: Optional[dict]
     ats_result: Optional[dict]
     rewrite_suggestions: Optional[list]
     approved_rewrites: Optional[list]

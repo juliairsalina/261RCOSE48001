@@ -51,8 +51,8 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
         job_url = job_json.get("job_url", "")
         candidate_name = resume_json.get("name", "the candidate")
 
-        # 1. Get company background
-        company_background = await get_company_background(company_name, job_url)
+        # 1. Get company background (prefer pre-researched data from research_company_node)
+        company_background = state.get("company_background") or await get_company_background(company_name, job_url)
 
         # 2. Build context from retrieved chunks
         context_text = "\n".join(

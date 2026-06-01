@@ -39,6 +39,7 @@ def _build_initial_state(user_id: str, resume_id: str, job_post_id: str, applica
         candidate_profile=None,
         job_json=None,
         retrieved_context=None,
+        company_background=None,
         ats_result=None,
         rewrite_suggestions=None,
         approved_rewrites=None,

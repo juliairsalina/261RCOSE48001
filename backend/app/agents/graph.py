@@ -23,6 +23,7 @@ def _build_career_agent_graph():
 
     from app.agents.ats_evaluator_agent import evaluate_ats_node
     from app.agents.candidate_profile_agent import create_candidate_profile_node
+    from app.agents.company_research_agent import research_company_node
     from app.agents.cover_letter_agent import generate_cover_letter_node
     from app.agents.job_analyzer_agent import analyze_selected_job_node
     from app.agents.job_discovery_agent import discover_jobs_node
@@ -36,6 +37,7 @@ def _build_career_agent_graph():
     builder.add_node("create_candidate_profile", create_candidate_profile_node)
     builder.add_node("discover_jobs", discover_jobs_node)
     builder.add_node("analyze_selected_job", analyze_selected_job_node)
+    builder.add_node("research_company", research_company_node)
     builder.add_node("retrieve_resume_context", retrieve_resume_context_node)
     builder.add_node("evaluate_ats", evaluate_ats_node)
     builder.add_node("generate_rewrite_suggestions", generate_rewrite_suggestions_node)
@@ -47,7 +49,8 @@ def _build_career_agent_graph():
     builder.add_edge("create_candidate_profile", "discover_jobs")
     # HUMAN PAUSE 1: graph interrupts here; user sets selected_job_post_id
     builder.add_edge("discover_jobs", "analyze_selected_job")
-    builder.add_edge("analyze_selected_job", "retrieve_resume_context")
+    builder.add_edge("analyze_selected_job", "research_company")
+    builder.add_edge("research_company", "retrieve_resume_context")
     builder.add_edge("retrieve_resume_context", "evaluate_ats")
     builder.add_edge("evaluate_ats", "generate_rewrite_suggestions")
     # HUMAN PAUSE 2: graph interrupts here; user approves/rejects rewrites
