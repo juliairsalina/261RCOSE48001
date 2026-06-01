@@ -57,69 +57,81 @@ def _compute_ats_score(
 ) -> tuple[int, list[str], list[str]]:
     """Calculate a deterministic ATS score (0-100).
 
-    Scoring breakdown:
-      - Required skills match:      40 pts
-      - Preferred skills match:     20 pts
-      - Responsibility/exp match:   20 pts
-      - Keyword alignment:          10 pts
+    When a job posting is provided:
+      - Required skills match:         40 pts
+      - Preferred skills match:        20 pts
+      - Responsibility/exp match:      20 pts
+      - Keyword alignment:             10 pts
       - Resume clarity (bullet count): 10 pts
+
+    When no job posting is provided (general evaluation):
+      Scores resume completeness and depth instead.
     """
-    requirements = job_json.get("extracted_requirements", {})
-    if not requirements:
-        # Fallback: scan raw job description
-        job_text = (job_json.get("job_description") or "").lower()
-        requirements = {
-            "required_skills": [],
-            "preferred_skills": [],
-            "responsibilities": [],
-            "keywords": [],
-        }
-    else:
-        job_text = " ".join(
-            requirements.get("required_skills", [])
-            + requirements.get("preferred_skills", [])
-            + requirements.get("responsibilities", [])
-            + requirements.get("keywords", [])
-        ).lower()
+    requirements = job_json.get("extracted_requirements") or {}
+    job_description = (job_json.get("job_description") or "").strip()
+    is_placeholder = "general resume evaluation" in job_description.lower()
 
-    # Flatten resume text
+    # Flatten resume content
     resume_skills = [_normalise(s) for s in _flatten_skills(resume_json.get("skills", []))]
-    resume_text = " ".join(resume_skills)
-
-    # Add work experience text
     work_experience = resume_json.get("work_experience", [])
-    for exp in work_experience:
-        for bullet in exp.get("bullets", []):
-            resume_text += " " + bullet.lower()
-        resume_text += " " + (exp.get("description") or "").lower()
+    projects = resume_json.get("projects", [])
 
-    # Add projects text
-    for proj in resume_json.get("projects", []):
-        for bullet in proj.get("bullets", []):
-            resume_text += " " + bullet.lower()
+    resume_text = " ".join(resume_skills)
+    all_bullets: list[str] = []
+    for exp in work_experience:
+        for b in exp.get("bullets", []):
+            resume_text += " " + b.lower()
+            all_bullets.append(b)
+        resume_text += " " + (exp.get("description") or "").lower()
+    for proj in projects:
+        for b in proj.get("bullets", []):
+            resume_text += " " + b.lower()
+            all_bullets.append(b)
         resume_text += " " + (proj.get("description") or "").lower()
         for tech in proj.get("technologies", []):
             resume_text += " " + tech.lower()
 
-    # ── Required skills (40 pts) ──────────────────────────────────────────
+    has_requirements = bool(
+        requirements.get("required_skills") or
+        requirements.get("preferred_skills") or
+        requirements.get("keywords")
+    )
+
+    # ── No job posting: score resume quality instead ──────────────────────
+    if is_placeholder or not has_requirements:
+        skill_count = len(resume_skills)
+        exp_count = len(work_experience)
+        proj_count = len(projects)
+        bullet_count = len(all_bullets)
+        has_contact = bool(resume_json.get("name") and resume_json.get("email"))
+        has_education = bool(resume_json.get("education"))
+
+        skill_score  = min(30, skill_count * 3)      # 0-30: up to 10 skills
+        exp_score    = min(25, exp_count * 12)        # 0-25: up to 2 experiences
+        bullet_score = min(20, bullet_count * 2)      # 0-20: up to 10 bullets
+        proj_score   = min(15, proj_count * 8)        # 0-15: up to 2 projects
+        base_score   = (10 if has_contact else 0) + (5 if has_education else 0)  # 0-15
+
+        total = min(100, skill_score + exp_score + bullet_score + proj_score + base_score)
+        return total, resume_skills[:10], []
+
+    # ── Job-based scoring ─────────────────────────────────────────────────
     required_skills = [_normalise(s) for s in requirements.get("required_skills", [])]
     if required_skills:
         matched_required = [s for s in required_skills if s in resume_text]
         required_score = int((len(matched_required) / len(required_skills)) * 40)
     else:
         matched_required = []
-        required_score = 20  # no requirements specified → partial credit
+        required_score = 0
 
-    # ── Preferred skills (20 pts) ─────────────────────────────────────────
     preferred_skills = [_normalise(s) for s in requirements.get("preferred_skills", [])]
     if preferred_skills:
         matched_preferred = [s for s in preferred_skills if s in resume_text]
         preferred_score = int((len(matched_preferred) / len(preferred_skills)) * 20)
     else:
         matched_preferred = []
-        preferred_score = 10
+        preferred_score = 0
 
-    # ── Responsibility/experience match (20 pts) ──────────────────────────
     responsibilities = [_normalise(r) for r in requirements.get("responsibilities", [])]
     if responsibilities:
         resp_matches = sum(
@@ -128,21 +140,19 @@ def _compute_ats_score(
         )
         resp_score = int((resp_matches / len(responsibilities)) * 20)
     else:
-        resp_score = 10
+        resp_score = 0
 
-    # ── Keyword alignment (10 pts) ────────────────────────────────────────
     keywords = [_normalise(k) for k in requirements.get("keywords", [])]
     if keywords:
         matched_keywords = [k for k in keywords if k in resume_text]
         keyword_score = int((len(matched_keywords) / len(keywords)) * 10)
     else:
         matched_keywords = []
+        keyword_score = 0
         keyword_score = 5
 
     # ── Resume clarity — bullet count (10 pts) ────────────────────────────
-    total_bullets = sum(len(exp.get("bullets", [])) for exp in work_experience)
-    total_bullets += sum(len(proj.get("bullets", [])) for proj in resume_json.get("projects", []))
-    clarity_score = min(10, total_bullets)  # 1 point per bullet up to 10
+    clarity_score = min(10, len(all_bullets))
 
     total = min(100, required_score + preferred_score + resp_score + keyword_score + clarity_score)
 
