@@ -17,16 +17,20 @@ def _make_mock_supabase(rows: dict | None = None):
         mock = MagicMock()
         row_data = rows.get(table_name, [{"id": "mock-uuid-1234"}])
 
-        # Build a chainable mock: .table().insert().execute()
-        execute_result = MagicMock()
-        execute_result.data = row_data
+        # list result — used by insert() and list selects
+        execute_list = MagicMock()
+        execute_list.data = row_data
 
-        mock.insert.return_value.execute.return_value = execute_result
-        mock.update.return_value.eq.return_value.execute.return_value = execute_result
-        mock.select.return_value.eq.return_value.single.return_value.execute.return_value = execute_result
-        mock.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = execute_result
-        mock.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = execute_result
-        mock.select.return_value.eq.return_value.eq.return_value.single.return_value.execute.return_value = execute_result
+        # single result — .single() in real Supabase returns a dict, not a list
+        execute_single = MagicMock()
+        execute_single.data = row_data[0] if row_data else None
+
+        mock.insert.return_value.execute.return_value = execute_list
+        mock.update.return_value.eq.return_value.execute.return_value = execute_list
+        mock.select.return_value.eq.return_value.single.return_value.execute.return_value = execute_single
+        mock.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = execute_list
+        mock.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = execute_list
+        mock.select.return_value.eq.return_value.eq.return_value.single.return_value.execute.return_value = execute_single
         return mock
 
     mock_client = MagicMock()
