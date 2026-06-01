@@ -184,18 +184,23 @@ export default function EditResumePage() {
             field: e.field_of_study || e.field || "",
             start_date: e.start_date || "",
             end_date: e.end_date || "",
+            gpa: e.gpa || "",
+            description: e.description || "",
           })),
           experience: (parsed.work_experience || []).map(e => ({
-            role: e.title || e.role || "",
+            role: e.position || e.title || e.role || "",
             company: e.company || "",
             start_date: e.start_date || "",
             end_date: e.is_current ? "Present" : (e.end_date || ""),
+            description: e.description || "",
             bullets: e.bullets || [],
           })),
           projects: (parsed.projects || []).map(p => ({
-            name: p.name || "",
+            name: p.title || p.name || "",
             start_date: p.start_date || "",
             end_date: p.end_date || "",
+            description: p.description || "",
+            technologies: p.technologies || [],
             bullets: p.bullets || [],
           })),
         });
@@ -1525,7 +1530,21 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                 <span className="text-gray-500">{[edu.start_date, edu.end_date].filter(Boolean).join(" – ")}</span>
               </div>
               {(edu.degree || edu.field) && (
-                <p className="text-gray-600">{[edu.degree, edu.field].filter(Boolean).join(" · ")}</p>
+                <p className="text-gray-600">
+                  {[edu.degree, edu.field].filter(Boolean).join(" · ")}
+                </p>
+              )}
+
+              {edu.gpa && (
+                <p className="text-gray-600">
+                  GPA: {edu.gpa}
+                </p>
+              )}
+
+              {edu.description && (
+                <p className="mt-1 text-gray-700">
+                  {edu.description}
+                </p>
               )}
             </div>
           ))}
@@ -1547,6 +1566,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   {[exp.start_date, exp.end_date].filter(Boolean).join(" – ")}
                 </span>
               </div>
+              {exp.description && (
+                <p className="mt-1 text-gray-700">
+                  {exp.description}
+                </p>
+              )}
               {(exp.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
                   {exp.bullets.map((b, j) => (
@@ -1566,11 +1590,22 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           {projects.map((proj, i) => (
             <div key={i} className="mt-3">
               <div className="flex justify-between">
-                <h3 className="font-bold">{proj.name}</h3>
+                <h3 className="font-bold">{proj.name || proj.title}</h3>
                 <span className="shrink-0 text-gray-500 ml-2">
                   {[proj.start_date, proj.end_date].filter(Boolean).join(" – ")}
                 </span>
               </div>
+              {proj.description && (
+                <p className="mt-1 text-gray-700">
+                  {proj.description}
+                </p>
+              )}
+
+              {proj.technologies?.length > 0 && (
+                <p className="mt-1 text-gray-500 text-[11px]">
+                  Technologies: {proj.technologies.join(", ")}
+                </p>
+              )}
               {(proj.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
                   {proj.bullets.map((b, j) => (
