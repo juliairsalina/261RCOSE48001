@@ -60,14 +60,15 @@ def test_state_can_be_instantiated_as_dict():
 
 def test_graph_compiled_successfully():
     """Import career_agent_graph without raising any errors."""
+    pytest.importorskip("langgraph", reason="langgraph not installed")
     from app.agents.graph import career_agent_graph
 
-    # Verify the graph object was created and compiled
     assert career_agent_graph is not None
 
 
 def test_graph_has_correct_node_names():
     """Verify the graph contains all expected node names."""
+    pytest.importorskip("langgraph", reason="langgraph not installed")
     from app.agents.graph import career_agent_graph
 
     expected_nodes = {
@@ -100,6 +101,7 @@ def test_graph_has_correct_node_names():
 
 def test_runner_functions_are_callable():
     """Verify the convenience runner functions exist and are callable."""
+    pytest.importorskip("langgraph", reason="langgraph not installed")
     import inspect
     from app.agents.graph import run_until_job_selection, run_from_job_selected, run_cover_letter
 
