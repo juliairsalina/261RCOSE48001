@@ -15,10 +15,8 @@ import {
   UserCircle,
 } from "lucide-react";
 
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 const PREPROCESS_API_URL = process.env.NEXT_PUBLIC_PREPROCESS_API_URL;
-
 
 export default function HomePage() {
   const router = useRouter();
@@ -33,7 +31,7 @@ export default function HomePage() {
   const [vacancyLink, setVacancyLink] = useState("");
   const [loginMessage, setLoginMessage] = useState("");
 
-    useEffect(() => {
+  useEffect(() => {
     setMounted(true);
   }, []);
 
@@ -42,7 +40,6 @@ export default function HomePage() {
   const handleLogin = (e) => {
     e.preventDefault();
 
-    // Dummy login for demo
     setIsLoggedIn(true);
     setShowLogin(false);
     setLoginMessage("");
@@ -63,7 +60,6 @@ export default function HomePage() {
       const formData = new FormData();
       formData.append("resume", file);
 
-      // STEP 1: send resume to preprocessing/parser
       const parseRes = await fetch(`${PREPROCESS_API_URL}/parse-resume`, {
         method: "POST",
         body: formData,
@@ -75,9 +71,6 @@ export default function HomePage() {
 
       const parsedJson = await parseRes.json();
 
-      console.log("Parsed JSON:", parsedJson);
-
-      // STEP 2: send parsed JSON to FastAPI evaluation backend
       const evalRes = await fetch(`${API_BASE_URL}/evaluate`, {
         method: "POST",
         headers: {
@@ -90,11 +83,7 @@ export default function HomePage() {
         throw new Error("Evaluation failed");
       }
 
-      const result = await evalRes.json();
-      console.log("Evaluation result:", result);
-
-      // later use this to update your UI
-      // setBackendResult(result);
+      await evalRes.json();
     } catch (error) {
       console.error(error);
       alert("Cannot connect to backend. Please check your API URL.");
@@ -102,7 +91,7 @@ export default function HomePage() {
   };
 
 
-    const handleContinue = () => {
+  const handleContinue = () => {
     if (!resumeFile) {
       alert("Please upload your resume first.");
       return;

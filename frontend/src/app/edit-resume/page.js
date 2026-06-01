@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Upload,
-  Loader2,
   X,
-  Search,
   Download,
   ZoomIn,
   ZoomOut,
@@ -18,8 +16,6 @@ import {
   Home,
   FileText,
   MessageCircle,
-  Bell,
-  User,
   Settings,
   HelpCircle,
   Menu,
@@ -28,12 +24,8 @@ import {
   BarChart3,
   Target,
 } from "lucide-react";
-import { resume } from "react-dom/server";
-
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
-
-const FALLBACK_SUGGESTIONS = [ ];
 
 export default function EditResumePage() {
   const router = useRouter();
