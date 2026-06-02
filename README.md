@@ -115,6 +115,19 @@ Download optimized DOCX with accepted rewrites applied
 | **Hosting** | Vercel (frontend), Render (backend) | Auto-deploy on git push |
 | **File Parsing** | pypdf, python-docx | Extract text from PDF/DOCX |
 
+### Why GPT-5 for some tasks and GPT-4o for others
+
+| Task | Model | Why |
+|------|-------|-----|
+| Resume parsing | **GPT-5** | Needs the highest accuracy — if parsing gets the structure wrong, every downstream step (scoring, rewrites, cover letter) is built on bad data. GPT-5's stronger reasoning handles messy, inconsistently formatted resumes better. |
+| ATS evaluation | **GPT-4o** | Scoring and gap analysis is more structured — the model follows a rubric rather than extracting freeform data. GPT-4o is fast and reliable enough here. |
+| Rewrite suggestions | **GPT-4o** | Rewriting bullets is a generation task with clear guidelines. GPT-4o produces good results at lower cost and latency than GPT-5. |
+| Cover letter | **GPT-4o** | Long-form writing with a clear template. GPT-4o handles this well and is much faster. |
+| Candidate profile | **GPT-4o** | Summarising skills and generating search queries — a straightforward extraction task that doesn't need GPT-5's depth. |
+| Embeddings | **text-embedding-3-small** | Dedicated embedding model — smaller and cheaper than full LLMs, optimised specifically for semantic similarity. |
+
+**Short version:** GPT-5 is used where accuracy on messy unstructured input matters most (parsing). GPT-4o is used everywhere else because it's faster, cheaper, and accurate enough for structured generation tasks.
+
 ### What LangChain and LangGraph actually do here
 
 **LangChain** is a toolkit for calling LLMs in a structured way. Instead of writing raw `openai.chat.completions.create(...)` calls everywhere, LangChain provides:
