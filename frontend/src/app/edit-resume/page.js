@@ -652,7 +652,7 @@ export default function EditResumePage() {
           <nav className="space-y-1">
             <SidebarItem
               icon={<Home size={18} />}
-              label="Homes"
+              label="Home"
               open={sidebarOpen}
             />
             <SidebarItem
