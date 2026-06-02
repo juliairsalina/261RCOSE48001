@@ -23,6 +23,7 @@ import {
   Wand2,
   BarChart3,
   Target,
+  Briefcase,
 } from "lucide-react";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -145,6 +146,10 @@ export default function EditResumePage() {
   const [jobResults, setJobResults] = useState([]);
   const [jobSearchLoading, setJobSearchLoading] = useState(false);
   const [jobLocation, setJobLocation] = useState("");
+
+  // Career Profile tab
+  const [candidateProfile, setCandidateProfile] = useState(null);
+  const [candidateProfileLoading, setCandidateProfileLoading] = useState(false);
 
   const suggestions = backendSuggestions || [];
 
@@ -716,6 +721,35 @@ export default function EditResumePage() {
     }
   }
 
+  async function generateCandidateProfile() {
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
+    if (!rid) {
+      setErrorMessage("Upload your resume on the home page first.");
+      return;
+    }
+    setCandidateProfileLoading(true);
+    setErrorMessage("");
+    try {
+      const formData = new FormData();
+      formData.append("user_id", uid);
+      const result = await callBackend(`/resumes/${rid}/candidate-profile`, {
+        method: "POST",
+        body: formData,
+      });
+      setCandidateProfile(result.profile);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setCandidateProfileLoading(false);
+    }
+  }
+
+  async function searchJobsFromProfile() {
+    setActiveTab("find-jobs");
+    await findJobs();
+  }
+
   function handleResumeUpload(event) {
     const file = event.target.files?.[0];
 
@@ -970,7 +1004,7 @@ export default function EditResumePage() {
 
             {/* Tab bar */}
             <div className="flex shrink-0 gap-1 border-b border-[#243026]/10 px-4 pt-4">
-              {["analysis", "rewrites", "cover-letter", "find-jobs"].map((tab) => (
+              {["analysis", "rewrites", "cover-letter", "find-jobs", "profile"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -980,7 +1014,11 @@ export default function EditResumePage() {
                       : "text-[#243026]/45 hover:text-[#243026]"
                   }`}
                 >
-                  {tab === "analysis" ? "Analysis" : tab === "rewrites" ? "Rewrites" : tab === "cover-letter" ? "Cover Letter" : "Find Jobs"}
+                  {tab === "analysis" ? "Analysis"
+                    : tab === "rewrites" ? "Rewrites"
+                    : tab === "cover-letter" ? "Cover Letter"
+                    : tab === "find-jobs" ? "Find Jobs"
+                    : "Profile"}
                 </button>
               ))}
             </div>
@@ -1241,6 +1279,138 @@ export default function EditResumePage() {
                 </section>
               )}
 
+              {/* ── Career Profile tab ── */}
+              {activeTab === "profile" && (
+                <section className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-black text-[#243026]">Career Profile</h2>
+                    <div className="rounded-2xl bg-[#dfe9ff]/80 p-2 text-[#2f5fa8]">
+                      <Briefcase size={18} />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-[#243026]/55 leading-5">
+                    AI analyzes your full resume and builds a career intelligence profile — target roles, seniority, skills, and ready-to-use job search queries.
+                  </p>
+
+                  <button
+                    onClick={generateCandidateProfile}
+                    disabled={candidateProfileLoading || !resumeId}
+                    className="w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.01] disabled:opacity-50"
+                  >
+                    {candidateProfileLoading
+                      ? "Analyzing resume…"
+                      : candidateProfile
+                      ? "Regenerate Profile"
+                      : "Generate Career Profile"}
+                  </button>
+
+                  {!resumeId && (
+                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                      Upload your resume on the home page first.
+                    </p>
+                  )}
+
+                  {candidateProfileLoading && (
+                    <p className="text-center text-xs text-[#243026]/50 animate-pulse">
+                      AI is reading your resume…
+                    </p>
+                  )}
+
+                  {candidateProfile && (
+                    <div className="flex flex-col gap-4">
+
+                      {/* Seniority */}
+                      <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40">Seniority Level</p>
+                        <p className="mt-1 text-base font-black text-[#243026] capitalize">
+                          {candidateProfile.seniority_level || "—"}
+                        </p>
+                      </div>
+
+                      {/* Target Roles */}
+                      {candidateProfile.target_roles?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Target Roles</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {candidateProfile.target_roles.map((role, i) => (
+                              <span key={i} className="rounded-full bg-[#243026] px-3 py-1 text-[11px] font-bold text-white">
+                                {role}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Core Skills */}
+                      {candidateProfile.core_skills?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Core Skills</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {candidateProfile.core_skills.map((skill, i) => (
+                              <span key={i} className="rounded-full border border-[#243026]/20 bg-white/60 px-3 py-1 text-[11px] font-semibold text-[#243026]">
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Domain Interests */}
+                      {candidateProfile.domain_interests?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Domain Interests</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {candidateProfile.domain_interests.map((d, i) => (
+                              <span key={i} className="rounded-full bg-[#dfe9ff]/80 px-3 py-1 text-[11px] font-semibold text-[#2f5fa8]">
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Strongest Experiences */}
+                      {candidateProfile.strongest_experiences?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Strongest Experiences</p>
+                          <ul className="space-y-1">
+                            {candidateProfile.strongest_experiences.map((exp, i) => (
+                              <li key={i} className="flex items-start gap-2 text-xs text-[#243026]/75">
+                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#243026]/40" />
+                                {exp}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Search Queries */}
+                      {candidateProfile.search_queries?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Suggested Job Search Queries</p>
+                          <ul className="space-y-1">
+                            {candidateProfile.search_queries.map((q, i) => (
+                              <li key={i} className="text-xs font-mono text-[#243026]/65 bg-white/50 rounded-lg px-3 py-1.5">
+                                {q}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={searchJobsFromProfile}
+                        disabled={jobSearchLoading || !resumeId}
+                        className="w-full rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80 disabled:opacity-50"
+                      >
+                        {jobSearchLoading ? "Searching…" : "Search Jobs with this Profile →"}
+                      </button>
+                    </div>
+                  )}
+                </section>
+              )}
+
               {/* ── Find Jobs tab ── */}
               {activeTab === "find-jobs" && (
                 <section className="flex flex-col gap-4">
@@ -1483,8 +1653,6 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
   const skills = flattenSkills(resumeData.skills);
   const education = resumeData.education || [];
   const experience = resumeData.experience || resumeData.work_experience || [];
-  console.log("RESUME DATA:", resumeData);
-  console.log("EXPERIENCE:", experience);
   const projects = resumeData.projects || [];
   const pendingCount = rewriteList.filter(r => r.status === "pending").length;
 
