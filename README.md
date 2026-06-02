@@ -145,7 +145,200 @@ POST /applications/{id}/rewrite-suggestions  (rewrite_agent)
 
 ## Backend Agents
 
-Each agent is a LangGraph node that processes state and returns updated state.
+Each agent is a **LangGraph node** that processes state and returns updated state. Nodes are connected in a DAG (directed acyclic graph) where each node reads inputs from `AgentState`, calls LangChain LLMs (via `openai_client`), and writes outputs back to state.
+
+### Agent Node Flow Diagram
+
+```
+┌─ START ─────────────────────────────────────────────────────────────┐
+│                                                                      │
+│  AgentState = {                                                     │
+│    user_id, resume_id, resume_json, job_json,                       │
+│    ats_result, rewrite_suggestions, cover_letter, errors, ...       │
+│  }                                                                   │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+                    ┌─────────────────────────┐
+                    │  parse_resume_node      │
+                    ├─────────────────────────┤
+                    │ IN:  raw_text           │
+                    │ OUT: resume_json        │
+                    │ GPT: gpt-5 parse        │
+                    └─────────────────────────┘
+                                  │
+                                  ▼
+              ┌─────────────────────────────────────┐
+              │  create_candidate_profile_node      │
+              ├─────────────────────────────────────┤
+              │ IN:  resume_json                    │
+              │ OUT: candidate_profile              │
+              │      (roles, skills, queries)       │
+              │ GPT: gpt-4o analysis                │
+              └─────────────────────────────────────┘
+                                  │
+                                  ▼
+              ┌─────────────────────────────────────┐
+              │  discover_jobs_node                 │
+              ├─────────────────────────────────────┤
+              │ IN:  candidate_profile, location    │
+              │ OUT: job_post_ids                   │
+              │ Search: web API or jsearch          │
+              └─────────────────────────────────────┘
+                                  │
+                   ┌──────────────┴──────────────┐
+                   │  ⏸️ HUMAN PAUSE 1          │
+                   │  User selects a job         │
+                   │  → selected_job_post_id     │
+                   └──────────────┬──────────────┘
+                                  │
+                                  ▼
+              ┌─────────────────────────────────────┐
+              │  analyze_selected_job_node          │
+              ├─────────────────────────────────────┤
+              │ IN:  selected_job_post_id           │
+              │ OUT: job_json                       │
+              │      (requirements, description)    │
+              │ GPT: gpt-4o extraction              │
+              └─────────────────────────────────────┘
+                                  │
+                                  ▼
+              ┌─────────────────────────────────────┐
+              │  research_company_node              │
+              ├─────────────────────────────────────┤
+              │ IN:  job_json (company name)        │
+              │ OUT: company_background             │
+              │ MCP: browser automation (optional)  │
+              └─────────────────────────────────────┘
+                                  │
+                                  ▼
+              ┌─────────────────────────────────────┐
+              │  retrieve_resume_context_node       │
+              ├─────────────────────────────────────┤
+              │ IN:  resume_json, job_json          │
+              │ OUT: retrieved_context              │
+              │      (relevant resume chunks)       │
+              │ RAG: pgvector similarity search     │
+              └─────────────────────────────────────┘
+                                  │
+                                  ▼
+              ┌─────────────────────────────────────┐
+              │  evaluate_ats_node                  │
+              ├─────────────────────────────────────┤
+              │ IN:  resume_json, job_json,         │
+              │      retrieved_context              │
+              │ OUT: ats_result                     │
+              │      {score, matched_skills,        │
+              │       weaknesses, evidence}         │
+              │ GPT: gpt-4o evaluation              │
+              └─────────────────────────────────────┘
+                                  │
+                                  ▼
+          ┌───────────────────────────────────────────┐
+          │  generate_rewrite_suggestions_node        │
+          ├───────────────────────────────────────────┤
+          │ IN:  resume_json, ats_result, job_json    │
+          │ OUT: rewrite_suggestions                  │
+          │      [{original, suggested, reason, id}]  │
+          │ GPT: gpt-4o per-bullet rewrites           │
+          └───────────────────────────────────────────┘
+                                  │
+                   ┌──────────────┴──────────────┐
+                   │  ⏸️ HUMAN PAUSE 2          │
+                   │  User approves/rejects      │
+                   │  rewrites (via PATCH API)   │
+                   └──────────────┬──────────────┘
+                                  │
+                                  ▼
+              ┌─────────────────────────────────────┐
+              │  export_resume_node                 │
+              ├─────────────────────────────────────┤
+              │ IN:  resume_json,                   │
+              │      approved_rewrites              │
+              │ OUT: file_url (DOCX in Storage)     │
+              │ Tool: docx_exporter                 │
+              └─────────────────────────────────────┘
+                                  │
+                                  ▼
+              ┌─────────────────────────────────────┐
+              │  generate_cover_letter_node         │
+              ├─────────────────────────────────────┤
+              │ IN:  resume_json, job_json,         │
+              │      ats_result                     │
+              │ OUT: cover_letter (markdown)        │
+              │ GPT: gpt-4o composition             │
+              └─────────────────────────────────────┘
+                                  │
+                                  ▼
+┌──────────────────────────────────────────────────────┐
+│ END - Return completed state with all outputs       │
+└──────────────────────────────────────────────────────┘
+```
+
+### Shared State (AgentState TypedDict)
+
+```python
+class AgentState(TypedDict):
+    # Core IDs
+    user_id: str                          # User identifier
+    resume_id: Optional[str]              # Uploaded resume
+    candidate_profile_id: Optional[str]   # Generated profile
+    application_id: Optional[str]         # Resume ↔ Job link
+    
+    # Parsed data
+    resume_json: Optional[dict]           # ← parse_resume_node
+    candidate_profile: Optional[dict]     # ← create_candidate_profile_node
+    job_json: Optional[dict]              # ← analyze_selected_job_node
+    company_background: Optional[dict]    # ← research_company_node
+    
+    # Job discovery
+    job_post_ids: list[str]               # ← discover_jobs_node
+    selected_job_post_id: Optional[str]   # User input
+    
+    # RAG context
+    retrieved_context: Optional[list]     # ← retrieve_resume_context_node
+    
+    # AI analysis
+    ats_result: Optional[dict]            # ← evaluate_ats_node
+    rewrite_suggestions: Optional[list]   # ← generate_rewrite_suggestions_node
+    approved_rewrites: Optional[list]     # User input (PATCH API)
+    cover_letter: Optional[str]           # ← generate_cover_letter_node
+    
+    # Error tracking
+    errors: list[str]                     # Collect all errors
+```
+
+### How Nodes Communicate
+
+Each node is an async function with this signature:
+
+```python
+async def my_agent_node(state: AgentState) -> AgentState:
+    """Read inputs from state, do work, return updated state."""
+    
+    # 1. Extract inputs from shared state
+    resume_json = state.get("resume_json")
+    job_json = state.get("job_json")
+    
+    # 2. Validate inputs
+    if not resume_json:
+        errors = state.get("errors", [])
+        errors.append("my_agent_node: missing resume_json")
+        return {**state, "errors": errors}
+    
+    # 3. Do work (call LLM, compute, etc.)
+    result = await openai_client.chat_completion(...)
+    
+    # 4. Write outputs back to state
+    return {
+        **state,
+        "output_key": result,
+        "errors": errors,
+    }
+```
+
+---
 
 ### 1. Resume Parser Agent
 **Input**: Raw text from PDF/DOCX  
