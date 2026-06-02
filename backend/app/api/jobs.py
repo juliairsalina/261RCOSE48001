@@ -235,30 +235,51 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
 
     parsed_json: dict = (result.data or {}).get("parsed_json") or {}
 
-    # Build search queries from resume skills and experience
-    from app.services.job_search_service import _flatten_skills_from_dict
+    # Try to load candidate profile for target_roles and core_skills
+    target_roles: list[str] = []
+    core_skills: list[str] = []
+    try:
+        profile_result = (
+            db.table("candidate_profiles")
+            .select("profile_json")
+            .eq("resume_id", request.resume_id)
+            .eq("user_id", request.user_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if profile_result.data:
+            profile_json: dict = profile_result.data[0].get("profile_json") or {}
+            target_roles = profile_json.get("target_roles") or []
+            core_skills = profile_json.get("core_skills") or []
+    except Exception:
+        pass  # fall back to resume-based queries below
 
-    skills = _flatten_skills_from_dict(parsed_json.get("skills", []))[:10]
-    roles = [
-        exp.get("title") or exp.get("role", "")
-        for exp in (parsed_json.get("work_experience") or [])
-        if exp.get("title") or exp.get("role")
-    ][:3]
-    name = parsed_json.get("name", "")
+    loc = request.location.strip()
 
-    if not skills and not roles:
-        # Fall back to raw_text summary
-        raw = (result.data or {}).get("raw_text", "") or ""
-        queries = [f"software engineer {request.location}".strip()]
+    if target_roles:
+        # Build one query per target role (up to 4), optionally with location
+        queries = []
+        for role in target_roles[:4]:
+            queries.append(f"{role} {loc}".strip() if loc else role)
     else:
-        top_skills = ", ".join(skills[:5])
-        latest_role = roles[0] if roles else "software engineer"
+        # Fall back: build queries from resume's work experience + skills
+        from app.services.job_search_service import _flatten_skills_from_dict
+
+        skills = _flatten_skills_from_dict(parsed_json.get("skills", []))[:5]
+        exp_roles = [
+            exp.get("title") or exp.get("role", "")
+            for exp in (parsed_json.get("work_experience") or [])
+            if exp.get("title") or exp.get("role")
+        ][:2]
+        latest_role = exp_roles[0] if exp_roles else "software engineer"
+        top_skills = ", ".join(skills[:3])
         queries = [
-            f"{latest_role} {top_skills}",
-            f"{latest_role} {request.location}".strip(),
-            f"{top_skills} developer {request.location}".strip(),
+            f"{latest_role} {loc}".strip() if loc else latest_role,
+            f"{top_skills} developer {loc}".strip() if top_skills else f"developer {loc}".strip(),
         ]
-        queries = [q.strip() for q in queries if q.strip()]
+
+    queries = [q.strip() for q in queries if q.strip()]
 
     jobs = await search_jobs(
         queries=queries,

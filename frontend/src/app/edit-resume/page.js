@@ -130,6 +130,7 @@ export default function EditResumePage() {
   // Find Jobs tab
   const [jobResults, setJobResults] = useState([]);
   const [jobSearchLoading, setJobSearchLoading] = useState(false);
+  const [jobSearched, setJobSearched] = useState(false);
   const [jobLocation, setJobLocation] = useState("");
 
   // Career Profile tab
@@ -456,8 +457,10 @@ export default function EditResumePage() {
         body: JSON.stringify({ user_id: uid, resume_id: rid, location: jobLocation }),
       });
       setJobResults(result.jobs || []);
+      setJobSearched(true);
     } catch (error) {
       setErrorMessage(error.message);
+      setJobSearched(true);
     } finally {
       setJobSearchLoading(false);
     }
@@ -1270,6 +1273,12 @@ export default function EditResumePage() {
                   {jobSearchLoading && (
                     <p className="text-center text-xs text-[#243026]/50 animate-pulse">
                       AI is searching the web for relevant job openings…
+                    </p>
+                  )}
+
+                  {!jobSearchLoading && jobSearched && jobResults.length === 0 && (
+                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                      No jobs found. Try a different location or generate a candidate profile first.
                     </p>
                   )}
 
