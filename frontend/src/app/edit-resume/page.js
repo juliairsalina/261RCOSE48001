@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -813,6 +813,7 @@ export default function EditResumePage() {
                     setActiveRewriteId(rw.id);
                     setActiveTab("rewrites");
                   }}
+                  onDataChange={setResumeData}
                 />
               </div>
             </div>
@@ -1378,8 +1379,7 @@ function MetricBox({ title, value }) {
   );
 }
 
-function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick }) {
-  // Build lookup: normalised original_text → rewrite object
+function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick, onDataChange }) {
   const rewriteMap = useMemo(() => {
     const m = new Map();
     for (const rw of rewriteList) {
@@ -1388,7 +1388,6 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     return m;
   }, [rewriteList]);
 
-  // Returns the matching rewrite for a piece of text (if any)
   function matchRewrite(text) {
     if (!text) return null;
     const t = text.trim();
@@ -1421,6 +1420,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     );
   }
 
+  // Shorthand: spread-update top-level resumeData fields
+  const upd = onDataChange
+    ? (patch) => onDataChange({ ...resumeData, ...patch })
+    : null;
+
   const hasData = resumeData && (
     resumeData.name || resumeData.email ||
     (resumeData.experience || []).length > 0 ||
@@ -1451,9 +1455,25 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
       {/* Header */}
       <div className="border-b pb-3 text-center">
-        <h1 className="text-[22px] font-black">{resumeData.name || "—"}</h1>
-        <p className="mt-1 text-[11px] text-gray-500">
-          {[resumeData.email, resumeData.phone].filter(Boolean).join(" · ")}
+        <Editable
+          value={resumeData.name || ""}
+          onSave={upd ? (v) => upd({ name: v }) : null}
+          as="h1"
+          placeholder="Your Name"
+          className="text-[22px] font-black"
+        />
+        <p className="mt-1 text-[11px] text-gray-500 flex flex-wrap justify-center gap-x-1">
+          <Editable
+            value={resumeData.email || ""}
+            onSave={upd ? (v) => upd({ email: v }) : null}
+            placeholder="email@example.com"
+          />
+          {(resumeData.email || resumeData.phone) && <span className="select-none"> · </span>}
+          <Editable
+            value={resumeData.phone || ""}
+            onSave={upd ? (v) => upd({ phone: v }) : null}
+            placeholder="+1 234 567 8900"
+          />
         </p>
       </div>
 
@@ -1464,10 +1484,16 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       )}
 
       {/* Summary */}
-      {resumeData.summary && (
+      {(resumeData.summary || upd) && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Summary</h2>
-          <p className="mt-2"><RewritableBullet text={resumeData.summary} /></p>
+          <Editable
+            value={resumeData.summary || ""}
+            onSave={upd ? (v) => upd({ summary: v }) : null}
+            as="p"
+            placeholder="Write a short professional summary..."
+            className="mt-2"
+          />
         </section>
       )}
 
@@ -1479,18 +1505,42 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
             <div key={i} className="mt-3">
               <div className="flex justify-between">
                 <div>
-                  <h3 className="font-bold">{exp.role || exp.title}</h3>
-                  <p className="text-gray-600">{exp.company || exp.organization}</p>
+                  <Editable
+                    value={exp.role || exp.title || ""}
+                    onSave={upd ? (v) => {
+                      const newExp = experience.map((e, ei) => ei === i ? { ...e, role: v } : e);
+                      upd({ experience: newExp });
+                    } : null}
+                    as="h3"
+                    placeholder="Job Title"
+                    className="font-bold"
+                  />
+                  <Editable
+                    value={exp.company || exp.organization || ""}
+                    onSave={upd ? (v) => {
+                      const newExp = experience.map((e, ei) => ei === i ? { ...e, company: v } : e);
+                      upd({ experience: newExp });
+                    } : null}
+                    as="p"
+                    placeholder="Company Name"
+                    className="text-gray-600"
+                  />
                 </div>
                 <span className="shrink-0 text-gray-500 ml-2">
                   {[exp.start_date, exp.end_date].filter(Boolean).join(" – ")}
                 </span>
               </div>
-              {exp.description && (
-                <p className="mt-1 text-gray-700">
-                  {exp.description}
-                </p>
-              )}
+              {/* Description always shown as editable so user can add one even if empty */}
+              <Editable
+                value={exp.description || ""}
+                onSave={upd ? (v) => {
+                  const newExp = experience.map((e, ei) => ei === i ? { ...e, description: v } : e);
+                  upd({ experience: newExp });
+                } : null}
+                as="p"
+                placeholder="Describe your responsibilities and achievements..."
+                className="mt-1 text-gray-700"
+              />
               {(exp.bullets?.length
                 ? exp.bullets
                 : exp.responsibilities || []).length > 0 && (
@@ -1516,45 +1566,46 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           {projects.map((proj, i) => (
             <div key={i} className="mt-3">
               <div className="flex justify-between">
-                <h3 className="font-bold">{proj.name || proj.title}</h3>
+                <Editable
+                  value={proj.name || proj.title || ""}
+                  onSave={upd ? (v) => {
+                    const newProj = projects.map((p, pi) => pi === i ? { ...p, name: v } : p);
+                    upd({ projects: newProj });
+                  } : null}
+                  as="h3"
+                  placeholder="Project Name"
+                  className="font-bold"
+                />
                 <span className="shrink-0 text-gray-500 ml-2">
                   {[proj.start_date, proj.end_date].filter(Boolean).join(" – ")}
                 </span>
               </div>
-              {proj.description && (
-                <p className="mt-1 text-gray-700">
-                  {proj.description}
-                </p>
-              )}
-
+              <Editable
+                value={proj.description || ""}
+                onSave={upd ? (v) => {
+                  const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
+                  upd({ projects: newProj });
+                } : null}
+                as="p"
+                placeholder="Describe this project..."
+                className="mt-1 text-gray-700"
+              />
               {proj.contributions?.length > 0 && (
                 <ul className="mt-1 list-disc pl-5">
-                  {proj.contributions.map((c, i) => (
-                    <li key={i}>{c}</li>
-                  ))}
+                  {proj.contributions.map((c, ci) => <li key={ci}>{c}</li>)}
                 </ul>
               )}
-
               {(proj.results || proj.outcomes)?.length > 0 && (
                 <ul className="mt-1 list-disc pl-5">
-                  {(proj.results || proj.outcomes).map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
+                  {(proj.results || proj.outcomes).map((r, ri) => <li key={ri}>{r}</li>)}
                 </ul>
               )}
-
               {proj.repository && (
-                <p className="mt-1 text-blue-600 break-all">
-                  {proj.repository}
-                </p>
+                <p className="mt-1 text-blue-600 break-all">{proj.repository}</p>
               )}
-
               {proj.links?.length > 0 && (
-                <p className="mt-1 text-blue-600 break-all">
-                  {proj.links[0]}
-                </p>
+                <p className="mt-1 text-blue-600 break-all">{proj.links[0]}</p>
               )}
-
               {proj.technologies?.length > 0 && (
                 <p className="mt-1 text-gray-500 text-[11px]">
                   Technologies: {proj.technologies.join(", ")}
@@ -1573,95 +1624,130 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       )}
 
       {/* Education */}
-            {education.length > 0 && (
-              <section className="mt-4">
-                <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Education</h2>
-                {education.map((edu, i) => (
-                  <div key={i} className="mt-2">
-                    <div className="flex justify-between">
-                      <div>
-                        <h3 className="font-bold">
-                          {edu.school || edu.institution}
-                        </h3>
+      {education.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Education</h2>
+          {education.map((edu, i) => (
+            <div key={i} className="mt-2">
+              <div className="flex justify-between">
+                <div>
+                  <Editable
+                    value={edu.school || edu.institution || ""}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) => ei === i ? { ...e, school: v } : e);
+                      upd({ education: newEdu });
+                    } : null}
+                    as="h3"
+                    placeholder="School / University"
+                    className="font-bold"
+                  />
+                  {(edu.degree || edu.program) && (
+                    <Editable
+                      value={edu.degree || edu.program || ""}
+                      onSave={upd ? (v) => {
+                        const newEdu = education.map((e, ei) => ei === i ? { ...e, degree: v } : e);
+                        upd({ education: newEdu });
+                      } : null}
+                      as="p"
+                      placeholder="Degree"
+                      className="text-gray-600"
+                    />
+                  )}
+                  {edu.field_of_study && (
+                    <p className="text-gray-600">{edu.field_of_study}</p>
+                  )}
+                  {edu.focus && (
+                    <p className="mt-1 text-gray-700">
+                      {Array.isArray(edu.focus) ? edu.focus.join(", ") : edu.focus}
+                    </p>
+                  )}
+                  {edu.highlights?.length > 0 && (
+                    <ul className="mt-1 list-disc pl-5">
+                      {edu.highlights.map((h, hi) => <li key={hi}>{h}</li>)}
+                    </ul>
+                  )}
+                </div>
+                <span className="text-gray-500 shrink-0 ml-2">
+                  {[edu.start_date, edu.end_date].filter(Boolean).join(" – ")}
+                </span>
+              </div>
+              {edu.gpa && (
+                <p className="text-gray-600">
+                  GPA: <Editable
+                    value={edu.gpa}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) => ei === i ? { ...e, gpa: v } : e);
+                      upd({ education: newEdu });
+                    } : null}
+                    placeholder="0.00/4.00"
+                  />
+                </p>
+              )}
+              {edu.description && (
+                <p className="mt-1 text-gray-700">{edu.description}</p>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
 
-                        {(edu.degree || edu.program) && (
-                          <p className="text-gray-600">
-                            {edu.degree || edu.program}
-                          </p>
-                        )}
+      {/* Skills */}
+      {skills.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Skills</h2>
+          <p className="mt-2">{skills.join(" · ")}</p>
+        </section>
+      )}
 
-                        {edu.field_of_study && (
-                          <p className="text-gray-600">
-                            {edu.field_of_study}
-                          </p>
-                        )}
-
-                        {edu.focus && (
-                          <p className="mt-1 text-gray-700">
-                            {Array.isArray(edu.focus)
-                              ? edu.focus.join(", ")
-                              : edu.focus}
-                          </p>
-                        )}
-
-                        {edu.highlights?.length > 0 && (
-                          <ul className="mt-1 list-disc pl-5">
-                            {edu.highlights.map((h, i) => (
-                              <li key={i}>{h}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-
-                      <span className="text-gray-500 shrink-0 ml-2">
-                        {[edu.start_date, edu.end_date]
-                          .filter(Boolean)
-                          .join(" – ")}
-                      </span>
-                    </div>
-
-                    {edu.gpa && (
-                      <p className="text-gray-600">
-                        GPA: {edu.gpa}
-                      </p>
-                    )}
-
-                    {edu.description && (
-                      <p className="mt-1 text-gray-700">
-                        {edu.description}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </section>
-            )}
-            {/* Skills */}
-            {skills.length > 0 && (
-              <section className="mt-4">
-                <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Skills</h2>
-                <p className="mt-2">{skills.join(" · ")}</p>
-              </section>
-            )}
-
-{/* Languages */}
-{resumeData.languages?.length > 0 && (
-  <section className="mt-4">
-    <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
-      Languages
-    </h2>
-
-    {resumeData.languages.map((lang, i) => (
-      <p key={i} className="mt-1">
-        {lang.language || lang.name}: {
-          lang.level
-            ? `${lang.level} (${lang.proficiency})`
-            : lang.proficiency
-        }
-      </p>
-    ))}
-  </section>
-)}
+      {/* Languages */}
+      {resumeData.languages?.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Languages</h2>
+          {resumeData.languages.map((lang, i) => (
+            <p key={i} className="mt-1">
+              {lang.language || lang.name}: {
+                lang.level ? `${lang.level} (${lang.proficiency})` : lang.proficiency
+              }
+            </p>
+          ))}
+        </section>
+      )}
     </article>
+  );
+}
+
+// Inline-editable text element for the resume preview.
+// Uses useRef so React re-renders never clobber what the user is typing.
+function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
+  const ref = useRef(null);
+  const committed = useRef(value ?? "");
+
+  useEffect(() => {
+    if (ref.current && committed.current !== (value ?? "")) {
+      ref.current.innerText = value ?? "";
+      committed.current = value ?? "";
+    }
+  }, [value]);
+
+  if (!onSave) {
+    return <Tag className={className}>{value}</Tag>;
+  }
+
+  return (
+    <Tag
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      data-placeholder={placeholder}
+      onBlur={(e) => {
+        const v = (e.currentTarget.innerText ?? "").trim();
+        committed.current = v;
+        if (v !== (value ?? "").trim()) onSave(v);
+      }}
+      className={`resume-editable outline-none focus:bg-yellow-50/80 focus:ring-1 focus:ring-yellow-300 focus:rounded-sm cursor-text ${className ?? ""}`}
+    >
+      {value || ""}
+    </Tag>
   );
 }
 
