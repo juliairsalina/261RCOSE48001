@@ -79,6 +79,7 @@ class JobSearchProvider(ABC):
         queries: list[str],
         location: str = "",
         job_type: str = "",
+        country: str = "",
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         """Search for jobs and return normalized job dicts."""
@@ -94,6 +95,7 @@ class DummyProvider(JobSearchProvider):
         queries: list[str],
         location: str = "",
         job_type: str = "",
+        country: str = "",
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         return DUMMY_JOBS[:limit]
@@ -124,6 +126,7 @@ class JSearchProvider(JobSearchProvider):
         queries: list[str],
         location: str = "",
         job_type: str = "",
+        country: str = "",
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         import httpx
@@ -131,6 +134,8 @@ class JSearchProvider(JobSearchProvider):
         if not settings.jsearch_api_key:
             logger.warning("JSearch API key missing — falling back to dummy jobs.")
             return DUMMY_JOBS[:limit]
+
+        resolved_country = (country or settings.jsearch_country).lower()
 
         headers = {
             "X-RapidAPI-Key": settings.jsearch_api_key,
@@ -149,7 +154,7 @@ class JSearchProvider(JobSearchProvider):
                     "num_pages": 1,
                     "page": 1,
                     "language": settings.jsearch_language,
-                    "country": settings.jsearch_country,
+                    "country": resolved_country,
                 }
                 if job_type:
                     params["employment_types"] = job_type.upper()
@@ -214,6 +219,7 @@ class OpenAIWebSearchProvider(JobSearchProvider):
         queries: list[str],
         location: str = "",
         job_type: str = "",
+        country: str = "",
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         from app.services.openai_client import get_client
@@ -372,6 +378,7 @@ async def search_jobs(
     queries: list[str],
     location: str = "",
     job_type: str = "",
+    country: str = "",
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     """Search jobs using the configured provider.
@@ -379,4 +386,4 @@ async def search_jobs(
     Returns normalized dicts: source, job_url, company_name, role_title,
     location, job_description.
     """
-    return await get_provider().search(queries, location=location, job_type=job_type, limit=limit)
+    return await get_provider().search(queries, location=location, job_type=job_type, country=country, limit=limit)

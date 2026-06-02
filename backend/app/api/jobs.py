@@ -208,6 +208,7 @@ class WebJobSearchRequest(BaseModel):
     resume_id: str
     location: str = ""
     job_type: str = ""
+    country: str = ""  # overrides JSEARCH_COUNTRY setting when provided
 
 
 @router.post("/search-web")
@@ -289,6 +290,7 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
         queries=queries,
         location=request.location,
         job_type=request.job_type,
+        country=request.country,
         limit=9,
     )
 

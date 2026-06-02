@@ -132,6 +132,7 @@ export default function EditResumePage() {
   const [jobSearchLoading, setJobSearchLoading] = useState(false);
   const [jobSearched, setJobSearched] = useState(false);
   const [jobLocation, setJobLocation] = useState("");
+  const [jobCountry, setJobCountry] = useState("us");
 
   // Career Profile tab
   const [candidateProfile, setCandidateProfile] = useState(null);
@@ -454,7 +455,7 @@ export default function EditResumePage() {
     try {
       const result = await callBackend("/jobs/search-web", {
         method: "POST",
-        body: JSON.stringify({ user_id: uid, resume_id: rid, location: jobLocation }),
+        body: JSON.stringify({ user_id: uid, resume_id: rid, location: jobLocation, country: jobCountry }),
       });
       setJobResults(result.jobs || []);
       setJobSearched(true);
@@ -1248,11 +1249,28 @@ export default function EditResumePage() {
                     AI searches the web for real job postings that match your resume. Click any result to evaluate your fit.
                   </p>
 
+                  <select
+                    value={jobCountry}
+                    onChange={(e) => setJobCountry(e.target.value)}
+                    className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 px-4 py-2.5 text-sm text-[#243026] outline-none focus:border-[#243026]/30"
+                  >
+                    <option value="us">🇺🇸 United States</option>
+                    <option value="sg">🇸🇬 Singapore</option>
+                    <option value="gb">🇬🇧 United Kingdom</option>
+                    <option value="ca">🇨🇦 Canada</option>
+                    <option value="de">🇩🇪 Germany</option>
+                    <option value="au">🇦🇺 Australia</option>
+                    <option value="nl">🇳🇱 Netherlands</option>
+                    <option value="jp">🇯🇵 Japan</option>
+                    <option value="kr">🇰🇷 South Korea</option>
+                    <option value="in">🇮🇳 India</option>
+                  </select>
+
                   <input
                     type="text"
                     value={jobLocation}
                     onChange={(e) => setJobLocation(e.target.value)}
-                    placeholder="Location (e.g. Seoul, Remote)"
+                    placeholder="City or Remote (optional)"
                     className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 px-4 py-2.5 text-sm text-[#243026] outline-none placeholder:text-[#243026]/40 focus:border-[#243026]/30"
                   />
 
