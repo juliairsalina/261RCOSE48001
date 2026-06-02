@@ -24,7 +24,7 @@ class EducationEntry(BaseModel):
     gpa: Optional[str] = None
     description: str = ""
 
-    @field_validator("description", "institution", "degree", "field_of_study", mode="before")
+    @field_validator("description", "institution", "degree", "field_of_study", "start_date", "end_date", mode="before")
     @classmethod
     def coerce_str_fields(cls, v: Any) -> str:
         return _coerce_str(v)
@@ -41,7 +41,7 @@ class WorkExperienceEntry(BaseModel):
     bullets: list[str] = Field(default_factory=list)
     description: str = ""
 
-    @field_validator("description", "company", "title", "location", mode="before")
+    @field_validator("description", "company", "title", "location", "start_date", "end_date", mode="before")
     @classmethod
     def coerce_str_fields(cls, v: Any) -> str:
         return _coerce_str(v)
@@ -64,7 +64,7 @@ class ProjectEntry(BaseModel):
     end_date: str = ""
     bullets: list[str] = Field(default_factory=list)
 
-    @field_validator("description", "name", "url", mode="before")
+    @field_validator("description", "name", "url", "start_date", "end_date", mode="before")
     @classmethod
     def coerce_str_fields(cls, v: Any) -> str:
         return _coerce_str(v)

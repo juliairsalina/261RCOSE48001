@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     langchain_project: str = "career-application-agent"
 
     # Job Search
-    job_search_provider: str = "jsearch"
+    job_search_provider: str = "openai_web"
     jsearch_api_key: str = ""
     jsearch_country: str = "kr"
     jsearch_language: str = "en"

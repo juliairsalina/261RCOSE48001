@@ -16,8 +16,8 @@ def get_client():
         from openai import AsyncOpenAI
         _client = AsyncOpenAI(
             api_key=settings.openai_api_key,
-            max_retries=2,        # built-in retry on transient errors
-            timeout=60.0,
+            max_retries=3,        # built-in retry on transient errors
+            timeout=120.0,        # gpt-5 / long prompts can take >60s
         )
     return _client
 

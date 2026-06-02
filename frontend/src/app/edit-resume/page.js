@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  Upload,
-  X,
   Download,
   ZoomIn,
   ZoomOut,
@@ -23,6 +21,7 @@ import {
   Wand2,
   BarChart3,
   Target,
+  Briefcase,
 } from "lucide-react";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -33,7 +32,6 @@ export default function EditResumePage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [zoom, setZoom] = useState(0.72);
 
-  const [resumeFile, setResumeFile] = useState(null);
   const [resumeData, setResumeData] = useState({
         name: "John Doe",
         email: "john@email.com",
@@ -104,20 +102,8 @@ export default function EditResumePage() {
     impact: 0,
   });
 
-  const [resumeBullets, setResumeBullets] = useState([]);
-  const [weakBulletIds, setWeakBulletIds] = useState(new Set());
   const [backendSuggestions, setBackendSuggestions] = useState([]);
   const [activeSuggestion, setActiveSuggestion] = useState("summary");
-
-  const [latestRuleBasedSignals, setLatestRuleBasedSignals] = useState(null);
-  const [latestEvaluationAgentResult, setLatestEvaluationAgentResult] =
-    useState(null);
-
-  const [rewriteModalOpen, setRewriteModalOpen] = useState(false);
-  const [selectedBullet, setSelectedBullet] = useState(null);
-  const [rewriteSuggestions, setRewriteSuggestions] = useState([]);
-  const [selectedRewriteSuggestion, setSelectedRewriteSuggestion] =
-    useState("");
 
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
@@ -140,6 +126,17 @@ export default function EditResumePage() {
 
   // Active rewrite highlight in resume preview
   const [activeRewriteId, setActiveRewriteId] = useState(null);
+
+  // Find Jobs tab
+  const [jobResults, setJobResults] = useState([]);
+  const [jobSearchLoading, setJobSearchLoading] = useState(false);
+  const [jobSearched, setJobSearched] = useState(false);
+  const [jobLocation, setJobLocation] = useState("");
+  const [jobCountry, setJobCountry] = useState("us");
+
+  // Career Profile tab
+  const [candidateProfile, setCandidateProfile] = useState(null);
+  const [candidateProfileLoading, setCandidateProfileLoading] = useState(false);
 
   const suggestions = backendSuggestions || [];
 
@@ -179,18 +176,23 @@ export default function EditResumePage() {
             field: e.field_of_study || e.field || "",
             start_date: e.start_date || "",
             end_date: e.end_date || "",
+            gpa: e.gpa || "",
+            description: e.description || "",
           })),
           experience: (parsed.work_experience || []).map(e => ({
-            role: e.title || e.role || "",
+            role: e.position || e.title || e.role || "",
             company: e.company || "",
             start_date: e.start_date || "",
             end_date: e.is_current ? "Present" : (e.end_date || ""),
+            description: e.description || "",
             bullets: e.bullets || [],
           })),
           projects: (parsed.projects || []).map(p => ({
-            name: p.name || "",
+            name: p.title || p.name || "",
             start_date: p.start_date || "",
             end_date: p.end_date || "",
+            description: p.description || "",
+            technologies: p.technologies || [],
             bullets: p.bullets || [],
           })),
         });
@@ -266,172 +268,6 @@ export default function EditResumePage() {
     setErrorMessage("");
   }
 
-  function calculateResumeLevel(score) {
-    if (score >= 85) return "Advanced";
-    if (score >= 60) return "Intermediate";
-    return "Beginner";
-  }
-
-  function calculateImpactScore(ruleSignals) {
-    const measurable = ruleSignals?.measurable_evidence || {};
-    const total = measurable.total_bullet_count || 0;
-    const metricCount = measurable.metric_bullet_count || 0;
-
-    if (total === 0) return 0;
-
-    return Math.round((metricCount / total) * 100);
-  }
-
-  function buildBackendSuggestions(ruleSignals, evaluation) {
-    const items = [];
-
-    const keywordResult = ruleSignals?.keyword_result || {};
-    const missingKeywords = keywordResult.missing_keywords || [];
-
-    missingKeywords.forEach((keyword, index) => {
-      items.push({
-        id: `missing-keyword-${index}`,
-        title: `Missing keyword: ${keyword}`,
-        label: "Keyword suggestion",
-        type: "ATS",
-        text: `The keyword "${keyword}" is missing from your resume.`,
-        suggestion: `Add "${keyword}" naturally in your project, skills, or experience section if it is true to your background.`,
-      });
-    });
-
-    (ruleSignals?.weak_phrase_flags || []).forEach((item, index) => {
-      items.push({
-        id: item.id || `weak-phrase-${index}`,
-        title: "Weak phrase detected",
-        label: "Rewrite suggestion",
-        type: "Clarity",
-        text: item.reason || item.text || "Weak phrase found.",
-        suggestion:
-          "Click the highlighted sentence in the resume to request rewrite suggestions.",
-        bulletId: item.id,
-      });
-    });
-
-    (ruleSignals?.grammar_flags || []).forEach((item, index) => {
-      items.push({
-        id: item.id || `grammar-${index}`,
-        title: "Grammar issue",
-        label: "Grammar suggestion",
-        type: "Correctness",
-        text: item.text || "Grammar or spelling issue found.",
-        suggestion: "Review the highlighted sentence and rewrite it clearly.",
-        bulletId: item.id,
-      });
-    });
-
-    (evaluation?.weak_bullets || []).forEach((item, index) => {
-      items.push({
-        id: item.id || `weak-bullet-${index}`,
-        title: "Weak bullet point",
-        label: "Rewrite suggestion",
-        type: "Impact",
-        text: item.reason || item.text || "This bullet can be improved.",
-        suggestion:
-          "Rewrite this bullet to better match the vacancy link without inventing fake numbers or achievements.",
-        bulletId: item.id,
-      });
-    });
-
-    (evaluation?.improvement_priorities || []).forEach((priority, index) => {
-      items.push({
-        id: `priority-${index}`,
-        title: "Improvement priority",
-        label: "AI comment",
-        type: "Priority",
-        text: priority,
-        suggestion: priority,
-      });
-    });
-
-    return items;
-  }
-
-  function renderBackendData(data) {
-    const ruleSignals = data.rule_based_signals || {};
-    const evaluation = data.evaluation_agent_result || {};
-
-    setLatestRuleBasedSignals(ruleSignals);
-    setLatestEvaluationAgentResult(evaluation);
-
-    const score = Number(data.ats_score ?? ruleSignals.ats_score ?? 0);
-
-    setAtsScoreValue(score);
-    setResumeLevel(data.resume_level || calculateResumeLevel(score));
-
-    setJobSummary(
-      data.job_description_summary ||
-        evaluation.job_description_summary ||
-        evaluation.reasoning ||
-        "Job-based evaluation completed."
-    );
-
-    const keywordResult = ruleSignals.keyword_result || {};
-    const presentKeywords = keywordResult.present_keywords || [];
-    const missingKeywords = keywordResult.missing_keywords || [];
-    const totalKeywords = presentKeywords.length + missingKeywords.length;
-
-    const keywordScoreValue =
-      totalKeywords > 0
-        ? Math.round((presentKeywords.length / totalKeywords) * 100)
-        : 0;
-
-    const sectionPresence = ruleSignals.section_presence || {};
-    const sectionValues = Object.values(sectionPresence);
-
-    const structureScoreValue =
-      sectionValues.length > 0
-        ? Math.round(
-            (sectionValues.filter(Boolean).length / sectionValues.length) * 100
-          )
-        : score;
-
-    const weakCount = (ruleSignals.weak_phrase_flags || []).length;
-    const grammarCount = (ruleSignals.grammar_flags || []).length;
-    const clarityScoreValue = Math.max(
-      0,
-      100 - weakCount * 10 - grammarCount * 8
-    );
-
-    setMetrics({
-      clarity: clarityScoreValue,
-      keywordFit: keywordScoreValue,
-      structure: structureScoreValue,
-      impact: calculateImpactScore(ruleSignals),
-    });
-
-    const weakIds = new Set();
-
-    (ruleSignals.weak_phrase_flags || []).forEach((item) => {
-      if (item.id) weakIds.add(item.id);
-    });
-
-    (ruleSignals.grammar_flags || []).forEach((item) => {
-      if (item.id) weakIds.add(item.id);
-    });
-
-    (evaluation.weak_bullets || []).forEach((item) => {
-      if (item.id) weakIds.add(item.id);
-    });
-
-    setWeakBulletIds(weakIds);
-    setResumeBullets(ruleSignals.all_bullets || []);
-
-    const dynamicSuggestions = buildBackendSuggestions(ruleSignals, evaluation);
-    setBackendSuggestions(dynamicSuggestions);
-
-    if (dynamicSuggestions.length > 0) {
-      setActiveSuggestion(dynamicSuggestions[0].id);
-    }
-
-    setIsLoading(false);
-    setStatusMessage("Evaluation completed.");
-  }
-
   function getRankLabel(rank) {
     if (rank === "상") return "Advanced";
     if (rank === "중") return "Intermediate";
@@ -496,11 +332,13 @@ export default function EditResumePage() {
       const matched = evalResult.matched_skills?.length || 0;
       const missing = evalResult.missing_skills?.length || 0;
       const total = matched + missing || 1;
+      const weaknessCount = evalResult.weaknesses?.length || 0;
+      const strengthCount = evalResult.strengths?.length || 0;
       setMetrics({
-        clarity: score,
+        clarity: Math.max(0, 100 - weaknessCount * 15),
         keywordFit: Math.round((matched / total) * 100),
         structure: score,
-        impact: score,
+        impact: Math.min(100, strengthCount * 20),
       });
 
       const suggestions = [
@@ -541,7 +379,7 @@ export default function EditResumePage() {
   }
 
   async function reevaluateResume() {
-    setErrorMessage("Re-evaluate: paste a new vacancy link and click Evaluate.");
+    await evaluateResume();
   }
 
   async function approveRewrite(suggestionId) {
@@ -593,48 +431,148 @@ export default function EditResumePage() {
     }
   }
 
-  function requestRewriteForBullet(bullet) {
-    setSelectedBullet(bullet);
-    setSelectedRewriteSuggestion("");
-    setRewriteSuggestions(
-      rewriteList
-        .filter(s => s.original_text && bullet.text?.includes(s.original_text.slice(0, 20)))
-        .map(s => ({ suggestion: s.suggested_text, why_it_is_better: s.reason }))
-    );
-    setRewriteModalOpen(true);
-  }
-
   function openSuggestionRewrite() {
+    // Switch to Rewrites tab and highlight the first matching rewrite for this suggestion
     if (!currentSuggestion) return;
-    setSelectedBullet({ id: currentSuggestion.id, text: currentSuggestion.text });
-    setRewriteSuggestions([{
-      suggestion: currentSuggestion.suggestion,
-      why_it_is_better: "AI suggestion based on job requirements.",
-    }]);
-    setSelectedRewriteSuggestion("");
-    setRewriteModalOpen(true);
+    setActiveTab("rewrites");
+    const match = rewriteList.find(s =>
+      currentSuggestion.text && s.original_text &&
+      (s.original_text.includes(currentSuggestion.text.slice(0, 30)) ||
+       currentSuggestion.text.includes(s.original_text.slice(0, 30)))
+    );
+    if (match) setActiveRewriteId(match.id);
   }
 
-  function acceptRewrite() {
-    setRewriteModalOpen(false);
-    setSelectedBullet(null);
-    setSelectedRewriteSuggestion("");
-  }
-
-  function ignoreRewrite() {
-    setRewriteModalOpen(false);
-    setSelectedBullet(null);
-    setSelectedRewriteSuggestion("");
-  }
-
-  function handleResumeUpload(event) {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    setResumeFile(file);
-    setStatusMessage(`${file.name} uploaded. Click Evaluate to analyze it.`);
+  async function findJobs() {
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
+    if (!rid) {
+      setErrorMessage("Upload your resume first before searching for jobs.");
+      return;
+    }
+    setJobSearchLoading(true);
     setErrorMessage("");
+    try {
+      const result = await callBackend("/jobs/search-web", {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid, resume_id: rid, location: jobLocation, country: jobCountry }),
+      });
+      setJobResults(result.jobs || []);
+      setJobSearched(true);
+    } catch (error) {
+      setErrorMessage(error.message);
+      setJobSearched(true);
+    } finally {
+      setJobSearchLoading(false);
+    }
+  }
+
+  async function evaluateAgainstJob(job) {
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
+    if (!rid) return;
+    try {
+      setLoadingState(`Evaluating against ${job.role_title} at ${job.company_name}…`);
+      setVacancyLink(job.job_url);
+      localStorage.setItem("reeracifyVacancyLink", job.job_url);
+
+      const app = await callBackend("/applications/create", {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid, resume_id: rid, job_post_id: job.job_post_id }),
+      });
+      const appId = app.id;
+      setApplicationId(appId);
+      localStorage.setItem("reeracifyApplicationId", appId);
+
+      setLoadingState("Retrieving resume context…");
+      await callBackend(`/applications/${appId}/retrieve-context`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+
+      setLoadingState("Evaluating ATS score…");
+      const evalResult = await callBackend(`/applications/${appId}/evaluate`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+
+      const score = evalResult.score || 0;
+      setAtsScoreValue(score);
+      setResumeLevel(getRankLabel(evalResult.rank));
+      setJobSummary(`${job.role_title} at ${job.company_name}`);
+      const matched = evalResult.matched_skills?.length || 0;
+      const missing = evalResult.missing_skills?.length || 0;
+      const total = matched + missing || 1;
+      const weaknessCount = evalResult.weaknesses?.length || 0;
+      const strengthCount = evalResult.strengths?.length || 0;
+      setMetrics({
+        clarity: Math.max(0, 100 - weaknessCount * 15),
+        keywordFit: Math.round((matched / total) * 100),
+        structure: score,
+        impact: Math.min(100, strengthCount * 20),
+      });
+
+      const jobSuggestions = [
+        ...(evalResult.missing_skills || []).map((s, i) => ({
+          id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
+          text: `"${s}" is required but not found in your resume.`,
+          suggestion: `Add "${s}" to your skills or experience section.`,
+        })),
+        ...(evalResult.weaknesses || []).map((w, i) => ({
+          id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
+          text: w, suggestion: w,
+        })),
+        ...(evalResult.improvement_priority || []).map((p, i) => ({
+          id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
+          text: p, suggestion: p,
+        })),
+      ];
+      setBackendSuggestions(jobSuggestions);
+      if (jobSuggestions.length > 0) setActiveSuggestion(jobSuggestions[0].id);
+
+      setLoadingState("Generating rewrite suggestions…");
+      const rwResult = await callBackend(`/applications/${appId}/rewrite-suggestions`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid }),
+      });
+      setRewriteList(rwResult.suggestions || []);
+
+      setIsLoading(false);
+      setStatusMessage(`Evaluated: ${job.role_title} — ATS score ${score}/100`);
+      setActiveTab("rewrites");
+    } catch (error) {
+      setIsLoading(false);
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function generateCandidateProfile() {
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
+    if (!rid) {
+      setErrorMessage("Upload your resume on the home page first.");
+      return;
+    }
+    setCandidateProfileLoading(true);
+    setErrorMessage("");
+    try {
+      const formData = new FormData();
+      formData.append("user_id", uid);
+      const result = await callBackend(`/resumes/${rid}/candidate-profile`, {
+        method: "POST",
+        body: formData,
+      });
+      setCandidateProfile(result.profile);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setCandidateProfileLoading(false);
+    }
+  }
+
+  async function searchJobsFromProfile() {
+    setActiveTab("find-jobs");
+    await findJobs();
   }
 
   async function downloadResume() {
@@ -718,7 +656,7 @@ export default function EditResumePage() {
           <nav className="space-y-1">
             <SidebarItem
               icon={<Home size={18} />}
-              label="Homes"
+              label="Home"
               open={sidebarOpen}
             />
             <SidebarItem
@@ -808,6 +746,14 @@ export default function EditResumePage() {
 
                 {/* Right actions */}
                 <div className="flex items-center gap-3">
+                  <input
+                    type="url"
+                    value={vacancyLink}
+                    onChange={(e) => setVacancyLink(e.target.value)}
+                    placeholder="Paste vacancy link (optional)"
+                    className="hidden w-56 rounded-full border border-[#243026]/20 bg-white/55 px-4 py-2 text-xs font-semibold text-[#243026] outline-none placeholder:text-[#243026]/35 focus:border-[#243026]/40 focus:bg-white/80 sm:block"
+                  />
+
                   <button
                     onClick={evaluateResume}
                     disabled={isLoading}
@@ -871,6 +817,7 @@ export default function EditResumePage() {
                     setActiveRewriteId(rw.id);
                     setActiveTab("rewrites");
                   }}
+                  onDataChange={setResumeData}
                 />
               </div>
             </div>
@@ -881,17 +828,21 @@ export default function EditResumePage() {
 
             {/* Tab bar */}
             <div className="flex shrink-0 gap-1 border-b border-[#243026]/10 px-4 pt-4">
-              {["analysis", "rewrites", "cover-letter"].map((tab) => (
+              {["analysis", "rewrites", "cover-letter", "find-jobs", "profile"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`rounded-t-xl px-4 py-2 text-xs font-black transition ${
+                  className={`rounded-t-xl px-3 py-2 text-xs font-black transition ${
                     activeTab === tab
                       ? "bg-white/70 text-[#243026] shadow-sm"
                       : "text-[#243026]/45 hover:text-[#243026]"
                   }`}
                 >
-                  {tab === "analysis" ? "Analysis" : tab === "rewrites" ? "Rewrites" : "Cover Letter"}
+                  {tab === "analysis" ? "Analysis"
+                    : tab === "rewrites" ? "Rewrites"
+                    : tab === "cover-letter" ? "Cover Letter"
+                    : tab === "find-jobs" ? "Find Jobs"
+                    : "Profile"}
                 </button>
               ))}
             </div>
@@ -1072,13 +1023,13 @@ export default function EditResumePage() {
                         {s.status === "pending" && (
                           <div className="mt-3 flex gap-2">
                             <button
-                              onClick={() => approveRewrite(s.id)}
+                              onClick={(e) => { e.stopPropagation(); approveRewrite(s.id); }}
                               className="flex-1 rounded-full bg-[#243026] py-2 text-xs font-black text-white transition hover:scale-[1.02]"
                             >
                               Approve
                             </button>
                             <button
-                              onClick={() => rejectRewrite(s.id)}
+                              onClick={(e) => { e.stopPropagation(); rejectRewrite(s.id); }}
                               className="flex-1 rounded-full border border-[#243026]/20 bg-white/50 py-2 text-xs font-black text-[#243026] transition hover:bg-white/80"
                             >
                               Reject
@@ -1152,23 +1103,249 @@ export default function EditResumePage() {
                 </section>
               )}
 
+              {/* ── Career Profile tab ── */}
+              {activeTab === "profile" && (
+                <section className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-black text-[#243026]">Career Profile</h2>
+                    <div className="rounded-2xl bg-[#dfe9ff]/80 p-2 text-[#2f5fa8]">
+                      <Briefcase size={18} />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-[#243026]/55 leading-5">
+                    AI analyzes your full resume and builds a career intelligence profile — target roles, seniority, skills, and ready-to-use job search queries.
+                  </p>
+
+                  <button
+                    onClick={generateCandidateProfile}
+                    disabled={candidateProfileLoading || !resumeId}
+                    className="w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.01] disabled:opacity-50"
+                  >
+                    {candidateProfileLoading
+                      ? "Analyzing resume…"
+                      : candidateProfile
+                      ? "Regenerate Profile"
+                      : "Generate Career Profile"}
+                  </button>
+
+                  {!resumeId && (
+                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                      Upload your resume on the home page first.
+                    </p>
+                  )}
+
+                  {candidateProfileLoading && (
+                    <p className="text-center text-xs text-[#243026]/50 animate-pulse">
+                      AI is reading your resume…
+                    </p>
+                  )}
+
+                  {candidateProfile && (
+                    <div className="flex flex-col gap-4">
+
+                      {/* Seniority */}
+                      <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40">Seniority Level</p>
+                        <p className="mt-1 text-base font-black text-[#243026] capitalize">
+                          {candidateProfile.seniority_level || "—"}
+                        </p>
+                      </div>
+
+                      {/* Target Roles */}
+                      {candidateProfile.target_roles?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Target Roles</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {candidateProfile.target_roles.map((role, i) => (
+                              <span key={i} className="rounded-full bg-[#243026] px-3 py-1 text-[11px] font-bold text-white">
+                                {role}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Core Skills */}
+                      {candidateProfile.core_skills?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Core Skills</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {candidateProfile.core_skills.map((skill, i) => (
+                              <span key={i} className="rounded-full border border-[#243026]/20 bg-white/60 px-3 py-1 text-[11px] font-semibold text-[#243026]">
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Domain Interests */}
+                      {candidateProfile.domain_interests?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Domain Interests</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {candidateProfile.domain_interests.map((d, i) => (
+                              <span key={i} className="rounded-full bg-[#dfe9ff]/80 px-3 py-1 text-[11px] font-semibold text-[#2f5fa8]">
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Strongest Experiences */}
+                      {candidateProfile.strongest_experiences?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Strongest Experiences</p>
+                          <ul className="space-y-1">
+                            {candidateProfile.strongest_experiences.map((exp, i) => (
+                              <li key={i} className="flex items-start gap-2 text-xs text-[#243026]/75">
+                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#243026]/40" />
+                                {exp}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Search Queries */}
+                      {candidateProfile.search_queries?.length > 0 && (
+                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Suggested Job Search Queries</p>
+                          <ul className="space-y-1">
+                            {candidateProfile.search_queries.map((q, i) => (
+                              <li key={i} className="text-xs font-mono text-[#243026]/65 bg-white/50 rounded-lg px-3 py-1.5">
+                                {q}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={searchJobsFromProfile}
+                        disabled={jobSearchLoading || !resumeId}
+                        className="w-full rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80 disabled:opacity-50"
+                      >
+                        {jobSearchLoading ? "Searching…" : "Search Jobs with this Profile →"}
+                      </button>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {/* ── Find Jobs tab ── */}
+              {activeTab === "find-jobs" && (
+                <section className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-black text-[#243026]">Find Jobs</h2>
+                    <div className="rounded-2xl bg-[#dfe9ff]/80 p-2 text-[#2f5fa8]">
+                      <Target size={18} />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-[#243026]/55 leading-5">
+                    AI searches the web for real job postings that match your resume. Click any result to evaluate your fit.
+                  </p>
+
+                  <select
+                    value={jobCountry}
+                    onChange={(e) => setJobCountry(e.target.value)}
+                    className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 px-4 py-2.5 text-sm text-[#243026] outline-none focus:border-[#243026]/30"
+                  >
+                    <option value="us">🇺🇸 United States</option>
+                    <option value="sg">🇸🇬 Singapore</option>
+                    <option value="gb">🇬🇧 United Kingdom</option>
+                    <option value="ca">🇨🇦 Canada</option>
+                    <option value="de">🇩🇪 Germany</option>
+                    <option value="au">🇦🇺 Australia</option>
+                    <option value="nl">🇳🇱 Netherlands</option>
+                    <option value="jp">🇯🇵 Japan</option>
+                    <option value="kr">🇰🇷 South Korea</option>
+                    <option value="in">🇮🇳 India</option>
+                  </select>
+
+                  <input
+                    type="text"
+                    value={jobLocation}
+                    onChange={(e) => setJobLocation(e.target.value)}
+                    placeholder="City or Remote (optional)"
+                    className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 px-4 py-2.5 text-sm text-[#243026] outline-none placeholder:text-[#243026]/40 focus:border-[#243026]/30"
+                  />
+
+                  <button
+                    onClick={findJobs}
+                    disabled={jobSearchLoading || !resumeId}
+                    className="w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.01] disabled:opacity-50"
+                  >
+                    {jobSearchLoading ? "Searching the web…" : jobResults.length > 0 ? "Search Again" : "Search for Jobs"}
+                  </button>
+
+                  {!resumeId && (
+                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                      Upload your resume on the home page first.
+                    </p>
+                  )}
+
+                  {jobSearchLoading && (
+                    <p className="text-center text-xs text-[#243026]/50 animate-pulse">
+                      AI is searching the web for relevant job openings…
+                    </p>
+                  )}
+
+                  {!jobSearchLoading && jobSearched && jobResults.length === 0 && (
+                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                      No jobs found. Try a different location or generate a candidate profile first.
+                    </p>
+                  )}
+
+                  <div className="flex flex-col gap-3">
+                    {jobResults.map((job, i) => (
+                      <div
+                        key={job.job_post_id || i}
+                        className="rounded-[1.2rem] border border-white/45 bg-white/40 p-4"
+                      >
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40">
+                          {job.location || "Location not specified"}
+                        </p>
+                        <h3 className="mt-1 text-sm font-black text-[#243026]">{job.role_title}</h3>
+                        <p className="text-xs font-semibold text-[#243026]/65">{job.company_name}</p>
+                        {job.job_description && (
+                          <p className="mt-2 text-xs leading-5 text-[#243026]/55 line-clamp-3">
+                            {job.job_description}
+                          </p>
+                        )}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            onClick={() => evaluateAgainstJob(job)}
+                            disabled={isLoading}
+                            className="flex-1 rounded-full bg-[#243026] py-2 text-xs font-black text-white transition hover:scale-[1.01] disabled:opacity-50"
+                          >
+                            Evaluate Fit
+                          </button>
+                          {job.job_url && (
+                            <a
+                              href={job.job_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-center rounded-full border border-[#243026]/20 bg-white/50 px-4 py-2 text-xs font-black text-[#243026] transition hover:bg-white/80"
+                            >
+                              View
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
             </div>
           </aside>
         </section>
       </div>
 
-      {rewriteModalOpen && (
-        <RewriteModal
-          selectedBullet={selectedBullet}
-          rewriteSuggestions={rewriteSuggestions}
-          selectedRewriteSuggestion={selectedRewriteSuggestion}
-          setSelectedRewriteSuggestion={setSelectedRewriteSuggestion}
-          onClose={() => setRewriteModalOpen(false)}
-          onIgnore={ignoreRewrite}
-          onAccept={acceptRewrite}
-          errorMessage={errorMessage}
-        />
-      )}
     </main>
   );
 }
@@ -1229,25 +1406,7 @@ function MetricBox({ title, value }) {
   );
 }
 
-function HighlightBox({ active, children, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      className={`rounded-sm px-1 transition ${
-        active
-          ? "cursor-pointer bg-yellow-300 shadow-[0_0_0_2px_rgba(250,204,21,0.65)]"
-          : onClick
-          ? "cursor-pointer hover:bg-yellow-100"
-          : ""
-      }`}
-    >
-      {children}
-    </div>
-  );
-}
-
-function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick }) {
-  // Build lookup: normalised original_text → rewrite object
+function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick, onDataChange }) {
   const rewriteMap = useMemo(() => {
     const m = new Map();
     for (const rw of rewriteList) {
@@ -1256,7 +1415,6 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     return m;
   }, [rewriteList]);
 
-  // Returns the matching rewrite for a piece of text (if any)
   function matchRewrite(text) {
     if (!text) return null;
     const t = text.trim();
@@ -1289,6 +1447,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     );
   }
 
+  // Shorthand: spread-update top-level resumeData fields
+  const upd = onDataChange
+    ? (patch) => onDataChange({ ...resumeData, ...patch })
+    : null;
+
   const hasData = resumeData && (
     resumeData.name || resumeData.email ||
     (resumeData.experience || []).length > 0 ||
@@ -1310,7 +1473,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
   const skills = flattenSkills(resumeData.skills);
   const education = resumeData.education || [];
-  const experience = resumeData.experience || [];
+  const experience = resumeData.experience || resumeData.work_experience || [];
   const projects = resumeData.projects || [];
   const pendingCount = rewriteList.filter(r => r.status === "pending").length;
 
@@ -1319,9 +1482,25 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
       {/* Header */}
       <div className="border-b pb-3 text-center">
-        <h1 className="text-[22px] font-black">{resumeData.name || "—"}</h1>
-        <p className="mt-1 text-[11px] text-gray-500">
-          {[resumeData.email, resumeData.phone].filter(Boolean).join(" · ")}
+        <Editable
+          value={resumeData.name || ""}
+          onSave={upd ? (v) => upd({ name: v }) : null}
+          as="h1"
+          placeholder="Your Name"
+          className="text-[22px] font-black"
+        />
+        <p className="mt-1 text-[11px] text-gray-500 flex flex-wrap justify-center gap-x-1">
+          <Editable
+            value={resumeData.email || ""}
+            onSave={upd ? (v) => upd({ email: v }) : null}
+            placeholder="email@example.com"
+          />
+          {(resumeData.email || resumeData.phone) && <span className="select-none"> · </span>}
+          <Editable
+            value={resumeData.phone || ""}
+            onSave={upd ? (v) => upd({ phone: v }) : null}
+            placeholder="+1 234 567 8900"
+          />
         </p>
       </div>
 
@@ -1332,36 +1511,16 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       )}
 
       {/* Summary */}
-      {resumeData.summary && (
+      {(resumeData.summary || upd) && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Summary</h2>
-          <p className="mt-2"><RewritableBullet text={resumeData.summary} /></p>
-        </section>
-      )}
-
-      {/* Skills */}
-      {skills.length > 0 && (
-        <section className="mt-4">
-          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Skills</h2>
-          <p className="mt-2">{skills.join(" · ")}</p>
-        </section>
-      )}
-
-      {/* Education */}
-      {education.length > 0 && (
-        <section className="mt-4">
-          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Education</h2>
-          {education.map((edu, i) => (
-            <div key={i} className="mt-2">
-              <div className="flex justify-between">
-                <h3 className="font-bold">{edu.school}</h3>
-                <span className="text-gray-500">{[edu.start_date, edu.end_date].filter(Boolean).join(" – ")}</span>
-              </div>
-              {(edu.degree || edu.field) && (
-                <p className="text-gray-600">{[edu.degree, edu.field].filter(Boolean).join(" · ")}</p>
-              )}
-            </div>
-          ))}
+          <Editable
+            value={resumeData.summary || ""}
+            onSave={upd ? (v) => upd({ summary: v }) : null}
+            as="p"
+            placeholder="Write a short professional summary..."
+            className="mt-2"
+          />
         </section>
       )}
 
@@ -1373,17 +1532,52 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
             <div key={i} className="mt-3">
               <div className="flex justify-between">
                 <div>
-                  <h3 className="font-bold">{exp.role}</h3>
-                  <p className="text-gray-600">{exp.company}</p>
+                  <Editable
+                    value={exp.role || exp.title || ""}
+                    onSave={upd ? (v) => {
+                      const newExp = experience.map((e, ei) => ei === i ? { ...e, role: v } : e);
+                      upd({ experience: newExp });
+                    } : null}
+                    as="h3"
+                    placeholder="Job Title"
+                    className="font-bold"
+                  />
+                  <Editable
+                    value={exp.company || exp.organization || ""}
+                    onSave={upd ? (v) => {
+                      const newExp = experience.map((e, ei) => ei === i ? { ...e, company: v } : e);
+                      upd({ experience: newExp });
+                    } : null}
+                    as="p"
+                    placeholder="Company Name"
+                    className="text-gray-600"
+                  />
                 </div>
                 <span className="shrink-0 text-gray-500 ml-2">
                   {[exp.start_date, exp.end_date].filter(Boolean).join(" – ")}
                 </span>
               </div>
-              {(exp.bullets || []).length > 0 && (
+              {/* Description always shown as editable so user can add one even if empty */}
+              <Editable
+                value={exp.description || ""}
+                onSave={upd ? (v) => {
+                  const newExp = experience.map((e, ei) => ei === i ? { ...e, description: v } : e);
+                  upd({ experience: newExp });
+                } : null}
+                as="p"
+                placeholder="Describe your responsibilities and achievements..."
+                className="mt-1 text-gray-700"
+              />
+              {(exp.bullets?.length
+                ? exp.bullets
+                : exp.responsibilities || []).length > 0 && (
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
-                  {exp.bullets.map((b, j) => (
-                    <li key={j}><RewritableBullet text={b} /></li>
+                  {(exp.bullets?.length
+                    ? exp.bullets
+                    : exp.responsibilities || []).map((b, j) => (
+                    <li key={j}>
+                      <RewritableBullet text={b} />
+                    </li>
                   ))}
                 </ul>
               )}
@@ -1399,11 +1593,51 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           {projects.map((proj, i) => (
             <div key={i} className="mt-3">
               <div className="flex justify-between">
-                <h3 className="font-bold">{proj.name}</h3>
+                <Editable
+                  value={proj.name || proj.title || ""}
+                  onSave={upd ? (v) => {
+                    const newProj = projects.map((p, pi) => pi === i ? { ...p, name: v } : p);
+                    upd({ projects: newProj });
+                  } : null}
+                  as="h3"
+                  placeholder="Project Name"
+                  className="font-bold"
+                />
                 <span className="shrink-0 text-gray-500 ml-2">
                   {[proj.start_date, proj.end_date].filter(Boolean).join(" – ")}
                 </span>
               </div>
+              <Editable
+                value={proj.description || ""}
+                onSave={upd ? (v) => {
+                  const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
+                  upd({ projects: newProj });
+                } : null}
+                as="p"
+                placeholder="Describe this project..."
+                className="mt-1 text-gray-700"
+              />
+              {proj.contributions?.length > 0 && (
+                <ul className="mt-1 list-disc pl-5">
+                  {proj.contributions.map((c, ci) => <li key={ci}>{c}</li>)}
+                </ul>
+              )}
+              {(proj.results || proj.outcomes)?.length > 0 && (
+                <ul className="mt-1 list-disc pl-5">
+                  {(proj.results || proj.outcomes).map((r, ri) => <li key={ri}>{r}</li>)}
+                </ul>
+              )}
+              {proj.repository && (
+                <p className="mt-1 text-blue-600 break-all">{proj.repository}</p>
+              )}
+              {proj.links?.length > 0 && (
+                <p className="mt-1 text-blue-600 break-all">{proj.links[0]}</p>
+              )}
+              {proj.technologies?.length > 0 && (
+                <p className="mt-1 text-gray-500 text-[11px]">
+                  Technologies: {proj.technologies.join(", ")}
+                </p>
+              )}
               {(proj.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
                   {proj.bullets.map((b, j) => (
@@ -1416,7 +1650,131 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
         </section>
       )}
 
+      {/* Education */}
+      {education.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Education</h2>
+          {education.map((edu, i) => (
+            <div key={i} className="mt-2">
+              <div className="flex justify-between">
+                <div>
+                  <Editable
+                    value={edu.school || edu.institution || ""}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) => ei === i ? { ...e, school: v } : e);
+                      upd({ education: newEdu });
+                    } : null}
+                    as="h3"
+                    placeholder="School / University"
+                    className="font-bold"
+                  />
+                  {(edu.degree || edu.program) && (
+                    <Editable
+                      value={edu.degree || edu.program || ""}
+                      onSave={upd ? (v) => {
+                        const newEdu = education.map((e, ei) => ei === i ? { ...e, degree: v } : e);
+                        upd({ education: newEdu });
+                      } : null}
+                      as="p"
+                      placeholder="Degree"
+                      className="text-gray-600"
+                    />
+                  )}
+                  {edu.field_of_study && (
+                    <p className="text-gray-600">{edu.field_of_study}</p>
+                  )}
+                  {edu.focus && (
+                    <p className="mt-1 text-gray-700">
+                      {Array.isArray(edu.focus) ? edu.focus.join(", ") : edu.focus}
+                    </p>
+                  )}
+                  {edu.highlights?.length > 0 && (
+                    <ul className="mt-1 list-disc pl-5">
+                      {edu.highlights.map((h, hi) => <li key={hi}>{h}</li>)}
+                    </ul>
+                  )}
+                </div>
+                <span className="text-gray-500 shrink-0 ml-2">
+                  {[edu.start_date, edu.end_date].filter(Boolean).join(" – ")}
+                </span>
+              </div>
+              {edu.gpa && (
+                <p className="text-gray-600">
+                  GPA: <Editable
+                    value={edu.gpa}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) => ei === i ? { ...e, gpa: v } : e);
+                      upd({ education: newEdu });
+                    } : null}
+                    placeholder="0.00/4.00"
+                  />
+                </p>
+              )}
+              {edu.description && (
+                <p className="mt-1 text-gray-700">{edu.description}</p>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Skills */}
+      {skills.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Skills</h2>
+          <p className="mt-2">{skills.join(" · ")}</p>
+        </section>
+      )}
+
+      {/* Languages */}
+      {resumeData.languages?.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Languages</h2>
+          {resumeData.languages.map((lang, i) => (
+            <p key={i} className="mt-1">
+              {lang.language || lang.name}: {
+                lang.level ? `${lang.level} (${lang.proficiency})` : lang.proficiency
+              }
+            </p>
+          ))}
+        </section>
+      )}
     </article>
+  );
+}
+
+// Inline-editable text element for the resume preview.
+// Uses useRef so React re-renders never clobber what the user is typing.
+function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
+  const ref = useRef(null);
+  const committed = useRef(value ?? "");
+
+  useEffect(() => {
+    if (ref.current && committed.current !== (value ?? "")) {
+      ref.current.innerText = value ?? "";
+      committed.current = value ?? "";
+    }
+  }, [value]);
+
+  if (!onSave) {
+    return <Tag className={className}>{value}</Tag>;
+  }
+
+  return (
+    <Tag
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      data-placeholder={placeholder}
+      onBlur={(e) => {
+        const v = (e.currentTarget.innerText ?? "").trim();
+        committed.current = v;
+        if (v !== (value ?? "").trim()) onSave(v);
+      }}
+      className={`resume-editable outline-none focus:bg-yellow-50/80 focus:ring-1 focus:ring-yellow-300 focus:rounded-sm cursor-text ${className ?? ""}`}
+    >
+      {value || ""}
+    </Tag>
   );
 }
 
@@ -1441,101 +1799,4 @@ function flattenSkills(skills) {
     );
   }
   return [];
-}
-
-function RewriteModal({
-  selectedBullet,
-  rewriteSuggestions,
-  selectedRewriteSuggestion,
-  setSelectedRewriteSuggestion,
-  onClose,
-  onIgnore,
-  onAccept,
-  errorMessage,
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-      <div className="relative max-h-[85vh] w-full max-w-2xl overflow-auto rounded-[2rem] border border-white/45 bg-white/85 p-6 text-[#243026] shadow-2xl backdrop-blur-2xl">
-        <button
-          onClick={onClose}
-          className="absolute right-5 top-5 rounded-full p-2 hover:bg-black/5"
-        >
-          <X size={18} />
-        </button>
-
-        <h2 className="text-2xl font-black">Rewrite Suggestion</h2>
-
-        <p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-[#243026]/45">
-          Selected part
-        </p>
-
-        <div className="mt-2 rounded-2xl bg-white/70 p-4 text-sm leading-6">
-          {selectedBullet?.text || "No text selected."}
-        </div>
-
-        <div className="mt-5 space-y-3">
-          {rewriteSuggestions.length === 0 ? (
-            <p className="rounded-2xl bg-white/60 p-4 text-sm">
-              {errorMessage || "Generating rewrite suggestions..."}
-            </p>
-          ) : (
-            rewriteSuggestions.map((item, index) => {
-              const suggestion = item.suggestion || "";
-
-              return (
-                <button
-                  key={index}
-                  onClick={() => setSelectedRewriteSuggestion(suggestion)}
-                  className={`w-full rounded-2xl border p-4 text-left transition ${
-                    selectedRewriteSuggestion === suggestion
-                      ? "border-[#243026] bg-white shadow-lg"
-                      : "border-white/60 bg-white/50 hover:bg-white/80"
-                  }`}
-                >
-                  <p className="text-sm font-black">Suggestion {index + 1}</p>
-                  <p className="mt-2 text-sm leading-6">{suggestion}</p>
-
-                  {item.why_it_is_better && (
-                    <p className="mt-2 text-xs leading-5 text-[#243026]/60">
-                      {item.why_it_is_better}
-                    </p>
-                  )}
-
-                  {item.caution && (
-                    <p className="mt-2 text-xs font-bold text-red-600">
-                      {item.caution}
-                    </p>
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            onClick={onIgnore}
-            className="rounded-full border border-[#243026]/20 bg-white/50 px-5 py-3 text-xs font-bold"
-          >
-            Ignore
-          </button>
-
-          <button
-            onClick={onClose}
-            className="rounded-full border border-[#243026]/20 bg-white/50 px-5 py-3 text-xs font-bold"
-          >
-            Close
-          </button>
-
-          <button
-            onClick={onAccept}
-            disabled={!selectedRewriteSuggestion}
-            className="rounded-full bg-[#243026] px-5 py-3 text-xs font-bold text-white disabled:opacity-40"
-          >
-            Accept Suggestion
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }

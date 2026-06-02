@@ -203,6 +203,128 @@ async def discover_jobs(request: JobDiscoverRequest) -> JobDiscoverResponse:
     )
 
 
+class WebJobSearchRequest(BaseModel):
+    user_id: str
+    resume_id: str
+    location: str = ""
+    job_type: str = ""
+    country: str = ""  # overrides JSEARCH_COUNTRY setting when provided
+
+
+@router.post("/search-web")
+async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
+    """Search the web for relevant jobs based on the candidate's resume.
+
+    Uses OpenAI's web_search_preview MCP tool to find real current job
+    postings matching the candidate's skills and experience — no separate
+    job board API key required.
+    """
+    db = supabase_client.get_client()
+
+    # Load resume parsed_json
+    try:
+        result = (
+            db.table("resumes")
+            .select("parsed_json, raw_text")
+            .eq("id", request.resume_id)
+            .eq("user_id", request.user_id)
+            .single()
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Resume not found: {exc}")
+
+    parsed_json: dict = (result.data or {}).get("parsed_json") or {}
+
+    # Try to load candidate profile for target_roles and core_skills
+    target_roles: list[str] = []
+    core_skills: list[str] = []
+    try:
+        profile_result = (
+            db.table("candidate_profiles")
+            .select("profile_json")
+            .eq("resume_id", request.resume_id)
+            .eq("user_id", request.user_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if profile_result.data:
+            profile_json: dict = profile_result.data[0].get("profile_json") or {}
+            target_roles = profile_json.get("target_roles") or []
+            core_skills = profile_json.get("core_skills") or []
+    except Exception:
+        pass  # fall back to resume-based queries below
+
+    import re as _re
+
+    def _clean_role(role: str) -> str:
+        """Strip parentheticals, slashes, and level qualifiers for clean job search queries."""
+        # Remove anything in parentheses: "ML Engineer (Junior/Intern)" → "ML Engineer"
+        role = _re.sub(r"\s*\(.*?\)", "", role)
+        # Replace slash alternatives, keep first: "AI/ML Engineer" → "AI Engineer"
+        role = _re.sub(r"/\w+", "", role)
+        return role.strip()
+
+    loc = request.location.strip()
+
+    if target_roles:
+        # One clean query per target role — location is passed separately to the provider
+        queries = [_clean_role(r) for r in target_roles[:4] if r]
+    else:
+        # Fall back: build queries from resume's work experience + skills
+        from app.services.job_search_service import _flatten_skills_from_dict
+
+        skills = _flatten_skills_from_dict(parsed_json.get("skills", []))[:5]
+        exp_roles = [
+            exp.get("title") or exp.get("role", "")
+            for exp in (parsed_json.get("work_experience") or [])
+            if exp.get("title") or exp.get("role")
+        ][:2]
+        latest_role = _clean_role(exp_roles[0]) if exp_roles else "software engineer"
+        queries = [latest_role, "machine learning engineer", "data scientist"]
+
+    queries = [q.strip() for q in queries if q.strip()]
+
+    jobs = await search_jobs(
+        queries=queries,
+        location=request.location,
+        job_type=request.job_type,
+        country=request.country,
+        limit=9,
+    )
+
+    # Save each job as a job_post row so user can evaluate against it
+    saved: list[dict] = []
+    for job in jobs:
+        try:
+            insert = (
+                db.table("job_posts")
+                .insert({
+                    "user_id": request.user_id,
+                    "source": job.get("source", "web"),
+                    "job_url": job.get("job_url", ""),
+                    "company_name": job.get("company_name", ""),
+                    "role_title": job.get("role_title", ""),
+                    "location": job.get("location", ""),
+                    "job_description": job.get("job_description", ""),
+                })
+                .execute()
+            )
+            job_post_id = insert.data[0]["id"] if insert.data else None
+            if job_post_id:
+                saved.append({**job, "job_post_id": job_post_id})
+        except Exception as exc:
+            logger.warning("Failed to save job post: %s", exc)
+
+    return {
+        "resume_id": request.resume_id,
+        "queries_used": queries,
+        "jobs_found": len(saved),
+        "jobs": saved,
+    }
+
+
 class JobAnalyzeRequest(BaseModel):
     user_id: str
 

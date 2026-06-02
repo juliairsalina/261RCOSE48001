@@ -24,3 +24,17 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Show placeholder text when an editable resume field is empty and not focused */
+.resume-editable[data-placeholder]:not(:focus):empty::before {
+  content: attr(data-placeholder);
+  color: #d1d5db;
+  cursor: text;
+  pointer-events: none;
+}
+
+/* Ensure empty editable fields have a minimum clickable height */
+.resume-editable:empty {
+  min-height: 1.2em;
+  display: block;
+}

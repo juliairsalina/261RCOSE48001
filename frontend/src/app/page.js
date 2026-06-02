@@ -13,10 +13,11 @@ import {
   Wand2,
   Download,
   UserCircle,
+  CheckCircle,
+  ChevronRight,
 } from "lucide-react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-const PREPROCESS_API_URL = process.env.NEXT_PUBLIC_PREPROCESS_API_URL || "http://localhost:8000";
 
 export default function HomePage() {
   const router = useRouter();
@@ -33,6 +34,8 @@ export default function HomePage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [parsedName, setParsedName] = useState("");
+  const [parsedResumeData, setParsedResumeData] = useState(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -78,16 +81,27 @@ export default function HomePage() {
       }
 
       const data = await res.json();
-      localStorage.setItem("reeracifyResumeId", data.resume_id);
-      localStorage.setItem("reeracifyParsedResume", JSON.stringify(data.parsed_json));
+
+      localStorage.setItem(
+        "reeracifyResumeId",
+        data.resume_id
+      );
+
+      localStorage.setItem(
+        "reeracifyParsedResume",
+        JSON.stringify(data.parsed_json)
+      );
 
       const name = data.parsed_json?.name || "";
       setParsedName(name);
+      setParsedResumeData(data.parsed_json || null);
 
       if (data.parse_status === "failed") {
         setUploadError("Parsed with limited data — AI parsing failed. Evaluation will use raw text.");
       } else if (!data.chunks_ok) {
         setUploadError("Uploaded, but embedding storage failed. Context retrieval may be limited.");
+      } else {
+        setShowReviewModal(true);
       }
     } catch (error) {
       console.error(error);
@@ -104,9 +118,21 @@ export default function HomePage() {
       alert("Please upload your resume first.");
       return;
     }
+    if (parsedResumeData) {
+      setShowReviewModal(true);
+    } else {
+      if (vacancyLink.trim()) {
+        localStorage.setItem("reeracifyVacancyLink", vacancyLink.trim());
+      }
+      router.push("/edit-resume");
+    }
+  };
+
+  const handleConfirmAndContinue = () => {
     if (vacancyLink.trim()) {
       localStorage.setItem("reeracifyVacancyLink", vacancyLink.trim());
     }
+    setShowReviewModal(false);
     router.push("/edit-resume");
   };
 
@@ -388,10 +414,102 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
+      {/* Review & Confirm modal */}
+      {showReviewModal && parsedResumeData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-lg rounded-[2rem] border border-white/30 bg-white/20 p-8 text-white shadow-2xl backdrop-blur-2xl">
+            <button
+              onClick={() => setShowReviewModal(false)}
+              className="absolute right-5 top-5 rounded-full bg-white/15 p-2 transition hover:bg-white/25"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <CheckCircle size={22} className="shrink-0 text-green-300" />
+              <h2 className="text-2xl font-bold">Resume Parsed</h2>
+            </div>
+            <p className="mt-1 text-sm text-white/70">
+              Review what we extracted before evaluation begins.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              {/* Name / contact */}
+              <div className="rounded-2xl border border-white/20 bg-white/15 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-white/55">Identity</p>
+                <p className="mt-1 text-base font-bold">{parsedResumeData.name || "—"}</p>
+                <p className="text-sm text-white/75">{parsedResumeData.email || ""}{parsedResumeData.phone ? ` · ${parsedResumeData.phone}` : ""}</p>
+              </div>
+
+              {/* Skills */}
+              {parsedResumeData.skills?.length > 0 && (
+                <div className="rounded-2xl border border-white/20 bg-white/15 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-white/55">Skills ({parsedResumeData.skills.length})</p>
+                  <p className="mt-1 text-sm leading-relaxed text-white/90">
+                    {parsedResumeData.skills.slice(0, 10).join(", ")}
+                    {parsedResumeData.skills.length > 10 && ` +${parsedResumeData.skills.length - 10} more`}
+                  </p>
+                </div>
+              )}
+
+              {/* Counts row */}
+              <div className="grid grid-cols-3 gap-2">
+                <CountBadge
+                  label="Education"
+                  count={(parsedResumeData.education || []).length}
+                />
+                <CountBadge
+                  label="Experience"
+                  count={(parsedResumeData.work_experience || []).length}
+                />
+                <CountBadge
+                  label="Projects"
+                  count={(parsedResumeData.projects || []).length}
+                />
+              </div>
+
+              {/* Summary snippet */}
+              {parsedResumeData.summary && (
+                <div className="rounded-2xl border border-white/20 bg-white/15 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-white/55">Summary</p>
+                  <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-white/85">
+                    {parsedResumeData.summary}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowReviewModal(false)}
+                className="flex-1 rounded-2xl border border-white/30 bg-white/10 px-4 py-3 font-semibold text-white transition hover:bg-white/20"
+              >
+                Go Back
+              </button>
+              <button
+                onClick={handleConfirmAndContinue}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 font-bold text-slate-900 transition hover:scale-[1.01]"
+              >
+                Confirm & Continue
+                <ChevronRight size={17} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
+function CountBadge({ label, count }) {
+  return (
+    <div className="rounded-2xl border border-white/20 bg-white/15 px-3 py-3 text-center">
+      <p className="text-2xl font-black">{count}</p>
+      <p className="text-xs text-white/65">{label}</p>
+    </div>
+  );
+}
 
 function ProcessCard({ icon, title, desc }) {
   return (
