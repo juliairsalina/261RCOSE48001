@@ -180,6 +180,35 @@ class OpenAIWebSearchProvider(JobSearchProvider):
     without requiring a separate job board API key.
     """
 
+    @staticmethod
+    def _extract_jobs_from_text(text: str) -> list[dict]:
+        """Extract a JSON array of job objects from model output text."""
+        import json
+        import re
+
+        # Strip markdown code fences
+        cleaned = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
+
+        # Try the whole cleaned string first
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        # Find the outermost [...] using a greedy match
+        match = re.search(r"\[.*\]", cleaned, re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group())
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+
+        return []
+
     async def search(
         self,
         queries: list[str],
@@ -187,9 +216,6 @@ class OpenAIWebSearchProvider(JobSearchProvider):
         job_type: str = "",
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        import json
-        import re
-
         from app.services.openai_client import get_client
 
         client = get_client()
@@ -215,6 +241,7 @@ class OpenAIWebSearchProvider(JobSearchProvider):
                 "Return ONLY a valid JSON array. No markdown, no explanation."
             )
 
+            text = ""
             try:
                 response = await client.responses.create(
                     model="gpt-4o",
@@ -222,37 +249,73 @@ class OpenAIWebSearchProvider(JobSearchProvider):
                     input=prompt,
                 )
 
-                # Extract text content from response output
-                text = ""
+                # Extract text from message output items only (skip web_search_call items)
                 for item in response.output:
-                    if hasattr(item, "content"):
-                        for block in item.content:
+                    if getattr(item, "type", None) == "message":
+                        for block in getattr(item, "content", []) or []:
                             if hasattr(block, "text"):
                                 text += block.text
+                            elif isinstance(block, dict):
+                                text += block.get("text", "")
 
-                # Parse JSON array from response
-                match = re.search(r"\[.*?\]", text, re.DOTALL)
-                if not match:
-                    logger.warning("OpenAI web search: no JSON array in response for query '%s'", query)
-                    continue
-
-                jobs: list[dict] = json.loads(match.group())
-                for job in jobs:
-                    url = job.get("job_url", "")
-                    if url and url not in seen:
-                        seen.add(url)
-                        results.append({
-                            "source": "openai_web_search",
-                            "job_url": url,
-                            "company_name": job.get("company_name", ""),
-                            "role_title": job.get("role_title", ""),
-                            "location": job.get("location", ""),
-                            "job_description": job.get("job_description", ""),
-                        })
+                logger.info(
+                    "OpenAI web search raw response for query '%s': %.300s",
+                    query,
+                    text,
+                )
 
             except Exception as exc:
-                logger.warning("OpenAI web search failed for query '%s': %s", query, exc)
+                logger.warning(
+                    "OpenAI Responses API failed for query '%s': %s — trying Chat Completions fallback",
+                    query,
+                    exc,
+                )
+                # Fallback: Chat Completions with gpt-4o-search-preview
+                try:
+                    resp = await client.chat.completions.create(
+                        model="gpt-4o-search-preview",
+                        web_search_options={},
+                        messages=[{"role": "user", "content": prompt}],
+                    )
+                    text = (resp.choices[0].message.content or "") if resp.choices else ""
+                    logger.info(
+                        "Chat Completions web search response for query '%s': %.300s",
+                        query,
+                        text,
+                    )
+                except Exception as exc2:
+                    logger.warning(
+                        "Chat Completions web search also failed for query '%s': %s",
+                        query,
+                        exc2,
+                    )
+                    continue
+
+            if not text:
+                logger.warning("Empty response text for query '%s'", query)
                 continue
+
+            jobs: list[dict] = self._extract_jobs_from_text(text)
+            if not jobs:
+                logger.warning(
+                    "Could not extract jobs JSON for query '%s'. Response: %.300s",
+                    query,
+                    text,
+                )
+                continue
+
+            for job in jobs:
+                url = job.get("job_url", "")
+                if url and url not in seen:
+                    seen.add(url)
+                    results.append({
+                        "source": "openai_web_search",
+                        "job_url": url,
+                        "company_name": job.get("company_name", ""),
+                        "role_title": job.get("role_title", ""),
+                        "location": job.get("location", ""),
+                        "job_description": job.get("job_description", ""),
+                    })
 
         return results[:limit]
 
