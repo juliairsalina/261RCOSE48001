@@ -115,6 +115,29 @@ Download optimized DOCX with accepted rewrites applied
 | **Hosting** | Vercel (frontend), Render (backend) | Auto-deploy on git push |
 | **File Parsing** | pypdf, python-docx | Extract text from PDF/DOCX |
 
+### What LangChain and LangGraph actually do here
+
+**LangChain** is a toolkit for calling LLMs in a structured way. Instead of writing raw `openai.chat.completions.create(...)` calls everywhere, LangChain provides:
+- Prompt templates — reusable prompt structures with variable slots
+- Output parsers — convert raw LLM text output into Python dicts/objects
+- LLM wrappers — one consistent interface regardless of which model you use
+
+In this project LangChain handles the `chat_completion()` calls inside each agent (system prompt + user message → parsed JSON output).
+
+**LangGraph** is built on top of LangChain and adds **stateful multi-step workflows**. Think of it like a flowchart where each box is an AI agent node:
+- You define nodes (functions) and edges (connections between them)
+- A shared `AgentState` dict flows through every node — each node reads what it needs and writes its result back
+- Nodes can run sequentially, in parallel, or conditionally (e.g. skip company research if no job selected)
+- The graph can **pause and wait** for human input (e.g. user picks a job, user approves rewrites) then resume
+
+In this project the full workflow is:
+```
+parse_resume → candidate_profile → [user picks job] → retrieve_context → ats_evaluate → rewrite → cover_letter
+```
+Without LangGraph you would have to manually pass data between each step and track state yourself. LangGraph handles all of that.
+
+**LangSmith** is the observability layer — it records every LLM call, input, output, latency, and token count so you can debug exactly what each agent did.
+
 ---
 
 ## Feature Walkthrough
