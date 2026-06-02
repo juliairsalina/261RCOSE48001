@@ -255,13 +255,21 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
     except Exception:
         pass  # fall back to resume-based queries below
 
+    import re as _re
+
+    def _clean_role(role: str) -> str:
+        """Strip parentheticals, slashes, and level qualifiers for clean job search queries."""
+        # Remove anything in parentheses: "ML Engineer (Junior/Intern)" → "ML Engineer"
+        role = _re.sub(r"\s*\(.*?\)", "", role)
+        # Replace slash alternatives, keep first: "AI/ML Engineer" → "AI Engineer"
+        role = _re.sub(r"/\w+", "", role)
+        return role.strip()
+
     loc = request.location.strip()
 
     if target_roles:
-        # Build one query per target role (up to 4), optionally with location
-        queries = []
-        for role in target_roles[:4]:
-            queries.append(f"{role} {loc}".strip() if loc else role)
+        # One clean query per target role — location is passed separately to the provider
+        queries = [_clean_role(r) for r in target_roles[:4] if r]
     else:
         # Fall back: build queries from resume's work experience + skills
         from app.services.job_search_service import _flatten_skills_from_dict
@@ -272,12 +280,8 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
             for exp in (parsed_json.get("work_experience") or [])
             if exp.get("title") or exp.get("role")
         ][:2]
-        latest_role = exp_roles[0] if exp_roles else "software engineer"
-        top_skills = ", ".join(skills[:3])
-        queries = [
-            f"{latest_role} {loc}".strip() if loc else latest_role,
-            f"{top_skills} developer {loc}".strip() if top_skills else f"developer {loc}".strip(),
-        ]
+        latest_role = _clean_role(exp_roles[0]) if exp_roles else "software engineer"
+        queries = [latest_role, "machine learning engineer", "data scientist"]
 
     queries = [q.strip() for q in queries if q.strip()]
 
