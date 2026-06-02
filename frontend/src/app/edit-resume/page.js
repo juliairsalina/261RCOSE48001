@@ -508,6 +508,24 @@ export default function EditResumePage() {
         impact: Math.min(100, strengthCount * 20),
       });
 
+      const jobSuggestions = [
+        ...(evalResult.missing_skills || []).map((s, i) => ({
+          id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
+          text: `"${s}" is required but not found in your resume.`,
+          suggestion: `Add "${s}" to your skills or experience section.`,
+        })),
+        ...(evalResult.weaknesses || []).map((w, i) => ({
+          id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
+          text: w, suggestion: w,
+        })),
+        ...(evalResult.improvement_priority || []).map((p, i) => ({
+          id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
+          text: p, suggestion: p,
+        })),
+      ];
+      setBackendSuggestions(jobSuggestions);
+      if (jobSuggestions.length > 0) setActiveSuggestion(jobSuggestions[0].id);
+
       setLoadingState("Generating rewrite suggestions…");
       const rwResult = await callBackend(`/applications/${appId}/rewrite-suggestions`, {
         method: "POST",
@@ -1360,9 +1378,6 @@ function MetricBox({ title, value }) {
   );
 }
 
-  );
-}
-
 function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick }) {
   // Build lookup: normalised original_text → rewrite object
   const rewriteMap = useMemo(() => {
@@ -1671,6 +1686,4 @@ function flattenSkills(skills) {
     );
   }
   return [];
-}
-
 }
