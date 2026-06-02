@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  Upload,
-  X,
   Download,
   ZoomIn,
   ZoomOut,
@@ -34,7 +32,6 @@ export default function EditResumePage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [zoom, setZoom] = useState(0.72);
 
-  const [resumeFile, setResumeFile] = useState(null);
   const [resumeData, setResumeData] = useState({
         name: "John Doe",
         email: "john@email.com",
@@ -105,20 +102,8 @@ export default function EditResumePage() {
     impact: 0,
   });
 
-  const [resumeBullets, setResumeBullets] = useState([]);
-  const [weakBulletIds, setWeakBulletIds] = useState(new Set());
   const [backendSuggestions, setBackendSuggestions] = useState([]);
   const [activeSuggestion, setActiveSuggestion] = useState("summary");
-
-  const [latestRuleBasedSignals, setLatestRuleBasedSignals] = useState(null);
-  const [latestEvaluationAgentResult, setLatestEvaluationAgentResult] =
-    useState(null);
-
-  const [rewriteModalOpen, setRewriteModalOpen] = useState(false);
-  const [selectedBullet, setSelectedBullet] = useState(null);
-  const [rewriteSuggestions, setRewriteSuggestions] = useState([]);
-  const [selectedRewriteSuggestion, setSelectedRewriteSuggestion] =
-    useState("");
 
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
@@ -281,172 +266,6 @@ export default function EditResumePage() {
     setErrorMessage("");
   }
 
-  function calculateResumeLevel(score) {
-    if (score >= 85) return "Advanced";
-    if (score >= 60) return "Intermediate";
-    return "Beginner";
-  }
-
-  function calculateImpactScore(ruleSignals) {
-    const measurable = ruleSignals?.measurable_evidence || {};
-    const total = measurable.total_bullet_count || 0;
-    const metricCount = measurable.metric_bullet_count || 0;
-
-    if (total === 0) return 0;
-
-    return Math.round((metricCount / total) * 100);
-  }
-
-  function buildBackendSuggestions(ruleSignals, evaluation) {
-    const items = [];
-
-    const keywordResult = ruleSignals?.keyword_result || {};
-    const missingKeywords = keywordResult.missing_keywords || [];
-
-    missingKeywords.forEach((keyword, index) => {
-      items.push({
-        id: `missing-keyword-${index}`,
-        title: `Missing keyword: ${keyword}`,
-        label: "Keyword suggestion",
-        type: "ATS",
-        text: `The keyword "${keyword}" is missing from your resume.`,
-        suggestion: `Add "${keyword}" naturally in your project, skills, or experience section if it is true to your background.`,
-      });
-    });
-
-    (ruleSignals?.weak_phrase_flags || []).forEach((item, index) => {
-      items.push({
-        id: item.id || `weak-phrase-${index}`,
-        title: "Weak phrase detected",
-        label: "Rewrite suggestion",
-        type: "Clarity",
-        text: item.reason || item.text || "Weak phrase found.",
-        suggestion:
-          "Click the highlighted sentence in the resume to request rewrite suggestions.",
-        bulletId: item.id,
-      });
-    });
-
-    (ruleSignals?.grammar_flags || []).forEach((item, index) => {
-      items.push({
-        id: item.id || `grammar-${index}`,
-        title: "Grammar issue",
-        label: "Grammar suggestion",
-        type: "Correctness",
-        text: item.text || "Grammar or spelling issue found.",
-        suggestion: "Review the highlighted sentence and rewrite it clearly.",
-        bulletId: item.id,
-      });
-    });
-
-    (evaluation?.weak_bullets || []).forEach((item, index) => {
-      items.push({
-        id: item.id || `weak-bullet-${index}`,
-        title: "Weak bullet point",
-        label: "Rewrite suggestion",
-        type: "Impact",
-        text: item.reason || item.text || "This bullet can be improved.",
-        suggestion:
-          "Rewrite this bullet to better match the vacancy link without inventing fake numbers or achievements.",
-        bulletId: item.id,
-      });
-    });
-
-    (evaluation?.improvement_priorities || []).forEach((priority, index) => {
-      items.push({
-        id: `priority-${index}`,
-        title: "Improvement priority",
-        label: "AI comment",
-        type: "Priority",
-        text: priority,
-        suggestion: priority,
-      });
-    });
-
-    return items;
-  }
-
-  function renderBackendData(data) {
-    const ruleSignals = data.rule_based_signals || {};
-    const evaluation = data.evaluation_agent_result || {};
-
-    setLatestRuleBasedSignals(ruleSignals);
-    setLatestEvaluationAgentResult(evaluation);
-
-    const score = Number(data.ats_score ?? ruleSignals.ats_score ?? 0);
-
-    setAtsScoreValue(score);
-    setResumeLevel(data.resume_level || calculateResumeLevel(score));
-
-    setJobSummary(
-      data.job_description_summary ||
-        evaluation.job_description_summary ||
-        evaluation.reasoning ||
-        "Job-based evaluation completed."
-    );
-
-    const keywordResult = ruleSignals.keyword_result || {};
-    const presentKeywords = keywordResult.present_keywords || [];
-    const missingKeywords = keywordResult.missing_keywords || [];
-    const totalKeywords = presentKeywords.length + missingKeywords.length;
-
-    const keywordScoreValue =
-      totalKeywords > 0
-        ? Math.round((presentKeywords.length / totalKeywords) * 100)
-        : 0;
-
-    const sectionPresence = ruleSignals.section_presence || {};
-    const sectionValues = Object.values(sectionPresence);
-
-    const structureScoreValue =
-      sectionValues.length > 0
-        ? Math.round(
-            (sectionValues.filter(Boolean).length / sectionValues.length) * 100
-          )
-        : score;
-
-    const weakCount = (ruleSignals.weak_phrase_flags || []).length;
-    const grammarCount = (ruleSignals.grammar_flags || []).length;
-    const clarityScoreValue = Math.max(
-      0,
-      100 - weakCount * 10 - grammarCount * 8
-    );
-
-    setMetrics({
-      clarity: clarityScoreValue,
-      keywordFit: keywordScoreValue,
-      structure: structureScoreValue,
-      impact: calculateImpactScore(ruleSignals),
-    });
-
-    const weakIds = new Set();
-
-    (ruleSignals.weak_phrase_flags || []).forEach((item) => {
-      if (item.id) weakIds.add(item.id);
-    });
-
-    (ruleSignals.grammar_flags || []).forEach((item) => {
-      if (item.id) weakIds.add(item.id);
-    });
-
-    (evaluation.weak_bullets || []).forEach((item) => {
-      if (item.id) weakIds.add(item.id);
-    });
-
-    setWeakBulletIds(weakIds);
-    setResumeBullets(ruleSignals.all_bullets || []);
-
-    const dynamicSuggestions = buildBackendSuggestions(ruleSignals, evaluation);
-    setBackendSuggestions(dynamicSuggestions);
-
-    if (dynamicSuggestions.length > 0) {
-      setActiveSuggestion(dynamicSuggestions[0].id);
-    }
-
-    setIsLoading(false);
-    setStatusMessage("Evaluation completed.");
-  }
-
   function getRankLabel(rank) {
     if (rank === "상") return "Advanced";
     if (rank === "중") return "Intermediate";
@@ -511,11 +330,13 @@ export default function EditResumePage() {
       const matched = evalResult.matched_skills?.length || 0;
       const missing = evalResult.missing_skills?.length || 0;
       const total = matched + missing || 1;
+      const weaknessCount = evalResult.weaknesses?.length || 0;
+      const strengthCount = evalResult.strengths?.length || 0;
       setMetrics({
-        clarity: score,
+        clarity: Math.max(0, 100 - weaknessCount * 15),
         keywordFit: Math.round((matched / total) * 100),
         structure: score,
-        impact: score,
+        impact: Math.min(100, strengthCount * 20),
       });
 
       const suggestions = [
@@ -556,7 +377,7 @@ export default function EditResumePage() {
   }
 
   async function reevaluateResume() {
-    setErrorMessage("Re-evaluate: paste a new vacancy link and click Evaluate.");
+    await evaluateResume();
   }
 
   async function approveRewrite(suggestionId) {
@@ -608,38 +429,16 @@ export default function EditResumePage() {
     }
   }
 
-  function requestRewriteForBullet(bullet) {
-    setSelectedBullet(bullet);
-    setSelectedRewriteSuggestion("");
-    setRewriteSuggestions(
-      rewriteList
-        .filter(s => s.original_text && bullet.text?.includes(s.original_text.slice(0, 20)))
-        .map(s => ({ suggestion: s.suggested_text, why_it_is_better: s.reason }))
-    );
-    setRewriteModalOpen(true);
-  }
-
   function openSuggestionRewrite() {
+    // Switch to Rewrites tab and highlight the first matching rewrite for this suggestion
     if (!currentSuggestion) return;
-    setSelectedBullet({ id: currentSuggestion.id, text: currentSuggestion.text });
-    setRewriteSuggestions([{
-      suggestion: currentSuggestion.suggestion,
-      why_it_is_better: "AI suggestion based on job requirements.",
-    }]);
-    setSelectedRewriteSuggestion("");
-    setRewriteModalOpen(true);
-  }
-
-  function acceptRewrite() {
-    setRewriteModalOpen(false);
-    setSelectedBullet(null);
-    setSelectedRewriteSuggestion("");
-  }
-
-  function ignoreRewrite() {
-    setRewriteModalOpen(false);
-    setSelectedBullet(null);
-    setSelectedRewriteSuggestion("");
+    setActiveTab("rewrites");
+    const match = rewriteList.find(s =>
+      currentSuggestion.text && s.original_text &&
+      (s.original_text.includes(currentSuggestion.text.slice(0, 30)) ||
+       currentSuggestion.text.includes(s.original_text.slice(0, 30)))
+    );
+    if (match) setActiveRewriteId(match.id);
   }
 
   async function findJobs() {
@@ -700,9 +499,13 @@ export default function EditResumePage() {
       const matched = evalResult.matched_skills?.length || 0;
       const missing = evalResult.missing_skills?.length || 0;
       const total = matched + missing || 1;
+      const weaknessCount = evalResult.weaknesses?.length || 0;
+      const strengthCount = evalResult.strengths?.length || 0;
       setMetrics({
-        clarity: score, keywordFit: Math.round((matched / total) * 100),
-        structure: score, impact: score,
+        clarity: Math.max(0, 100 - weaknessCount * 15),
+        keywordFit: Math.round((matched / total) * 100),
+        structure: score,
+        impact: Math.min(100, strengthCount * 20),
       });
 
       setLoadingState("Generating rewrite suggestions…");
@@ -748,16 +551,6 @@ export default function EditResumePage() {
   async function searchJobsFromProfile() {
     setActiveTab("find-jobs");
     await findJobs();
-  }
-
-  function handleResumeUpload(event) {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    setResumeFile(file);
-    setStatusMessage(`${file.name} uploaded. Click Evaluate to analyze it.`);
-    setErrorMessage("");
   }
 
   async function downloadResume() {
@@ -931,6 +724,14 @@ export default function EditResumePage() {
 
                 {/* Right actions */}
                 <div className="flex items-center gap-3">
+                  <input
+                    type="url"
+                    value={vacancyLink}
+                    onChange={(e) => setVacancyLink(e.target.value)}
+                    placeholder="Paste vacancy link (optional)"
+                    className="hidden w-56 rounded-full border border-[#243026]/20 bg-white/55 px-4 py-2 text-xs font-semibold text-[#243026] outline-none placeholder:text-[#243026]/35 focus:border-[#243026]/40 focus:bg-white/80 sm:block"
+                  />
+
                   <button
                     onClick={evaluateResume}
                     disabled={isLoading}
@@ -1199,13 +1000,13 @@ export default function EditResumePage() {
                         {s.status === "pending" && (
                           <div className="mt-3 flex gap-2">
                             <button
-                              onClick={() => approveRewrite(s.id)}
+                              onClick={(e) => { e.stopPropagation(); approveRewrite(s.id); }}
                               className="flex-1 rounded-full bg-[#243026] py-2 text-xs font-black text-white transition hover:scale-[1.02]"
                             >
                               Approve
                             </button>
                             <button
-                              onClick={() => rejectRewrite(s.id)}
+                              onClick={(e) => { e.stopPropagation(); rejectRewrite(s.id); }}
                               className="flex-1 rounded-full border border-[#243026]/20 bg-white/50 py-2 text-xs font-black text-[#243026] transition hover:bg-white/80"
                             >
                               Reject
@@ -1499,18 +1300,6 @@ export default function EditResumePage() {
         </section>
       </div>
 
-      {rewriteModalOpen && (
-        <RewriteModal
-          selectedBullet={selectedBullet}
-          rewriteSuggestions={rewriteSuggestions}
-          selectedRewriteSuggestion={selectedRewriteSuggestion}
-          setSelectedRewriteSuggestion={setSelectedRewriteSuggestion}
-          onClose={() => setRewriteModalOpen(false)}
-          onIgnore={ignoreRewrite}
-          onAccept={acceptRewrite}
-          errorMessage={errorMessage}
-        />
-      )}
     </main>
   );
 }
@@ -1571,20 +1360,6 @@ function MetricBox({ title, value }) {
   );
 }
 
-function HighlightBox({ active, children, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      className={`rounded-sm px-1 transition ${
-        active
-          ? "cursor-pointer bg-yellow-300 shadow-[0_0_0_2px_rgba(250,204,21,0.65)]"
-          : onClick
-          ? "cursor-pointer hover:bg-yellow-100"
-          : ""
-      }`}
-    >
-      {children}
-    </div>
   );
 }
 
@@ -1898,99 +1673,4 @@ function flattenSkills(skills) {
   return [];
 }
 
-function RewriteModal({
-  selectedBullet,
-  rewriteSuggestions,
-  selectedRewriteSuggestion,
-  setSelectedRewriteSuggestion,
-  onClose,
-  onIgnore,
-  onAccept,
-  errorMessage,
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-      <div className="relative max-h-[85vh] w-full max-w-2xl overflow-auto rounded-[2rem] border border-white/45 bg-white/85 p-6 text-[#243026] shadow-2xl backdrop-blur-2xl">
-        <button
-          onClick={onClose}
-          className="absolute right-5 top-5 rounded-full p-2 hover:bg-black/5"
-        >
-          <X size={18} />
-        </button>
-
-        <h2 className="text-2xl font-black">Rewrite Suggestion</h2>
-
-        <p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-[#243026]/45">
-          Selected part
-        </p>
-
-        <div className="mt-2 rounded-2xl bg-white/70 p-4 text-sm leading-6">
-          {selectedBullet?.text || "No text selected."}
-        </div>
-
-        <div className="mt-5 space-y-3">
-          {rewriteSuggestions.length === 0 ? (
-            <p className="rounded-2xl bg-white/60 p-4 text-sm">
-              {errorMessage || "Generating rewrite suggestions..."}
-            </p>
-          ) : (
-            rewriteSuggestions.map((item, index) => {
-              const suggestion = item.suggestion || "";
-
-              return (
-                <button
-                  key={index}
-                  onClick={() => setSelectedRewriteSuggestion(suggestion)}
-                  className={`w-full rounded-2xl border p-4 text-left transition ${
-                    selectedRewriteSuggestion === suggestion
-                      ? "border-[#243026] bg-white shadow-lg"
-                      : "border-white/60 bg-white/50 hover:bg-white/80"
-                  }`}
-                >
-                  <p className="text-sm font-black">Suggestion {index + 1}</p>
-                  <p className="mt-2 text-sm leading-6">{suggestion}</p>
-
-                  {item.why_it_is_better && (
-                    <p className="mt-2 text-xs leading-5 text-[#243026]/60">
-                      {item.why_it_is_better}
-                    </p>
-                  )}
-
-                  {item.caution && (
-                    <p className="mt-2 text-xs font-bold text-red-600">
-                      {item.caution}
-                    </p>
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            onClick={onIgnore}
-            className="rounded-full border border-[#243026]/20 bg-white/50 px-5 py-3 text-xs font-bold"
-          >
-            Ignore
-          </button>
-
-          <button
-            onClick={onClose}
-            className="rounded-full border border-[#243026]/20 bg-white/50 px-5 py-3 text-xs font-bold"
-          >
-            Close
-          </button>
-
-          <button
-            onClick={onAccept}
-            disabled={!selectedRewriteSuggestion}
-            className="rounded-full bg-[#243026] px-5 py-3 text-xs font-bold text-white disabled:opacity-40"
-          >
-            Accept Suggestion
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
