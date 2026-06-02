@@ -79,12 +79,6 @@ export default function HomePage() {
 
       const data = await res.json();
 
-      console.log("FULL API RESPONSE:", data);
-      console.log(
-        "PARSED JSON:",
-        JSON.stringify(data.parsed_json, null, 2)
-      );
-
       localStorage.setItem(
         "reeracifyResumeId",
         data.resume_id
