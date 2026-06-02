@@ -138,6 +138,43 @@ Without LangGraph you would have to manually pass data between each step and tra
 
 **LangSmith** is the observability layer — it records every LLM call, input, output, latency, and token count so you can debug exactly what each agent did.
 
+### RAG (Retrieval-Augmented Generation)
+
+RAG is fully implemented and runs on every resume evaluation.
+
+**How it works:**
+
+1. **At upload time** — the resume text is split into chunks, each chunk is embedded using `text-embedding-3-small` (1536 dimensions), and stored in the `resume_chunks` table in Supabase with pgvector.
+
+2. **At evaluation time** — when you click "Evaluate Fit" or run Analysis, `POST /applications/{id}/retrieve-context` fires the `rag_retriever_agent`. It takes the job description as a query, runs a **cosine similarity search** against all your resume chunks, and returns the top N most relevant ones.
+
+3. **Those chunks are passed** into `ats_evaluator_agent` and `rewrite_agent` as context — so scores and rewrites are based on the parts of your resume most relevant to that specific job, not the entire document every time.
+
+**Why not just send the whole resume every time?**
+- Long resumes hit OpenAI's context limits
+- Sending everything is noisy — RAG surfaces only what matters for the job
+- Cheaper: fewer tokens per call
+
+```
+Resume uploaded
+      │
+      ▼
+Split into chunks → embed each chunk → store in pgvector (resume_chunks table)
+
+                                    ┌─ Job description (query)
+                                    │
+                                    ▼
+                          pgvector cosine similarity search
+                                    │
+                                    ▼
+                          Top N relevant chunks
+                                    │
+                          ┌─────────┴──────────┐
+                          ▼                    ▼
+                   ats_evaluator          rewrite_agent
+                   (score + gaps)         (per-bullet fixes)
+```
+
 ---
 
 ## Feature Walkthrough
