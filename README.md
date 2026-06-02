@@ -1,638 +1,407 @@
 # Reeracify
 
-An AI-powered resume optimization platform that analyzes, rewrites, and evaluates resumes against job postings using LangGraph agents and MCP-powered web search.
+AI-powered resume optimizer. Upload your resume, get an ATS score, AI rewrite suggestions, a tailored cover letter, and matching job listings — all in one place.
 
-**Live:** [reeracify.vercel.app](https://reeracify.vercel.app)  
-**Backend:** [reeracify-backend.onrender.com](https://reeracify-backend.onrender.com)
-
----
-
-## Architecture Overview
-
-```
-Frontend (Next.js on Vercel)      Backend (FastAPI on Render)         Storage (Supabase)
-┌─────────────────────────┐      ┌──────────────────────────┐         ┌──────────────┐
-│ page.js (Home)          │      │ POST /resumes/upload     │         │ Postgres DB  │
-│ edit-resume/page.js     │◄────►│ POST /applications/*     │◄───────►│ pgvector     │
-│ (5 tabs)                │      │ POST /jobs/search-web    │         │ Storage      │
-└─────────────────────────┘      └──────────────────────────┘         └──────────────┘
-                                         │
-                                         ▼
-                                  LangGraph Agents
-                                  ├─ resume_parser
-                                  ├─ ats_evaluator
-                                  ├─ rewrite_agent
-                                  ├─ cover_letter_agent
-                                  ├─ candidate_profile_agent
-                                  └─ job_analyzer_agent
-```
-
-### Tech Stack
-
-| Layer | Tech |
-|-------|------|
-| **Frontend** | Next.js 15 (App Router), React 18, Tailwind CSS, Lucide Icons |
-| **Backend** | FastAPI (async), Python 3.9+, LangGraph, Pydantic v2 |
-| **LLM** | OpenAI GPT-5 (text parsing), GPT-4o (analysis, rewrites, cover letters) |
-| **Web Search** | OpenAI Responses API with `web_search_preview` MCP tool |
-| **Database** | Supabase (Postgres + pgvector for embeddings) |
-| **Hosting** | Vercel (frontend), Render (backend) |
-| **CI/CD** | GitHub + auto-deploy on commit (Vercel, Render) |
+**Live app:** [reeracify.vercel.app](https://reeracify.vercel.app)  
+**API:** [reeracify-backend.onrender.com](https://reeracify-backend.onrender.com)  
+**API Docs:** [reeracify-backend.onrender.com/docs](https://reeracify-backend.onrender.com/docs)
 
 ---
 
-## Project Flow
+## How It Works (Plain English)
 
-### 1. Resume Upload (Home Page)
-User uploads PDF/DOC/DOCX file
-- **Backend**: `POST /resumes/upload`
-  - Document parser extracts raw text
-  - GPT-5 parses into structured JSON (name, email, skills, experience, projects, etc.)
-  - Text chunks embedded and stored in pgvector
-  - Response includes: `resume_id`, `parsed_json`, `parse_status`, `chunks_ok`
-- **Frontend**: Shows parse success/failure, displays parsed name, "Continue" button
-
-### 2. Resume Editor (5 Tabs)
-After upload, user lands on `/edit-resume` which displays:
-- **Left**: Resume preview (A4 paper, zoomable, clickable highlights)
-- **Right**: 5-tab panel (Analysis, Rewrites, Cover Letter, Find Jobs, Profile)
-
-#### Tab 1: Analysis (Default)
-- Shows resume level, ATS score, metrics breakdown
-- Lists AI suggestions (missing keywords, grammar, weak bullets, improvement priorities)
-- Click suggestion → highlight in preview + "Show Rewrite Suggestion" button
-
-**Backend Flow**:
 ```
-POST /applications/create            (link resume ↔ job post)
-POST /applications/{id}/retrieve-context   (RAG: fetch resume chunks)
-POST /applications/{id}/evaluate     (ats_evaluator_agent)
-POST /applications/{id}/rewrite-suggestions  (rewrite_agent)
+You upload a resume PDF
+        │
+        ▼
+Backend extracts text → GPT-5 parses into structured JSON → chunks stored in pgvector
+        │
+        ▼
+You land on the 5-tab editor
+        │
+        ├─ Analysis tab    → RAG retrieves relevant chunks → GPT-4o scores resume (0-100)
+        │                    + identifies missing keywords, weak bullets
+        │
+        ├─ Rewrites tab    → GPT-4o rewrites each bullet point → you approve/reject
+        │
+        ├─ Cover Letter    → GPT-4o writes a tailored cover letter from resume + job context
+        │
+        ├─ Find Jobs       → JSearch or OpenAI web search finds real job postings
+        │                    → click "Evaluate Fit" → instantly scores your resume vs that job
+        │
+        └─ Career Profile  → GPT-4o generates: target roles, skills, seniority, search queries
+                             → "Search Jobs with this Profile" one-click flow
+        │
+        ▼
+Download optimized DOCX with accepted rewrites applied
 ```
 
-#### Tab 2: Rewrites
-- AI-generated bullet point suggestions
-- Accept/Reject buttons → updates status in DB
-- Clicking a rewrite highlights it in the preview (bidirectional sync)
-- Green/strikethrough styling for approved/rejected
+---
 
-#### Tab 3: Cover Letter
-- **Generate Cover Letter** button → `POST /applications/{id}/cover-letter`
-- Textarea + copy/download as .txt
-- Uses `cover_letter_agent` with resume + job context
+## Cloud Architecture
 
-#### Tab 4: Find Jobs
-- Location search box + **Search for Jobs** button
-- Calls `POST /jobs/search-web` → OpenAI Responses API with `web_search_preview` MCP tool
-- Job cards show: role, company, description snippet, **Evaluate Fit** button
-- Click **Evaluate Fit** → creates new application, evaluates, shows ATS score + rewrites for that job
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              USER BROWSER                               │
+│                    Next.js 16 + React 19 (Vercel)                       │
+│  ┌──────────────┐    ┌─────────────────────────────────────────────┐    │
+│  │  Home Page   │    │         Edit Resume (/edit-resume)          │    │
+│  │  (page.js)   │    │  ┌──────────┬─────────┬──────────────────┐  │    │
+│  │              │    │  │Analysis  │Rewrites │Cover Letter       │  │    │
+│  │ Upload PDF   │    │  ├──────────┼─────────┼──────────────────┤  │    │
+│  │ Show level   │    │  │Find Jobs │        Career Profile       │  │    │
+│  │ "Continue"   │    │  └──────────┴───────────────────────────┘  │    │
+│  └──────┬───────┘    └───────────────────┬─────────────────────────┘    │
+└─────────┼─────────────────────────────────┼────────────────────────────┘
+          │ HTTPS API calls                 │ HTTPS API calls
+          ▼                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    FastAPI Backend (Render)                              │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐     │
+│  │                      API Routers                               │     │
+│  │  /resumes/*   /applications/*   /jobs/*   /rewrite-suggestions │     │
+│  └───────────────────────────┬────────────────────────────────────┘     │
+│                              │                                           │
+│  ┌───────────────────────────▼────────────────────────────────────┐     │
+│  │                   LangGraph Agents                             │     │
+│  │                                                                 │     │
+│  │  resume_parser ──► ats_evaluator ──► rewrite_agent             │     │
+│  │                                                                 │     │
+│  │  candidate_profile_agent    cover_letter_agent                  │     │
+│  │                                                                 │     │
+│  │  rag_retriever ──► job_analyzer ──► company_research           │     │
+│  └───────────────────────────┬────────────────────────────────────┘     │
+│                              │                                           │
+│  ┌────────────────┐  ┌───────▼──────┐  ┌─────────────────────────┐     │
+│  │ document_      │  │ openai_      │  │ job_search_service      │     │
+│  │ parser.py      │  │ client.py    │  │ (JSearch / OpenAI web)  │     │
+│  │ (pypdf/docx)   │  │ embeddings   │  └─────────────────────────┘     │
+│  └────────────────┘  └──────────────┘                                   │
+└──────────────┬──────────────────────────────────────────────────────────┘
+               │
+    ┌──────────┼───────────────────────────┐
+    ▼          ▼                           ▼
+┌────────┐  ┌──────────────────────┐  ┌──────────────────────┐
+│OpenAI  │  │  Supabase (Postgres) │  │  JSearch / RapidAPI  │
+│        │  │                      │  │                      │
+│ GPT-5  │  │  resumes             │  │  Job search API      │
+│ GPT-4o │  │  resume_chunks       │  │  10 countries        │
+│ embed  │  │  (pgvector 1536-dim) │  └──────────────────────┘
+│ web_   │  │  applications        │
+│ search │  │  ats_evaluations     │  ┌──────────────────────┐
+└────────┘  │  rewrite_suggestions │  │  Supabase Storage    │
+            │  candidate_profiles  │  │                      │
+            │  job_posts           │  │  Uploaded PDFs/DOCX  │
+            │  cover_letters       │  │  Exported DOCX files │
+            └──────────────────────┘  └──────────────────────┘
+```
 
-#### Tab 5: Career Profile (NEW)
-- **Generate Career Profile** button → `POST /resumes/{id}/candidate-profile`
-- Displays AI-generated career intelligence:
-  - Seniority level (junior/mid/senior/lead/principal/executive)
-  - Target roles (3-5 job titles)
-  - Core skills (10-15 top skills)
-  - Domain interests (industries/areas)
-  - Strongest experiences (highlights)
-  - Suggested job search queries (5-8 ready queries)
-- **Search Jobs with this Profile** → runs job search + switches to Find Jobs tab
+---
 
-### 3. Download Resume
-- User approves/rejects rewrite suggestions
-- Clicks **Download** → `POST /applications/{id}/export-resume`
-- Backend applies accepted rewrites, generates DOCX, uploads to Storage
-- Browser downloads the optimized file
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Frontend** | Next.js 16, React 19, Tailwind 4 | UI, resume preview, 5-tab editor |
+| **Backend** | FastAPI, Python 3.12, Uvicorn | REST API, async request handling |
+| **AI / LLM** | OpenAI GPT-5, GPT-4o | Parsing, evaluation, rewrites, cover letters |
+| **Embeddings** | OpenAI text-embedding-3-small | Resume chunk vectorization for RAG |
+| **Agents** | LangGraph 0.2+, LangChain 0.3+ | Stateful multi-step AI workflows |
+| **Database** | Supabase Postgres + pgvector | Structured data + vector similarity search |
+| **File Storage** | Supabase Storage | PDF/DOCX uploads and exports |
+| **Job Search** | JSearch (RapidAPI) or OpenAI web_search_preview | Real job postings |
+| **Observability** | LangSmith | Agent tracing + debugging |
+| **Hosting** | Vercel (frontend), Render (backend) | Auto-deploy on git push |
+| **File Parsing** | pypdf, python-docx | Extract text from PDF/DOCX |
+
+---
+
+## Feature Walkthrough
+
+### 1. Upload Resume → Home Page
+- Accepts PDF or DOCX
+- Backend extracts text, GPT-5 parses into structured JSON (name, email, skills, experience, projects, education)
+- Embeds text chunks into pgvector for later RAG retrieval
+- Frontend shows name, "Continue to Edit" button
+
+### 2. Analysis Tab
+Evaluates your resume quality (no job) or fit against a job posting.
+
+**How the score works:**
+
+| Mode | Scoring Logic |
+|------|--------------|
+| No job posting | Contact (8pts) + Education (7pts) + Skills (15+2/skill) + Experience (10+8/each) + Bullets (5+2/each) + Projects (5+5/each) |
+| With job posting | Required skills match (40pts) + Preferred skills (20pts) + Responsibilities (15pts) + Keyword density (10pts) + floors to keep scores encouraging |
+
+Score displayed as: `Beginner (하)` / `Intermediate (중)` / `Advanced (상)`
+
+### 3. Rewrites Tab
+- GPT-4o rewrites each bullet with added metrics, action verbs, and keywords
+- Click any suggestion → highlighted in the resume preview
+- Approve ✓ or Reject ✗ — status saved to DB
+- Approved rewrites apply when you export
+
+### 4. Cover Letter Tab
+- Generates a tailored cover letter using resume + job context
+- Edit directly in the textarea
+- Copy to clipboard or download as `.txt`
+
+### 5. Find Jobs Tab
+- Select country (🇺🇸 US, 🇸🇬 SG, 🇬🇧 UK, 🇨🇦 CA, 🇩🇪 DE, 🇦🇺 AU, 🇳🇱 NL, 🇯🇵 JP, 🇰🇷 KR, 🇮🇳 IN)
+- Optional city/remote filter
+- Queries built from your Career Profile's `target_roles` (e.g. "Machine Learning Engineer")
+- Click **Evaluate Fit** on any job card → instantly runs full ATS evaluation for that job
+
+### 6. Career Profile Tab
+- Generates: seniority level, 3-5 target roles, core skills, domain interests, job search queries
+- **Search Jobs with this Profile** runs Find Jobs using those target roles as queries
+
+### 7. Download
+- Click Download → backend applies approved rewrites, generates DOCX
+- Uploaded to Supabase Storage → browser downloads it
 
 ---
 
 ## API Endpoints
 
 ### Resumes
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/resumes/upload` | POST | Parse uploaded file, embed chunks, return `parsed_json` |
-| `/resumes/{id}/candidate-profile` | POST | Generate career profile from parsed resume |
+| Method | Path | What it does |
+|--------|------|-------------|
+| `POST` | `/resumes/upload` | Parse PDF/DOCX, embed chunks, return `resume_id` + `parsed_json` |
+| `POST` | `/resumes/{id}/candidate-profile` | Generate career profile (target roles, skills, queries) |
 
-### Applications (Job Evaluation)
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/applications/create` | POST | Link resume to job post |
-| `/applications/{id}/retrieve-context` | POST | RAG: fetch relevant resume chunks |
-| `/applications/{id}/evaluate` | POST | Score resume vs job requirements |
-| `/applications/{id}/rewrite-suggestions` | POST | Generate per-bullet AI suggestions |
-| `/applications/{id}/cover-letter` | POST | Generate cover letter |
-| `/applications/{id}/export-resume` | POST | Apply accepted rewrites, export DOCX |
+### Applications (the core evaluation flow)
+| Method | Path | What it does |
+|--------|------|-------------|
+| `POST` | `/applications/create` | Link a resume to a job post → returns `application_id` |
+| `GET`  | `/applications/{id}` | Fetch application details |
+| `POST` | `/applications/{id}/retrieve-context` | RAG: pgvector similarity search, saves chunks |
+| `POST` | `/applications/{id}/evaluate` | ATS score 0-100, matched/missing skills, weaknesses |
+| `POST` | `/applications/{id}/rewrite-suggestions` | Per-bullet AI rewrites |
+| `POST` | `/applications/{id}/cover-letter` | Generate tailored cover letter |
+| `POST` | `/applications/{id}/export-resume` | Apply accepted rewrites → DOCX download URL |
 
 ### Jobs
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/jobs/search-web` | POST | MCP-powered web job search (OpenAI Responses API) |
-| `/jobs/{id}/analyze` | POST | Deep job posting analysis *(not exposed in UI yet)* |
-| `/job-posts/create` | POST | Create job post from URL |
+| Method | Path | What it does |
+|--------|------|-------------|
+| `POST` | `/jobs/search-web` | Search real job postings (JSearch or OpenAI web) |
+| `POST` | `/jobs/discover` | Discover jobs from candidate profile (alternative flow) |
+| `POST` | `/jobs/{id}/analyze` | Deep-extract requirements from a job posting |
+| `POST` | `/job-posts/create` | Create a job post from a URL |
 
-### Rewrites
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/rewrite-suggestions/{id}` | PATCH | Mark suggestion as approved/rejected |
-
-### Cover Letters
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/cover-letters/{id}` | GET | Fetch cover letter from DB *(not used; stored in memory)* |
-
----
-
-## Backend Agents
-
-Each agent is a **LangGraph node** that processes state and returns updated state. Nodes are connected in a DAG (directed acyclic graph) where each node reads inputs from `AgentState`, calls LangChain LLMs (via `openai_client`), and writes outputs back to state.
-
-### Agent Node Flow Diagram
-
-```
-┌─ START ─────────────────────────────────────────────────────────────┐
-│                                                                      │
-│  AgentState = {                                                     │
-│    user_id, resume_id, resume_json, job_json,                       │
-│    ats_result, rewrite_suggestions, cover_letter, errors, ...       │
-│  }                                                                   │
-│                                                                      │
-└──────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-                    ┌─────────────────────────┐
-                    │  parse_resume_node      │
-                    ├─────────────────────────┤
-                    │ IN:  raw_text           │
-                    │ OUT: resume_json        │
-                    │ GPT: gpt-5 parse        │
-                    └─────────────────────────┘
-                                  │
-                                  ▼
-              ┌─────────────────────────────────────┐
-              │  create_candidate_profile_node      │
-              ├─────────────────────────────────────┤
-              │ IN:  resume_json                    │
-              │ OUT: candidate_profile              │
-              │      (roles, skills, queries)       │
-              │ GPT: gpt-4o analysis                │
-              └─────────────────────────────────────┘
-                                  │
-                                  ▼
-              ┌─────────────────────────────────────┐
-              │  discover_jobs_node                 │
-              ├─────────────────────────────────────┤
-              │ IN:  candidate_profile, location    │
-              │ OUT: job_post_ids                   │
-              │ Search: web API or jsearch          │
-              └─────────────────────────────────────┘
-                                  │
-                   ┌──────────────┴──────────────┐
-                   │  ⏸️ HUMAN PAUSE 1          │
-                   │  User selects a job         │
-                   │  → selected_job_post_id     │
-                   └──────────────┬──────────────┘
-                                  │
-                                  ▼
-              ┌─────────────────────────────────────┐
-              │  analyze_selected_job_node          │
-              ├─────────────────────────────────────┤
-              │ IN:  selected_job_post_id           │
-              │ OUT: job_json                       │
-              │      (requirements, description)    │
-              │ GPT: gpt-4o extraction              │
-              └─────────────────────────────────────┘
-                                  │
-                                  ▼
-              ┌─────────────────────────────────────┐
-              │  research_company_node              │
-              ├─────────────────────────────────────┤
-              │ IN:  job_json (company name)        │
-              │ OUT: company_background             │
-              │ MCP: browser automation (optional)  │
-              └─────────────────────────────────────┘
-                                  │
-                                  ▼
-              ┌─────────────────────────────────────┐
-              │  retrieve_resume_context_node       │
-              ├─────────────────────────────────────┤
-              │ IN:  resume_json, job_json          │
-              │ OUT: retrieved_context              │
-              │      (relevant resume chunks)       │
-              │ RAG: pgvector similarity search     │
-              └─────────────────────────────────────┘
-                                  │
-                                  ▼
-              ┌─────────────────────────────────────┐
-              │  evaluate_ats_node                  │
-              ├─────────────────────────────────────┤
-              │ IN:  resume_json, job_json,         │
-              │      retrieved_context              │
-              │ OUT: ats_result                     │
-              │      {score, matched_skills,        │
-              │       weaknesses, evidence}         │
-              │ GPT: gpt-4o evaluation              │
-              └─────────────────────────────────────┘
-                                  │
-                                  ▼
-          ┌───────────────────────────────────────────┐
-          │  generate_rewrite_suggestions_node        │
-          ├───────────────────────────────────────────┤
-          │ IN:  resume_json, ats_result, job_json    │
-          │ OUT: rewrite_suggestions                  │
-          │      [{original, suggested, reason, id}]  │
-          │ GPT: gpt-4o per-bullet rewrites           │
-          └───────────────────────────────────────────┘
-                                  │
-                   ┌──────────────┴──────────────┐
-                   │  ⏸️ HUMAN PAUSE 2          │
-                   │  User approves/rejects      │
-                   │  rewrites (via PATCH API)   │
-                   └──────────────┬──────────────┘
-                                  │
-                                  ▼
-              ┌─────────────────────────────────────┐
-              │  export_resume_node                 │
-              ├─────────────────────────────────────┤
-              │ IN:  resume_json,                   │
-              │      approved_rewrites              │
-              │ OUT: file_url (DOCX in Storage)     │
-              │ Tool: docx_exporter                 │
-              └─────────────────────────────────────┘
-                                  │
-                                  ▼
-              ┌─────────────────────────────────────┐
-              │  generate_cover_letter_node         │
-              ├─────────────────────────────────────┤
-              │ IN:  resume_json, job_json,         │
-              │      ats_result                     │
-              │ OUT: cover_letter (markdown)        │
-              │ GPT: gpt-4o composition             │
-              └─────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────┐
-│ END - Return completed state with all outputs       │
-└──────────────────────────────────────────────────────┘
-```
-
-### Shared State (AgentState TypedDict)
-
-```python
-class AgentState(TypedDict):
-    # Core IDs
-    user_id: str                          # User identifier
-    resume_id: Optional[str]              # Uploaded resume
-    candidate_profile_id: Optional[str]   # Generated profile
-    application_id: Optional[str]         # Resume ↔ Job link
-    
-    # Parsed data
-    resume_json: Optional[dict]           # ← parse_resume_node
-    candidate_profile: Optional[dict]     # ← create_candidate_profile_node
-    job_json: Optional[dict]              # ← analyze_selected_job_node
-    company_background: Optional[dict]    # ← research_company_node
-    
-    # Job discovery
-    job_post_ids: list[str]               # ← discover_jobs_node
-    selected_job_post_id: Optional[str]   # User input
-    
-    # RAG context
-    retrieved_context: Optional[list]     # ← retrieve_resume_context_node
-    
-    # AI analysis
-    ats_result: Optional[dict]            # ← evaluate_ats_node
-    rewrite_suggestions: Optional[list]   # ← generate_rewrite_suggestions_node
-    approved_rewrites: Optional[list]     # User input (PATCH API)
-    cover_letter: Optional[str]           # ← generate_cover_letter_node
-    
-    # Error tracking
-    errors: list[str]                     # Collect all errors
-```
-
-### How Nodes Communicate
-
-Each node is an async function with this signature:
-
-```python
-async def my_agent_node(state: AgentState) -> AgentState:
-    """Read inputs from state, do work, return updated state."""
-    
-    # 1. Extract inputs from shared state
-    resume_json = state.get("resume_json")
-    job_json = state.get("job_json")
-    
-    # 2. Validate inputs
-    if not resume_json:
-        errors = state.get("errors", [])
-        errors.append("my_agent_node: missing resume_json")
-        return {**state, "errors": errors}
-    
-    # 3. Do work (call LLM, compute, etc.)
-    result = await openai_client.chat_completion(...)
-    
-    # 4. Write outputs back to state
-    return {
-        **state,
-        "output_key": result,
-        "errors": errors,
-    }
-```
+### Other
+| Method | Path | What it does |
+|--------|------|-------------|
+| `PATCH` | `/rewrite-suggestions/{id}` | Approve or reject a suggestion |
+| `GET`  | `/cover-letters/{id}` | Fetch saved cover letter |
+| `GET`  | `/health` | Liveness check |
+| `GET`  | `/health/openai` | Test OpenAI API connectivity |
 
 ---
 
-### 1. Resume Parser Agent
-**Input**: Raw text from PDF/DOCX  
-**Output**: Structured `parsed_json` (name, email, skills, experience, projects, education, languages, certifications, achievements)
+## Backend Agents (LangGraph)
 
-**Logic**:
-- System prompt with 21 explicit rules (preserve all details, no summarizing, no inventing)
-- Strict schema (forbidden fields: `status`, `highlights`, `focus`, `outcomes`, etc.)
-- Auto-generates professional summary if missing
-- Field validators coerce GPT's varied output formats (lists→strings, etc.)
+Each agent is a **LangGraph node** — an async function that reads from shared `AgentState`, calls an LLM or service, and writes results back to state. The nodes are wired into a DAG (directed acyclic graph).
 
-### 2. ATS Evaluator Agent
-**Input**: `parsed_json`, job description (optional), job requirements  
-**Output**: ATS score (0-100), matching/missing skills, weak bullets, improvement priorities
+```
+                    resume_parser_agent
+                          │
+                          ▼
+               candidate_profile_agent          ← called by /resumes/{id}/candidate-profile
+                          │
+           ┌──────────────┼──────────────┐
+           ▼              ▼              ▼
+   rag_retriever    job_analyzer    (user picks job)
+           │              │
+           └──────┬────────┘
+                  ▼
+           ats_evaluator_agent                   ← called by /applications/{id}/evaluate
+                  │
+                  ▼
+           rewrite_agent                         ← called by /applications/{id}/rewrite-suggestions
+                  │
+                  ▼
+           cover_letter_agent                    ← called by /applications/{id}/cover-letter
+```
 
-**Logic**:
-- **No job posting**: Resume quality scoring
-  - Contact info (8), education (7), skills (floor 15, +2/skill), experience (floor 10, +8/exp), bullets (floor 5, +2/bullet), projects (floor 5, +5/proj)
-- **Job posting**: Match-based scoring
-  - Required skills (10 + 30% match), preferred skills (5 + 15% match), responsibilities (5 + 15% match), keyword density (3 + 7% match)
-  - Floors ensure encouraging scores for partial matches
+### Agent Summary
 
-### 3. Rewrite Agent
-**Input**: `parsed_json`, ATS evaluation result, job context  
-**Output**: List of suggestions (one per bullet/project description)
+| Agent | Model | Input → Output |
+|-------|-------|----------------|
+| `resume_parser` | GPT-5 | raw text → structured JSON (name, email, skills, experience…) |
+| `candidate_profile` | GPT-4o | parsed JSON → target roles, core skills, search queries |
+| `rag_retriever` | pgvector | job description → top N relevant resume chunks |
+| `ats_evaluator` | GPT-4o | resume + job + chunks → score 0-100, missing skills, weaknesses |
+| `rewrite_agent` | GPT-4o | resume + ATS result → bullet-level rewrites with reasons |
+| `cover_letter_agent` | GPT-4o | resume + job + ATS result → full cover letter |
+| `job_analyzer` | GPT-4o | job description → required skills, seniority, job type |
+| `company_research` | optional MCP | company name → background info |
 
-**Structure** (for each suggestion):
-```json
+### Shared State
+
+All nodes read/write a single `AgentState` TypedDict:
+
+```python
 {
-  "original_text": "Developed REST APIs.",
-  "suggested_text": "Built 12+ REST APIs using FastAPI, reducing latency by 30%.",
-  "section": "experience",
-  "reason": "Add quantifiable impact.",
-  "status": "pending"
+  "user_id": str,
+  "resume_id": str,
+  "resume_json": dict,          # parsed resume
+  "candidate_profile": dict,    # target roles, skills
+  "job_json": dict,             # selected job details
+  "retrieved_context": list,    # pgvector search results
+  "ats_result": dict,           # score + matched/missing skills
+  "rewrite_suggestions": list,  # per-bullet suggestions
+  "cover_letter": str,          # generated text
+  "errors": list[str],          # non-fatal errors collected
 }
 ```
 
-### 4. Cover Letter Agent
-**Input**: `parsed_json`, job posting, ATS evaluation  
-**Output**: Full cover letter markdown
+---
 
-**Logic**: Addresses hiring manager, pulls achievements/skills from resume, highlights job fit, includes call-to-action
+## Database Schema (Supabase)
 
-### 5. Candidate Profile Agent
-**Input**: `parsed_json`  
-**Output**: Structured profile
-
-```json
-{
-  "target_roles": ["Senior Backend Engineer", "Tech Lead"],
-  "seniority_level": "mid-level",
-  "core_skills": ["Python", "FastAPI", "PostgreSQL", ...],
-  "domain_interests": ["fintech", "developer tools"],
-  "strongest_experiences": ["Led 3-person team", "Reduced latency by 30%"],
-  "preferred_job_keywords": ["Python", "microservices", "REST API", ...],
-  "search_queries": ["Python backend engineer remote", ...]
-}
+```
+users
+  └── resumes (file_url, parsed_json, raw_text)
+        └── resume_chunks (text, embedding vector(1536))   ← pgvector RAG
+        └── candidate_profiles (profile_json, search_queries)
+        └── applications ──────────────────┐
+              └── retrieved_contexts        │ links resume ↔ job_post
+              └── ats_evaluations           │
+              └── rewrite_suggestions       │
+              └── cover_letters             │
+                                            ▼
+                                        job_posts (company, role, description)
+                                            └── job_recommendations (match_score)
 ```
 
-### 6. Job Analyzer Agent
-**Input**: Job posting details  
-**Output**: Structured analysis
-
-**Note**: Not exposed in UI yet. Could power a "Learn More" button on job cards.
+**Key pgvector detail:** Resume chunks use cosine similarity search via the `match_resume_chunks()` RPC function. Embedding model: `text-embedding-3-small` (1536 dimensions).
 
 ---
 
-## Data Models
-
-### Resume (Supabase)
-```sql
-CREATE TABLE resumes (
-  id UUID PRIMARY KEY,
-  user_id UUID NOT NULL,
-  file_url TEXT,
-  file_name TEXT,
-  file_type TEXT,
-  raw_text TEXT,
-  parsed_json JSONB,
-  created_at TIMESTAMP
-);
-```
-
-### Applications
-```sql
-CREATE TABLE applications (
-  id UUID PRIMARY KEY,
-  user_id UUID NOT NULL,
-  resume_id UUID REFERENCES resumes,
-  job_post_id UUID REFERENCES job_posts,
-  created_at TIMESTAMP
-);
-```
-
-### Rewrite Suggestions
-```sql
-CREATE TABLE rewrite_suggestions (
-  id UUID PRIMARY KEY,
-  application_id UUID REFERENCES applications,
-  original_text TEXT,
-  suggested_text TEXT,
-  section TEXT,
-  reason TEXT,
-  status TEXT ('pending' | 'approved' | 'rejected'),
-  created_at TIMESTAMP
-);
-```
-
-### Candidate Profiles
-```sql
-CREATE TABLE candidate_profiles (
-  id UUID PRIMARY KEY,
-  user_id UUID NOT NULL,
-  resume_id UUID REFERENCES resumes,
-  profile_json JSONB,
-  search_queries TEXT[],
-  created_at TIMESTAMP
-);
-```
-
----
-
-## Setup & Development
+## Setup — Run Locally
 
 ### Prerequisites
-- **Backend**: Python 3.9+, Conda (recommended)
-- **Frontend**: Node.js 18+, npm/yarn
-- **Services**: Supabase account, OpenAI API key
+- Python 3.12
+- Node.js 18+
+- Supabase project (free tier works)
+- OpenAI API key
 
-### Backend Setup
+### 1. Clone
+```bash
+git clone https://github.com/juliairsalina/reeracify.git
+cd reeracify
+```
 
-1. **Clone and navigate**:
-   ```bash
-   git clone https://github.com/juliairsalina/reeracify.git
-   cd reeracify/backend
-   ```
+### 2. Backend
+```bash
+cd backend
 
-2. **Create Conda environment**:
-   ```bash
-   conda create -n reeracify python=3.11
-   conda activate reeracify
-   ```
+# Create virtual environment (recommended: uv)
+pip install uv
+uv venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-   *Note: Requires `openai>=1.66.0` for Responses API support*
+# Install dependencies
+uv pip install -r requirements.txt
 
-4. **Set environment variables** (`.env`):
-   ```bash
-   OPENAI_API_KEY=sk-...
-   SUPABASE_URL=https://xxx.supabase.co
-   SUPABASE_SERVICE_ROLE_KEY=eyJxxx...
-   JOB_SEARCH_PROVIDER=openai_web  # Default
-   ENVIRONMENT=development
-   ```
+# Configure
+cp .env.example .env
+# Edit .env — fill in OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
-5. **Run dev server**:
-   ```bash
-   python -m uvicorn app.main:app --reload --port 8000
-   ```
+# Run
+.venv/bin/uvicorn app.main:app --reload --port 8000
+# API available at http://localhost:8000
+# Docs at http://localhost:8000/docs
+```
 
-   Server runs at `http://localhost:8000`
+### 3. Frontend
+```bash
+cd frontend
+npm install
 
-### Frontend Setup
+# Configure
+echo "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000" > .env.local
 
-1. **Navigate to frontend**:
-   ```bash
-   cd ../frontend
-   ```
+# Run
+npm run dev
+# App available at http://localhost:3000
+```
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+### Environment Variables
 
-3. **Set environment variables** (`.env.local`):
-   ```bash
-   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-   NEXT_PUBLIC_PREPROCESS_API_URL=http://localhost:8000
-   ```
+**Backend** (`backend/.env`):
+```bash
+# Required
+OPENAI_API_KEY=sk-...
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_ANON_KEY=eyJ...
 
-4. **Run dev server**:
-   ```bash
-   npm run dev
-   ```
+# Job Search (pick one)
+JOB_SEARCH_PROVIDER=jsearch        # use "openai_web" if no JSearch key
+JSEARCH_API_KEY=your_rapidapi_key  # get free key at rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
+JSEARCH_COUNTRY=us
 
-   Frontend runs at `http://localhost:3000`
+# Optional
+OPENAI_MODEL=gpt-5
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=ls-...
+LANGCHAIN_PROJECT=career-application-agent
+```
 
-### Connecting Frontend & Backend
-
-Both must be running locally:
-- Backend: `http://localhost:8000`
-- Frontend: `http://localhost:3000`
-
-The frontend's `.env.local` points the API calls to `localhost:8000`.
+**Frontend** (`frontend/.env.local`):
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
 
 ---
 
-## Production Deployment
+## Deployment
 
 ### Render (Backend)
-
-1. Connect GitHub repo to Render
-2. Set **Auto-Deploy** to "On Commit" in Render dashboard
-3. Environment variables: copy from `.env` example, set real values
-4. Deploy URL: `https://reeracify-backend.onrender.com`
+1. Connect GitHub repo → New Web Service
+2. Build command: `pip install -r requirements.txt`
+3. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+4. Add all env vars from `backend/.env` in the Render dashboard
+5. Auto-deploys on every push to `julia/backend-new`
 
 ### Vercel (Frontend)
-
-1. Connect GitHub repo to Vercel
-2. Auto-deploy on push (default)
-3. Set `NEXT_PUBLIC_API_BASE_URL=https://reeracify-backend.onrender.com` in Vercel env vars
-4. Deploy URL: `https://reeracify.vercel.app`
+1. Import GitHub repo → Framework: Next.js
+2. Add env var: `NEXT_PUBLIC_API_BASE_URL=https://reeracify-backend.onrender.com`
+3. Auto-deploys on every push
 
 ---
 
-## Key Features Implemented
+## Job Search Providers
 
-✅ **Resume Upload & Parsing**
-- Supports PDF, DOC, DOCX
-- GPT-5 structured extraction
-- pgvector embeddings for RAG
+The job search is pluggable — set `JOB_SEARCH_PROVIDER` in `.env`:
 
-✅ **Resume Preview**
-- Live A4 preview with zoom
-- Clickable highlights for rewrite suggestions
-- Bidirectional sync: click rewrite in panel → highlight in preview
+| Provider | Key | Notes |
+|----------|-----|-------|
+| `jsearch` | `JSEARCH_API_KEY` | Best quality. Free tier: 200 req/month. [Get key](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch) |
+| `openai_web` | (uses OPENAI_API_KEY) | No extra key needed. Burns OpenAI tokens (~$0.01/search) |
+| `dummy` | none | Returns 3 hardcoded jobs. For testing only |
 
-✅ **ATS Evaluation**
-- Score 0-100 with encouraging floors
-- Metrics: clarity, keyword fit, structure, impact
-- Missing keywords, weak bullets, improvement priorities
-
-✅ **AI Rewrite Suggestions**
-- Per-bullet suggestions with reasons
-- Approve/Reject workflow
-- Status tracking in DB
-
-✅ **Cover Letter Generation**
-- Context-aware (resume + job posting)
-- Editable, downloadable as .txt
-
-✅ **Job Search (MCP-Powered)**
-- OpenAI Responses API with `web_search_preview`
-- Real job postings from web
-- Evaluate each job against resume (separate ATS evaluation)
-
-✅ **Career Profile**
-- Target roles, seniority, core skills
-- Domain interests, strongest experiences
-- Pre-built job search queries
-- One-click "Search Jobs with this Profile"
-
-✅ **Resume Export**
-- Apply accepted rewrites
-- Generate optimized DOCX
-- Download to browser
-
----
-
-## Features Not Yet Exposed
-
-- `POST /jobs/{id}/analyze` — Deep job posting analysis
-- `POST /resumes/{id}/candidate-profile` (optional) — Could use search_queries to auto-populate job search
-- Job history / session restore (GET endpoints exist, no UI)
-- LinkedIn profile import
-- Batch resume upload
+**Country codes** supported in UI: `us`, `sg`, `gb`, `ca`, `de`, `au`, `nl`, `jp`, `kr`, `in`
 
 ---
 
 ## Troubleshooting
 
-### Backend won't start: `No module named 'pypdf'`
-```bash
-conda activate reeracify
-pip install pypdf
-```
-
-### Frontend can't reach backend
-- Check backend is running on port 8000
-- Verify `.env.local` has `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`
-- Check CORS settings in `backend/app/main.py`
-
-### Resume parse fails silently
-- Check `parse_status` in response (may be `"failed"`)
-- Check `chunks_ok` (false if embedding storage failed)
-- Review OpenAI API key and rate limits
-
-### ATS score always shows 45
-- Ensure you're running the latest code
-- If no job posting provided, score is resume quality (not fixed 45)
-- Check `ats_evaluator_agent.py` has floor-based scoring logic
+| Problem | Fix |
+|---------|-----|
+| `No module named 'pypdf'` | `uv pip install pypdf pycryptodome` |
+| Backend 403/429 on job search | JSearch key missing or free tier exhausted. Set `JOB_SEARCH_PROVIDER=openai_web` as fallback |
+| OpenAI timeout error | Normal with GPT-5 on long prompts. Retried up to 3x automatically. Try again |
+| `Method Not Allowed` (405) | Wrong HTTP method — make sure you're using the UI, not visiting the URL directly |
+| Resume parse returns `{}` | Check `OPENAI_API_KEY` is set and valid |
+| Jobs found: 0 | Generate Career Profile first (provides `target_roles` for better queries), or try a different country |
+| Supabase `Invalid API key` | Check `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env` |
+| `pyo3_runtime.PanicException` on PDF | Known cryptography C extension conflict. Fixed by `pycryptodome` in requirements |
 
 ---
 
@@ -642,70 +411,49 @@ pip install pypdf
 reeracify/
 ├── backend/
 │   ├── app/
-│   │   ├── agents/               # LangGraph nodes
+│   │   ├── agents/                    # LangGraph nodes (8 agents)
 │   │   │   ├── resume_parser_agent.py
 │   │   │   ├── ats_evaluator_agent.py
 │   │   │   ├── rewrite_agent.py
 │   │   │   ├── cover_letter_agent.py
 │   │   │   ├── candidate_profile_agent.py
 │   │   │   ├── job_analyzer_agent.py
-│   │   │   └── graph.py           # LangGraph workflow
-│   │   ├── api/                   # FastAPI routers
-│   │   │   ├── resumes.py
-│   │   │   ├── applications.py
-│   │   │   ├── jobs.py
-│   │   │   ├── rewrites.py
-│   │   │   ├── cover_letters.py
-│   │   │   └── job_posts.py
-│   │   ├── services/              # Utilities
-│   │   │   ├── document_parser.py
-│   │   │   ├── embedding_service.py
-│   │   │   ├── job_search_service.py
-│   │   │   ├── docx_exporter.py
-│   │   │   ├── openai_client.py
-│   │   │   ├── supabase_client.py
-│   │   │   └── browser_mcp_client.py (optional)
-│   │   ├── schemas/               # Pydantic models
-│   │   │   ├── resume.py
-│   │   │   ├── ats.py
-│   │   │   ├── candidate.py
-│   │   │   └── ...
-│   │   ├── config.py              # Config, API keys
-│   │   ├── main.py                # FastAPI app
-│   │   └── __init__.py
+│   │   │   ├── rag_retriever_agent.py
+│   │   │   └── company_research_agent.py
+│   │   ├── api/                       # FastAPI route handlers
+│   │   │   ├── resumes.py             # /resumes/*
+│   │   │   ├── applications.py        # /applications/*
+│   │   │   ├── jobs.py                # /jobs/*
+│   │   │   ├── job_posts.py           # /job-posts/*
+│   │   │   ├── rewrites.py            # /rewrite-suggestions/*
+│   │   │   └── cover_letters.py       # /cover-letters/*
+│   │   ├── services/                  # Shared utilities
+│   │   │   ├── openai_client.py       # GPT + embeddings wrapper
+│   │   │   ├── supabase_client.py     # DB client
+│   │   │   ├── job_search_service.py  # JSearch / OpenAI web / dummy
+│   │   │   ├── document_parser.py     # PDF/DOCX text extraction
+│   │   │   ├── embedding_service.py   # Chunk + embed resume text
+│   │   │   ├── vector_store.py        # pgvector storage/retrieval
+│   │   │   └── docx_exporter.py       # Generate DOCX with rewrites
+│   │   ├── schemas/                   # Pydantic models
+│   │   ├── db/schema.sql              # Supabase table definitions
+│   │   ├── config.py                  # Settings (pydantic-settings)
+│   │   └── main.py                    # FastAPI app + CORS + routers
 │   ├── requirements.txt
 │   └── .env.example
+│
 ├── frontend/
 │   ├── src/app/
-│   │   ├── page.js                # Home (upload)
-│   │   ├── edit-resume/
-│   │   │   └── page.js            # Resume editor (5 tabs)
-│   │   └── contact/
-│   │       └── page.js
-│   ├── .env.local                 # Local dev config
-│   ├── .env.example
-│   ├── next.config.js
-│   ├── tailwind.config.js
+│   │   ├── page.js                    # Home: upload + parse status
+│   │   ├── edit-resume/page.js        # 5-tab resume editor (main file)
+│   │   ├── contact/page.js
+│   │   ├── layout.js
+│   │   └── globals.css
 │   ├── package.json
-│   └── public/                    # Static assets
-├── README.md                       # This file
-├── CLAUDE.md                       # Claude Code instructions
-└── .gitignore
+│   ├── next.config.js
+│   └── tailwind.config.js
+│
+├── README.md
+├── AGENTS.md                          # Breaking changes notice for LLM agents
+└── CLAUDE.md
 ```
-
----
-
-## Contributing
-
-1. Create a feature branch from `julia/backend-new`
-2. Make changes locally
-3. Test both frontend and backend
-4. Commit with clear message referencing the session URL
-5. Push to branch (auto-deploys on Render/Vercel)
-6. Create PR for code review
-
----
-
-## License
-
-MIT
