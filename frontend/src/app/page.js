@@ -94,6 +94,7 @@ export default function HomePage() {
 
       const name = data.parsed_json?.name || "";
       setParsedName(name);
+      console.log("BACKEND PARSED JSON:", data.parsed_json);
       setParsedResumeData(data.parsed_json || null);
 
       if (data.parse_status === "failed") {

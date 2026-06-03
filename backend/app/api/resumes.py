@@ -14,6 +14,7 @@ from app.services import openai_client, supabase_client
 from app.services.document_parser import extract_text
 from app.services.embedding_service import generate_embeddings_batch
 from app.services.vector_store import store_resume_chunks
+from app.agents.resume_parser_agent import RESUME_PARSER_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -23,10 +24,6 @@ ALLOWED_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 ALLOWED_EXTENSIONS = {"pdf", "docx"}
-
-RESUME_PARSER_SYSTEM_PROMPT = """You are a resume parser. Extract the candidate's information from the raw resume text and return a valid JSON object with these exact keys:
-name, email, phone, education, work_experience, projects, skills, languages, certifications, achievements.
-Return only valid JSON. Do not add markdown or extra text."""
 
 CANDIDATE_PROFILE_SYSTEM_PROMPT = """You are a career advisor. Analyze the candidate's parsed resume JSON and generate a structured candidate profile.
 
