@@ -624,14 +624,17 @@ export default function EditResumePage() {
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
     try {
       setLoadingState("Preparing download...");
-      const data = await callBackend(`/applications/${applicationId}/export-resume`, {
+      // Fetch binary directly — callBackend always calls .json() which breaks for files
+      const res = await fetch(`${API_BASE_URL}/applications/${applicationId}/export-resume`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: uid }),
       });
-      // Backend returns { file_url: "..." } — fetch the actual file
-      const fileRes = await fetch(data.file_url);
-      if (!fileRes.ok) throw new Error(`Could not fetch exported file: ${fileRes.status}`);
-      const blob = await fileRes.blob();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

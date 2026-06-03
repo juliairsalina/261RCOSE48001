@@ -399,24 +399,14 @@ async def export_resume(application_id: str, request: GenericUserRequest) -> dic
         logger.exception("Failed to generate DOCX: %s", exc)
         raise HTTPException(status_code=500, detail=f"DOCX generation failed: {exc}")
 
-    # Upload to Supabase Storage
-    storage_path = f"{request.user_id}/exports/{application_id}/resume.docx"
-    try:
-        from app.config import settings
-        from app.services.supabase_client import upload_file
-        file_url = upload_file(
-            bucket=settings.supabase_bucket,
-            path=storage_path,
-            file_bytes=docx_bytes,
-            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-    except Exception as exc:
-        logger.exception("Failed to upload DOCX: %s", exc)
-        raise HTTPException(status_code=500, detail=f"File upload failed: {exc}")
-
     _update_application_status(db, application_id, ApplicationStatus.resume_exported.value)
 
-    return {"application_id": application_id, "file_url": file_url}
+    # Stream the file directly — avoids Supabase Storage CORS/auth issues
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename=resume.docx"},
+    )
 
 
 @router.post("/{application_id}/cover-letter", response_model=CoverLetterResponse)
