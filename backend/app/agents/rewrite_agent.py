@@ -9,23 +9,39 @@ from app.services import openai_client, supabase_client
 
 logger = logging.getLogger(__name__)
 
-REWRITE_SYSTEM_PROMPT = """You are a resume improvement expert. Based on the ATS evaluation and job requirements, suggest specific improvements to the resume.
+REWRITE_SYSTEM_PROMPT = """You are a resume ATS expert. Your job is to identify weak bullet points and descriptions that are hurting the candidate's ATS score, and rewrite only those.
 
-Rules:
-- Never invent skills or experience the candidate doesn't have
-- Improve clarity, impact, and keyword alignment
-- Add measurable results where possible based on existing evidence
-- ONLY suggest rewrites for work_experience bullet points/descriptions and projects bullet points/descriptions
-- Do NOT suggest changes to skills, summary, education, or any other section
-- Focus on making experience and project descriptions more impactful and keyword-aligned with the job
+STRICT SELECTION RULES — only suggest a rewrite if ALL of these are true:
+1. The original text is genuinely weak: vague, missing key job keywords, lacks measurable impact, or uses passive/weak language
+2. The rewrite directly incorporates missing skills or keywords from the job requirements
+3. The rewrite will concretely increase the ATS match score (e.g. adds a required keyword that was missing)
+4. Do NOT rewrite text that is already strong, specific, or keyword-aligned
 
-Return a JSON object with key "suggestions" containing a list of objects with exactly these fields:
-- section: must be either "work_experience" or "projects"
-- original_text: the exact original bullet point or description text from the resume (quote it precisely)
-- suggested_text: the improved replacement text
-- reason: a clear explanation of why this change improves ATS matching or impact
+WHAT TO REWRITE:
+- Bullet points or descriptions in work_experience or projects that are vague ("worked on X", "helped with Y", "responsible for Z")
+- Text missing keywords from the job's required_skills or keywords list
+- Weak action verbs with no measurable outcome
 
-Return only valid JSON. Do not add markdown or extra text."""
+WHAT NOT TO REWRITE:
+- Already strong bullets with numbers and results
+- Text that already contains the required keywords
+- Lines that are fine but you could "make slightly better" — skip those
+- Skills section, summary, education
+
+REWRITE RULES:
+- Keep the same experience — never fabricate achievements or tools the candidate didn't use
+- Add measurable outcomes only if there's existing evidence to support them
+- Weave in missing job keywords naturally, not forcefully
+- Keep the same approximate length
+
+Return a JSON object with key "suggestions" containing a list. Each object must have:
+- section: "work_experience" or "projects" only
+- original_text: exact original text (copy precisely)
+- suggested_text: the rewritten version
+- reason: one sentence — which specific keyword or weakness this fixes and how it raises the ATS score
+
+If no bullet points genuinely need improvement, return {"suggestions": []}.
+Return only valid JSON. No markdown."""
 
 
 async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
@@ -64,17 +80,24 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
             "projects": resume_json.get("projects", []),
         }
 
+        requirements = job_json.get("extracted_requirements", {})
+        required_keywords = (
+            requirements.get("required_skills", []) +
+            requirements.get("keywords", [])
+        )
+
         messages = [
             {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
-                    f"ATS Score: {ats_result.get('score', 0)}/100 (Rank: {ats_result.get('rank', 'N/A')})\n"
-                    f"Missing Skills: {', '.join(ats_result.get('missing_skills', []))}\n"
-                    f"Weaknesses: {'; '.join(ats_result.get('weaknesses', []))}\n\n"
-                    f"Job Requirements:\n{json.dumps(job_json.get('extracted_requirements', {}), ensure_ascii=False)}\n\n"
-                    f"Experience and Projects:\n{json.dumps(resume_subset, ensure_ascii=False)[:3000]}\n\n"
-                    f"Retrieved Resume Context:\n{context_text[:1500]}"
+                    f"ATS Score: {ats_result.get('score', 0)}/100\n"
+                    f"Missing keywords (MUST incorporate where naturally possible): {', '.join(ats_result.get('missing_skills', []))}\n"
+                    f"All required job keywords: {', '.join(required_keywords[:20])}\n"
+                    f"Weaknesses identified: {'; '.join(ats_result.get('weaknesses', []))}\n\n"
+                    f"Job title: {job_json.get('role_title', '')}\n\n"
+                    f"Experience and Projects to review:\n{json.dumps(resume_subset, ensure_ascii=False)[:3000]}\n\n"
+                    f"Additional context:\n{context_text[:1000]}"
                 ),
             },
         ]
