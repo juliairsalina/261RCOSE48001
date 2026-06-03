@@ -905,7 +905,7 @@ export default function EditResumePage() {
 
             {/* Tab bar */}
             <div className="flex shrink-0 gap-1 border-b border-[#243026]/10 px-4 pt-4">
-              {["analysis", "rewrites", "cover-letter", "find-jobs", "profile"].map((tab) => (
+              {["analysis", "rewrites", "cover-letter", "profile", "find-jobs"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
