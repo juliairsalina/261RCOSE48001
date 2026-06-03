@@ -28,6 +28,11 @@ class GenericUserRequest(BaseModel):
     user_id: str
 
 
+class ExportResumeRequest(BaseModel):
+    user_id: str
+    resume_json: dict | None = None  # current live resume from frontend; overrides DB version
+
+
 def _build_initial_state(user_id: str, resume_id: str, job_post_id: str, application_id: str) -> AgentState:
     return AgentState(
         user_id=user_id,
@@ -466,11 +471,11 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
 
 
 @router.post("/{application_id}/export-resume")
-async def export_resume(application_id: str, request: GenericUserRequest) -> dict:
+async def export_resume(application_id: str, request: ExportResumeRequest) -> dict:
     """Export the resume as a DOCX file with approved rewrites applied.
 
-    Loads approved rewrite suggestions, generates DOCX, uploads to Supabase Storage,
-    and updates application status to resume_exported.
+    Uses resume_json from the request body when provided (matches the live
+    frontend display). Falls back to the DB version if not supplied.
     """
     db = supabase_client.get_client()
 
@@ -488,7 +493,8 @@ async def export_resume(application_id: str, request: GenericUserRequest) -> dic
     app_row = app_result.data
     resume_id = app_row["resume_id"]
 
-    resume_json = _load_resume_json(db, resume_id)
+    # Prefer the live resume sent by the frontend over the DB version
+    resume_json = request.resume_json or _load_resume_json(db, resume_id)
 
     # Load approved rewrites
     rewrites_result = (

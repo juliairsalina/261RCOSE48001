@@ -609,6 +609,44 @@ export default function EditResumePage() {
     await findJobs();
   }
 
+  // Convert frontend resumeData shape → backend resume_json shape for DOCX export.
+  function toResumeJson(rd) {
+    return {
+      name: rd.name || "",
+      email: rd.email || "",
+      phone: rd.phone || "",
+      summary: rd.summary || "",
+      skills: rd.skills || [],
+      education: (rd.education || []).map(e => ({
+        institution: e.institution || "",
+        degree: e.degree || "",
+        field_of_study: e.field || "",
+        start_date: e.start_date || "",
+        end_date: e.end_date || "",
+        gpa: e.gpa || "",
+        description: e.description || "",
+      })),
+      work_experience: (rd.experience || []).map(e => ({
+        title: e.role || "",
+        company: e.company || e.organization || "",
+        location: e.location || "",
+        start_date: e.start_date || "",
+        end_date: e.end_date === "Present" ? "" : (e.end_date || ""),
+        is_current: e.end_date === "Present",
+        description: e.description || "",
+        bullets: e.bullets || [],
+      })),
+      projects: (rd.projects || []).map(p => ({
+        name: p.name || "",
+        description: p.description || "",
+        technologies: p.technologies || [],
+        bullets: p.bullets || [],
+        start_date: p.start_date || "",
+        end_date: p.end_date || "",
+      })),
+    };
+  }
+
   async function downloadResume() {
     if (!applicationId) {
       setErrorMessage("Run Evaluate first to generate an application before downloading.");
@@ -617,11 +655,11 @@ export default function EditResumePage() {
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
     try {
       setLoadingState("Preparing download...");
-      // Fetch binary directly — callBackend always calls .json() which breaks for files
       const res = await fetch(`${API_BASE_URL}/applications/${applicationId}/export-resume`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: uid }),
+        // Send current live resumeData so DOCX matches exactly what's displayed
+        body: JSON.stringify({ user_id: uid, resume_json: toResumeJson(resumeData) }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
