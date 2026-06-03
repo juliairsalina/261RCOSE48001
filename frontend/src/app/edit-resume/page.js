@@ -1258,19 +1258,6 @@ export default function EditResumePage() {
                         </div>
                       )}
 
-                      {/* Search Queries */}
-                      {candidateProfile.search_queries?.length > 0 && (
-                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Suggested Job Search Queries</p>
-                          <ul className="space-y-1">
-                            {candidateProfile.search_queries.map((q, i) => (
-                              <li key={i} className="text-xs font-mono text-[#243026]/65 bg-white/50 rounded-lg px-3 py-1.5">
-                                {q}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
 
                       <button
                         onClick={searchJobsFromProfile}
