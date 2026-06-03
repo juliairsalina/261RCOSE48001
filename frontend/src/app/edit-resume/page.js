@@ -184,6 +184,11 @@ export default function EditResumePage() {
     const savedAppId = localStorage.getItem("reeracifyApplicationId");
     if (savedAppId) setApplicationId(savedAppId);
 
+    const savedProfile = localStorage.getItem("reeracifyCandidateProfile");
+    if (savedProfile) {
+      try { setCandidateProfile(JSON.parse(savedProfile)); } catch {}
+    }
+
     const savedParsed = localStorage.getItem("reeracifyParsedResume");
     if (savedParsed) {
       try {
@@ -399,6 +404,9 @@ export default function EditResumePage() {
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
 
     try {
+      // Auto-generate career profile if not yet available
+      await ensureCandidateProfile(uid, rid);
+
       const hasLink = vacancyLink.trim().length > 0;
       setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing analysis...");
       const jobPost = await callBackend("/job-posts/create", {
@@ -525,6 +533,9 @@ export default function EditResumePage() {
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
     if (!rid) return;
     try {
+      // Auto-generate career profile if not yet available
+      await ensureCandidateProfile(uid, rid);
+
       setLoadingState(`Analyzing fit for ${job.role_title} at ${job.company_name}…`);
       setVacancyLink(job.job_url);
       localStorage.setItem("reeracifyVacancyLink", job.job_url);
@@ -564,11 +575,33 @@ export default function EditResumePage() {
         body: formData,
       });
       setCandidateProfile(result.profile);
+      localStorage.setItem("reeracifyCandidateProfile", JSON.stringify(result.profile));
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
       setCandidateProfileLoading(false);
     }
+  }
+
+  // Called at the start of Analyze — generates profile silently if not already available.
+  async function ensureCandidateProfile(uid, rid) {
+    if (candidateProfile) return;
+    const saved = localStorage.getItem("reeracifyCandidateProfile");
+    if (saved) {
+      try {
+        setCandidateProfile(JSON.parse(saved));
+        return;
+      } catch {}
+    }
+    setLoadingState("Generating career profile...");
+    const formData = new FormData();
+    formData.append("user_id", uid);
+    const result = await callBackend(`/resumes/${rid}/candidate-profile`, {
+      method: "POST",
+      body: formData,
+    });
+    setCandidateProfile(result.profile);
+    localStorage.setItem("reeracifyCandidateProfile", JSON.stringify(result.profile));
   }
 
   async function searchJobsFromProfile() {
