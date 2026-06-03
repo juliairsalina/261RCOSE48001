@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from app.agents.ats_evaluator_agent import evaluate_ats_node
@@ -351,6 +352,116 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
         application_id=application_id,
         suggestions=suggestions,
         total=len(suggestions),
+    )
+
+
+@router.post("/{application_id}/analyze")
+async def analyze_application(application_id: str, request: GenericUserRequest) -> StreamingResponse:
+    """Run the full analysis pipeline using LangGraph.
+
+    Graph: retrieve_context → (evaluate_ats ∥ generate_cover_letter) → generate_rewrites
+
+    Streams Server-Sent Events (SSE) so the frontend can show per-step progress:
+      {"step": "Evaluating ATS score..."}   — progress update
+      {"done": true, "result": {...}}        — final payload
+      {"error": "..."}                       — on failure
+    """
+    from app.agents.graph import analysis_graph
+    if analysis_graph is None:
+        raise HTTPException(status_code=503, detail="LangGraph analysis graph not available.")
+
+    db = supabase_client.get_client()
+    try:
+        app_result = (
+            db.table("applications")
+            .select("id, user_id, resume_id, job_post_id")
+            .eq("id", application_id)
+            .single()
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Application not found: {exc}")
+
+    app_row = app_result.data
+    resume_id = app_row["resume_id"]
+    job_post_id = app_row["job_post_id"]
+
+    resume_json = _load_resume_json(db, resume_id)
+    if not resume_json:
+        raw = db.table("resumes").select("raw_text").eq("id", resume_id).single().execute()
+        raw_text = (raw.data or {}).get("raw_text", "") or ""
+        resume_json = {"raw_text": raw_text[:4000], "name": "", "skills": [], "work_experience": [], "projects": []}
+
+    job_json = _load_job_json(db, job_post_id)
+
+    initial_state = _build_initial_state(request.user_id, resume_id, job_post_id, application_id)
+    initial_state["resume_json"] = resume_json
+    initial_state["job_json"] = job_json
+
+    async def event_stream():
+        _NEXT_STEP = {
+            "retrieve_context": "Evaluating ATS score & generating cover letter...",
+            "evaluate_ats": "Generating rewrite suggestions...",
+            "generate_cover_letter": None,  # parallel branch — no dedicated label
+            "generate_rewrites": "Analysis complete!",
+        }
+
+        try:
+            yield f"data: {json.dumps({'step': 'Retrieving resume context...'})}\n\n"
+
+            final_state: dict = dict(initial_state)
+            async for chunk in analysis_graph.astream(initial_state):
+                for node_name, node_output in chunk.items():
+                    if node_name == "__end__":
+                        continue
+                    final_state.update(node_output)
+                    label = _NEXT_STEP.get(node_name)
+                    if label:
+                        yield f"data: {json.dumps({'step': label})}\n\n"
+
+            ats = final_state.get("ats_result") or {}
+
+            saved = (
+                db.table("rewrite_suggestions")
+                .select("id, section, original_text, suggested_text, reason, status")
+                .eq("application_id", application_id)
+                .order("created_at")
+                .execute()
+            )
+            suggestions = saved.data or []
+
+            cover_letter = final_state.get("cover_letter") or ""
+            _update_application_status(db, application_id, ApplicationStatus.rewrite_pending.value)
+
+            result = {
+                "application_id": application_id,
+                "ats": {
+                    "score": ats.get("score", 0),
+                    "rank": ats.get("rank", ""),
+                    "matched_skills": ats.get("matched_skills", []),
+                    "missing_skills": ats.get("missing_skills", []),
+                    "strengths": ats.get("strengths", []),
+                    "weaknesses": ats.get("weaknesses", []),
+                    "improvement_priority": ats.get("improvement_priority", []),
+                    "evidence": [
+                        {"claim": e.get("claim", ""), "resume_evidence": e.get("resume_evidence", "")}
+                        for e in ats.get("evidence", [])
+                    ],
+                },
+                "suggestions": suggestions,
+                "cover_letter": cover_letter,
+                "errors": final_state.get("errors", []),
+            }
+            yield f"data: {json.dumps({'done': True, 'result': result})}\n\n"
+
+        except Exception as exc:
+            logger.exception("Analysis pipeline failed: %s", exc)
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

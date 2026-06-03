@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Optional
+import operator
+from typing import Annotated, Optional
 
 from typing_extensions import TypedDict
 
@@ -21,4 +22,5 @@ class AgentState(TypedDict):
     rewrite_suggestions: Optional[list]
     approved_rewrites: Optional[list]
     cover_letter: Optional[str]
-    errors: list[str]
+    # Annotated reducer: parallel branches append their own errors; LangGraph concatenates them
+    errors: Annotated[list[str], operator.add]

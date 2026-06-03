@@ -35,15 +35,15 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
     job_json = state.get("job_json")
     retrieved_context = state.get("retrieved_context") or []
     application_id = state.get("application_id")
-    errors: list[str] = list(state.get("errors", []))
+    new_errors: list[str] = []
 
     if not resume_json:
-        errors.append("generate_cover_letter_node: resume_json is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("generate_cover_letter_node: resume_json is missing from state")
+        return {**state, "errors": new_errors}
 
     if not job_json:
-        errors.append("generate_cover_letter_node: job_json is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("generate_cover_letter_node: job_json is missing from state")
+        return {**state, "errors": new_errors}
 
     try:
         company_name = job_json.get("company_name", "the company")
@@ -93,9 +93,9 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
                 }
             ).execute()
 
-        return {**state, "cover_letter": cover_letter_text, "errors": errors}
+        return {**state, "cover_letter": cover_letter_text, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("generate_cover_letter_node failed: %s", exc)
-        errors.append(f"generate_cover_letter_node error: {exc}")
-        return {**state, "errors": errors}
+        new_errors.append(f"generate_cover_letter_node error: {exc}")
+        return {**state, "errors": new_errors}

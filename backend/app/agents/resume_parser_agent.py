@@ -201,11 +201,11 @@ async def parse_resume_node(state: AgentState) -> AgentState:
     """
     resume_id = state.get("resume_id")
     user_id = state["user_id"]
-    errors: list[str] = list(state.get("errors", []))
+    new_errors: list[str] = []
 
     if not resume_id:
-        errors.append("parse_resume_node: resume_id is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("parse_resume_node: resume_id is missing from state")
+        return {**state, "errors": new_errors}
 
     try:
         db = supabase_client.get_client()
@@ -215,8 +215,8 @@ async def parse_resume_node(state: AgentState) -> AgentState:
         raw_text: str = result.data.get("raw_text", "") if result.data else ""
 
         if not raw_text:
-            errors.append(f"parse_resume_node: no raw_text found for resume_id={resume_id}")
-            return {**state, "errors": errors}
+            new_errors.append(f"parse_resume_node: no raw_text found for resume_id={resume_id}")
+            return {**state, "errors": new_errors}
 
         # 2. Call GPT-4o to parse into JSON
         messages = [
@@ -243,11 +243,11 @@ async def parse_resume_node(state: AgentState) -> AgentState:
             status="completed",
         )
 
-        return {**state, "resume_json": parsed, "errors": errors}
+        return {**state, "resume_json": parsed, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("parse_resume_node failed: %s", exc)
-        errors.append(f"parse_resume_node error: {exc}")
+        new_errors.append(f"parse_resume_node error: {exc}")
         await _log_agent_run(
             user_id=user_id,
             application_id=state.get("application_id"),
@@ -257,4 +257,4 @@ async def parse_resume_node(state: AgentState) -> AgentState:
             status="failed",
             error_message=str(exc),
         )
-        return {**state, "errors": errors}
+        return {**state, "errors": new_errors}

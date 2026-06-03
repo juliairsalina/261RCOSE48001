@@ -311,6 +311,84 @@ export default function EditResumePage() {
     return "Beginner";
   }
 
+  // Stream the LangGraph analysis pipeline (retrieve → ATS∥cover letter → rewrites).
+  // Calls onStep(msg) for each progress event; resolves with the final result object.
+  async function streamAnalysis(appId, uid, onStep) {
+    const response = await fetch(`${API_BASE_URL}/applications/${appId}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: uid }),
+    });
+    if (!response.ok) {
+      let detail = "";
+      try { detail = (await response.json()).detail || ""; } catch {}
+      throw new Error(`Analysis failed ${response.status}${detail ? `: ${detail}` : ""}`);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+        const msg = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        if (!msg.startsWith("data: ")) continue;
+        const data = JSON.parse(msg.slice(6));
+        if (data.step) onStep(data.step);
+        if (data.error) throw new Error(data.error);
+        if (data.done) return data.result;
+      }
+    }
+    throw new Error("Analysis stream ended without a result.");
+  }
+
+  function applyAnalysisResult(result, jobSummaryText) {
+    saveSnapshot();
+    const ats = result.ats || {};
+    const score = ats.score || 0;
+    setAtsScoreValue(score);
+    setResumeLevel(getRankLabel(ats.rank));
+    setJobSummary(jobSummaryText);
+
+    const matched = ats.matched_skills?.length || 0;
+    const missing = ats.missing_skills?.length || 0;
+    const total = matched + missing || 1;
+    setMetrics({
+      clarity: Math.max(0, 100 - (ats.weaknesses?.length || 0) * 15),
+      keywordFit: Math.round((matched / total) * 100),
+      structure: score,
+      impact: Math.min(100, (ats.strengths?.length || 0) * 20),
+    });
+
+    const atsSuggestions = [
+      ...(ats.missing_skills || []).map((s, i) => ({
+        id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
+        text: `"${s}" is required but not found in your resume.`,
+        suggestion: `Add "${s}" to your skills or experience section.`,
+      })),
+      ...(ats.weaknesses || []).map((w, i) => ({
+        id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
+        text: w, suggestion: w,
+      })),
+      ...(ats.improvement_priority || []).map((p, i) => ({
+        id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
+        text: p, suggestion: p,
+      })),
+    ];
+    setBackendSuggestions(atsSuggestions);
+    if (atsSuggestions.length > 0) setActiveSuggestion(atsSuggestions[0].id);
+
+    setRewriteList(result.suggestions || []);
+    if (result.cover_letter) setCoverLetterText(result.cover_letter);
+
+    setIsLoading(false);
+    setStatusMessage(`Analysis complete — ATS score: ${score}/100`);
+    setActiveTab("rewrites");
+  }
+
   async function evaluateResume() {
     if (!resumeId) {
       setErrorMessage("Please upload your resume on the home page first.");
@@ -321,94 +399,29 @@ export default function EditResumePage() {
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
 
     try {
-      // Step 1: Create job post from URL (vacancy link is optional)
       const hasLink = vacancyLink.trim().length > 0;
-      setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing evaluation...");
+      setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing analysis...");
       const jobPost = await callBackend("/job-posts/create", {
         method: "POST",
         body: JSON.stringify({ job_url: vacancyLink.trim(), user_id: uid }),
       });
 
-      // Step 2: Create application
       setLoadingState("Creating application...");
       const app = await callBackend("/applications/create", {
         method: "POST",
-        body: JSON.stringify({
-          user_id: uid,
-          resume_id: rid,
-          job_post_id: jobPost.job_post_id,
-        }),
+        body: JSON.stringify({ user_id: uid, resume_id: rid, job_post_id: jobPost.job_post_id }),
       });
       const appId = app.id;
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      // Step 3: RAG retrieval
-      setLoadingState("Retrieving resume context...");
-      await callBackend(`/applications/${appId}/retrieve-context`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
+      // LangGraph pipeline: retrieve → (ATS ∥ cover letter) → rewrites
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
 
-      // Step 4: ATS evaluation
-      setLoadingState("Evaluating ATS score...");
-      const evalResult = await callBackend(`/applications/${appId}/evaluate`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
-
-      saveSnapshot();
-      const score = evalResult.score || 0;
-      setAtsScoreValue(score);
-      setResumeLevel(getRankLabel(evalResult.rank));
-      setJobSummary(
-        hasLink
-          ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
-          : "General resume evaluation — no job posting provided."
-      );
-
-      const matched = evalResult.matched_skills?.length || 0;
-      const missing = evalResult.missing_skills?.length || 0;
-      const total = matched + missing || 1;
-      const weaknessCount = evalResult.weaknesses?.length || 0;
-      const strengthCount = evalResult.strengths?.length || 0;
-      setMetrics({
-        clarity: Math.max(0, 100 - weaknessCount * 15),
-        keywordFit: Math.round((matched / total) * 100),
-        structure: score,
-        impact: Math.min(100, strengthCount * 20),
-      });
-
-      const suggestions = [
-        ...(evalResult.missing_skills || []).map((s, i) => ({
-          id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
-          text: `"${s}" is required but not found in your resume.`,
-          suggestion: `Add "${s}" to your skills or experience section.`,
-        })),
-        ...(evalResult.weaknesses || []).map((w, i) => ({
-          id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
-          text: w, suggestion: w,
-        })),
-        ...(evalResult.improvement_priority || []).map((p, i) => ({
-          id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
-          text: p, suggestion: p,
-        })),
-      ];
-      setBackendSuggestions(suggestions);
-      if (suggestions.length > 0) setActiveSuggestion(suggestions[0].id);
-
-      // Step 5: Rewrite suggestions
-      setLoadingState("Generating rewrite suggestions...");
-      const rewriteResult = await callBackend(`/applications/${appId}/rewrite-suggestions`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
-      setRewriteList(rewriteResult.suggestions || []);
-
-      setIsLoading(false);
-      setStatusMessage(`Evaluation complete — ATS score: ${score}/100`);
-      // Switch to Rewrites tab so user sees highlights immediately
-      setActiveTab("rewrites");
+      const jobSummaryText = hasLink
+        ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
+        : "General resume evaluation — no job posting provided.";
+      applyAnalysisResult(result, jobSummaryText);
 
     } catch (error) {
       setIsLoading(false);
@@ -512,7 +525,7 @@ export default function EditResumePage() {
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
     if (!rid) return;
     try {
-      setLoadingState(`Evaluating against ${job.role_title} at ${job.company_name}…`);
+      setLoadingState(`Analyzing fit for ${job.role_title} at ${job.company_name}…`);
       setVacancyLink(job.job_url);
       localStorage.setItem("reeracifyVacancyLink", job.job_url);
 
@@ -524,63 +537,10 @@ export default function EditResumePage() {
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      setLoadingState("Retrieving resume context…");
-      await callBackend(`/applications/${appId}/retrieve-context`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
+      // LangGraph pipeline: retrieve → (ATS ∥ cover letter) → rewrites
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
+      applyAnalysisResult(result, `${job.role_title} at ${job.company_name}`);
 
-      setLoadingState("Evaluating ATS score…");
-      const evalResult = await callBackend(`/applications/${appId}/evaluate`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
-
-      saveSnapshot();
-      const score = evalResult.score || 0;
-      setAtsScoreValue(score);
-      setResumeLevel(getRankLabel(evalResult.rank));
-      setJobSummary(`${job.role_title} at ${job.company_name}`);
-      const matched = evalResult.matched_skills?.length || 0;
-      const missing = evalResult.missing_skills?.length || 0;
-      const total = matched + missing || 1;
-      const weaknessCount = evalResult.weaknesses?.length || 0;
-      const strengthCount = evalResult.strengths?.length || 0;
-      setMetrics({
-        clarity: Math.max(0, 100 - weaknessCount * 15),
-        keywordFit: Math.round((matched / total) * 100),
-        structure: score,
-        impact: Math.min(100, strengthCount * 20),
-      });
-
-      const jobSuggestions = [
-        ...(evalResult.missing_skills || []).map((s, i) => ({
-          id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
-          text: `"${s}" is required but not found in your resume.`,
-          suggestion: `Add "${s}" to your skills or experience section.`,
-        })),
-        ...(evalResult.weaknesses || []).map((w, i) => ({
-          id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
-          text: w, suggestion: w,
-        })),
-        ...(evalResult.improvement_priority || []).map((p, i) => ({
-          id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
-          text: p, suggestion: p,
-        })),
-      ];
-      setBackendSuggestions(jobSuggestions);
-      if (jobSuggestions.length > 0) setActiveSuggestion(jobSuggestions[0].id);
-
-      setLoadingState("Generating rewrite suggestions…");
-      const rwResult = await callBackend(`/applications/${appId}/rewrite-suggestions`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
-      setRewriteList(rwResult.suggestions || []);
-
-      setIsLoading(false);
-      setStatusMessage(`Evaluated: ${job.role_title} — ATS score ${score}/100`);
-      setActiveTab("rewrites");
     } catch (error) {
       setIsLoading(false);
       setErrorMessage(error.message);
@@ -805,7 +765,7 @@ export default function EditResumePage() {
                     disabled={isLoading}
                     className="rounded-full bg-[#243026] px-7 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.02] disabled:opacity-50"
                   >
-                    {isLoading ? "Evaluating..." : "Evaluate"}
+                    {isLoading ? "Analyzing..." : "Analyze"}
                   </button>
 
                   <button
@@ -823,7 +783,7 @@ export default function EditResumePage() {
                 <div className="mt-3 flex items-center gap-3 rounded-2xl border border-[#243026]/15 bg-white/55 px-4 py-2.5">
                   <span className="flex h-2 w-2 shrink-0 rounded-full bg-green-500" />
                   <p className="text-xs font-bold text-[#243026]/70">
-                    Resume loaded{resumeData?.name ? ` — ${resumeData.name}` : ""}. Click <span className="text-[#243026]">Evaluate</span> to analyze and highlight rewrite suggestions.
+                    Resume loaded{resumeData?.name ? ` — ${resumeData.name}` : ""}. Click <span className="text-[#243026]">Analyze</span> to run the full AI pipeline and get rewrite suggestions.
                   </p>
                 </div>
               )}

@@ -30,11 +30,11 @@ async def create_candidate_profile_node(state: AgentState) -> AgentState:
     resume_json = state.get("resume_json")
     user_id = state["user_id"]
     resume_id = state.get("resume_id")
-    errors: list[str] = list(state.get("errors", []))
+    new_errors: list[str] = []
 
     if not resume_json:
-        errors.append("create_candidate_profile_node: resume_json is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("create_candidate_profile_node: resume_json is missing from state")
+        return {**state, "errors": new_errors}
 
     try:
         # 1. Call GPT-4o to generate candidate profile
@@ -71,10 +71,10 @@ async def create_candidate_profile_node(state: AgentState) -> AgentState:
             **state,
             "candidate_profile": profile,
             "candidate_profile_id": profile_id,
-            "errors": errors,
+            "errors": new_errors,
         }
 
     except Exception as exc:
         logger.exception("create_candidate_profile_node failed: %s", exc)
-        errors.append(f"create_candidate_profile_node error: {exc}")
-        return {**state, "errors": errors}
+        new_errors.append(f"create_candidate_profile_node error: {exc}")
+        return {**state, "errors": new_errors}

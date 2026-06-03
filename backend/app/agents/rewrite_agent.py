@@ -39,19 +39,19 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
     resume_json = state.get("resume_json")
     job_json = state.get("job_json")
     application_id = state.get("application_id")
-    errors: list[str] = list(state.get("errors", []))
+    new_errors: list[str] = []
 
     if not ats_result:
-        errors.append("generate_rewrite_suggestions_node: ats_result is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("generate_rewrite_suggestions_node: ats_result is missing from state")
+        return {**state, "errors": new_errors}
 
     if not resume_json:
-        errors.append("generate_rewrite_suggestions_node: resume_json is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("generate_rewrite_suggestions_node: resume_json is missing from state")
+        return {**state, "errors": new_errors}
 
     if not job_json:
-        errors.append("generate_rewrite_suggestions_node: job_json is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("generate_rewrite_suggestions_node: job_json is missing from state")
+        return {**state, "errors": new_errors}
 
     try:
         context_text = "\n".join(
@@ -105,9 +105,9 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
                     }
                 ).execute()
 
-        return {**state, "rewrite_suggestions": suggestions, "errors": errors}
+        return {**state, "rewrite_suggestions": suggestions, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("generate_rewrite_suggestions_node failed: %s", exc)
-        errors.append(f"generate_rewrite_suggestions_node error: {exc}")
-        return {**state, "errors": errors}
+        new_errors.append(f"generate_rewrite_suggestions_node error: {exc}")
+        return {**state, "errors": new_errors}

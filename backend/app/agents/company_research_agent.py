@@ -35,13 +35,13 @@ async def research_company_node(state: AgentState) -> AgentState:
     - No page content could be extracted
     """
     job_json = state.get("job_json") or {}
-    errors: list[str] = list(state.get("errors", []))
+    new_errors: list[str] = []
 
     company_name = job_json.get("company_name", "")
     job_url = job_json.get("job_url", "")
 
     if not company_name and not job_url:
-        return {**state, "errors": errors}
+        return {**state, "errors": new_errors}
 
     from app.services.browser_mcp_client import browser_mcp_session
 
@@ -77,7 +77,7 @@ async def research_company_node(state: AgentState) -> AgentState:
         # No browser data — use the placeholder stub
         from app.services.company_research_service import get_company_background
         company_background = await get_company_background(company_name, job_url)
-        return {**state, "company_background": company_background, "errors": errors}
+        return {**state, "company_background": company_background, "errors": new_errors}
 
     # Ask GPT to extract structured company info from scraped content
     try:
@@ -104,6 +104,6 @@ async def research_company_node(state: AgentState) -> AgentState:
         logger.warning("Company research GPT extraction failed: %s — using stub", exc)
         from app.services.company_research_service import get_company_background
         company_background = await get_company_background(company_name, job_url)
-        errors.append(f"research_company_node: extraction failed: {exc}")
+        new_errors.append(f"research_company_node: extraction failed: {exc}")
 
-    return {**state, "company_background": company_background, "errors": errors}
+    return {**state, "company_background": company_background, "errors": new_errors}

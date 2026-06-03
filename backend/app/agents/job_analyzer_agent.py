@@ -30,11 +30,11 @@ async def analyze_selected_job_node(state: AgentState) -> AgentState:
     """
     selected_job_post_id = state.get("selected_job_post_id")
     user_id = state["user_id"]
-    errors: list[str] = list(state.get("errors", []))
+    new_errors: list[str] = []
 
     if not selected_job_post_id:
-        errors.append("analyze_selected_job_node: selected_job_post_id is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("analyze_selected_job_node: selected_job_post_id is missing from state")
+        return {**state, "errors": new_errors}
 
     try:
         db = supabase_client.get_client()
@@ -49,8 +49,8 @@ async def analyze_selected_job_node(state: AgentState) -> AgentState:
         )
 
         if not result.data:
-            errors.append(f"analyze_selected_job_node: job post not found for id={selected_job_post_id}")
-            return {**state, "errors": errors}
+            new_errors.append(f"analyze_selected_job_node: job post not found for id={selected_job_post_id}")
+            return {**state, "errors": new_errors}
 
         job_data = result.data
         job_description = job_data.get("job_description", "")
@@ -58,8 +58,8 @@ async def analyze_selected_job_node(state: AgentState) -> AgentState:
         role_title = job_data.get("role_title", "")
 
         if not job_description:
-            errors.append("analyze_selected_job_node: job_description is empty")
-            return {**state, "errors": errors}
+            new_errors.append("analyze_selected_job_node: job_description is empty")
+            return {**state, "errors": new_errors}
 
         # 2. Call GPT to extract structured requirements
         messages = [
@@ -91,9 +91,9 @@ async def analyze_selected_job_node(state: AgentState) -> AgentState:
             "extracted_requirements": extracted_requirements,
         }
 
-        return {**state, "job_json": job_json, "errors": errors}
+        return {**state, "job_json": job_json, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("analyze_selected_job_node failed: %s", exc)
-        errors.append(f"analyze_selected_job_node error: {exc}")
-        return {**state, "errors": errors}
+        new_errors.append(f"analyze_selected_job_node error: {exc}")
+        return {**state, "errors": new_errors}

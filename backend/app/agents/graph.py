@@ -14,10 +14,11 @@ async def export_resume_node(state: AgentState) -> AgentState:
 
 
 def _build_career_agent_graph():
-    """Build and compile the LangGraph StateGraph.
+    """Build and compile the full LangGraph StateGraph with human-in-the-loop interrupts.
 
-    All langgraph and agent imports are deferred here so the module can be
-    imported in environments where langgraph is not installed (unit tests).
+    Interrupt points:
+      1. Before analyze_selected_job — user picks which job to apply to
+      2. Before export_resume — user approves/rejects rewrite suggestions
     """
     from langgraph.graph import END, START, StateGraph
 
@@ -47,13 +48,13 @@ def _build_career_agent_graph():
     builder.add_edge(START, "parse_resume")
     builder.add_edge("parse_resume", "create_candidate_profile")
     builder.add_edge("create_candidate_profile", "discover_jobs")
-    # HUMAN PAUSE 1: graph interrupts here; user sets selected_job_post_id
+    # HUMAN PAUSE 1: user selects a job
     builder.add_edge("discover_jobs", "analyze_selected_job")
     builder.add_edge("analyze_selected_job", "research_company")
     builder.add_edge("research_company", "retrieve_resume_context")
     builder.add_edge("retrieve_resume_context", "evaluate_ats")
     builder.add_edge("evaluate_ats", "generate_rewrite_suggestions")
-    # HUMAN PAUSE 2: graph interrupts here; user approves/rejects rewrites
+    # HUMAN PAUSE 2: user approves/rejects rewrites
     builder.add_edge("generate_rewrite_suggestions", "export_resume")
     builder.add_edge("export_resume", "generate_cover_letter")
     builder.add_edge("generate_cover_letter", END)
@@ -63,13 +64,49 @@ def _build_career_agent_graph():
     )
 
 
-# Build at import time if langgraph is available; otherwise None.
+def _build_analysis_graph():
+    """Analysis sub-graph: retrieve context → (evaluate ATS ∥ generate cover letter) → rewrite suggestions.
+
+    After retrieve_context completes, evaluate_ats and generate_cover_letter run in
+    parallel (they're independent — both only need retrieved_context + resume + job).
+    generate_rewrite_suggestions waits for evaluate_ats before running.
+    LangGraph fans out after retrieve_context and fans back in before rewrites.
+    """
+    from langgraph.graph import END, START, StateGraph
+
+    from app.agents.ats_evaluator_agent import evaluate_ats_node
+    from app.agents.cover_letter_agent import generate_cover_letter_node
+    from app.agents.rag_retriever_agent import retrieve_resume_context_node
+    from app.agents.rewrite_agent import generate_rewrite_suggestions_node
+
+    builder = StateGraph(AgentState)
+    builder.add_node("retrieve_context", retrieve_resume_context_node)
+    builder.add_node("evaluate_ats", evaluate_ats_node)
+    builder.add_node("generate_cover_letter", generate_cover_letter_node)
+    builder.add_node("generate_rewrites", generate_rewrite_suggestions_node)
+
+    builder.add_edge(START, "retrieve_context")
+    # Fan-out: both run in parallel after retrieval
+    builder.add_edge("retrieve_context", "evaluate_ats")
+    builder.add_edge("retrieve_context", "generate_cover_letter")
+    # Fan-in: rewrites wait for ATS (and for cover letter via LangGraph's merge)
+    builder.add_edge("evaluate_ats", "generate_rewrites")
+    builder.add_edge("generate_cover_letter", "generate_rewrites")
+    builder.add_edge("generate_rewrites", END)
+
+    return builder.compile()
+
+
+# Build graphs at import time if langgraph is available; otherwise None.
 career_agent_graph: Optional[Any] = None
+analysis_graph: Optional[Any] = None
+
 try:
     career_agent_graph = _build_career_agent_graph()
+    analysis_graph = _build_analysis_graph()
 except ImportError:
     logger.warning(
-        "langgraph is not installed — career_agent_graph is unavailable. "
+        "langgraph is not installed — graphs are unavailable. "
         "Install requirements to enable the full agent workflow."
     )
 
