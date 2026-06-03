@@ -34,7 +34,6 @@ Return a valid JSON object with exactly these keys:
 - domain_interests: list of 3-5 industry domains or interest areas inferred from experience
 - strongest_experiences: list of 3-5 strongest experience highlights (short phrases)
 - preferred_job_keywords: list of 10-15 keywords for job searching
-- search_queries: list of 5-8 optimised job search query strings ready to use in a job board
 
 Return only valid JSON. Do not add markdown or extra text."""
 
@@ -263,7 +262,6 @@ async def create_candidate_profile(
                     "user_id": user_id,
                     "resume_id": resume_id,
                     "profile_json": profile,
-                    "search_queries": profile.get("search_queries", []),
                 }
             )
             .execute()
