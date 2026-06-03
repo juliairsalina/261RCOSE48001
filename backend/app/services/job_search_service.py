@@ -326,23 +326,78 @@ class OpenAIWebSearchProvider(JobSearchProvider):
         return results[:limit]
 
 
+# ── Cascade provider (JSearch → OpenAI fallback) ────────────────────────────
+
+class CascadeProvider(JobSearchProvider):
+    """Tries JSearch first. Falls back to OpenAI web search when:
+    - The country has poor JSearch coverage (kr, my, th, id, ph, vn, sg)
+    - JSearch returns 0 results
+    - JSearch API key is missing or quota is exhausted
+    """
+
+    # Countries where JSearch has limited job board data — skip straight to OpenAI
+    _OPENAI_PREFERRED = {"kr", "my", "th", "id", "ph", "vn"}
+
+    async def search(
+        self,
+        queries: list[str],
+        location: str = "",
+        job_type: str = "",
+        country: str = "",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        resolved_country = (country or settings.jsearch_country or "us").lower()
+
+        if resolved_country in self._OPENAI_PREFERRED:
+            logger.info(
+                "Country '%s' has limited JSearch coverage — using OpenAI web search directly",
+                resolved_country,
+            )
+            return await OpenAIWebSearchProvider().search(
+                queries, location=location, job_type=job_type, country=country, limit=limit
+            )
+
+        # Try JSearch first
+        try:
+            results = await JSearchProvider().search(
+                queries, location=location, job_type=job_type, country=country, limit=limit
+            )
+        except Exception as exc:
+            logger.warning("JSearch raised an exception: %s — falling back to OpenAI web search", exc)
+            results = []
+
+        if results:
+            logger.info("JSearch returned %d results for country '%s'", len(results), resolved_country)
+            return results
+
+        # JSearch returned nothing — fall back to OpenAI web search
+        logger.info(
+            "JSearch returned 0 results for country '%s' — falling back to OpenAI web search",
+            resolved_country,
+        )
+        return await OpenAIWebSearchProvider().search(
+            queries, location=location, job_type=job_type, country=country, limit=limit
+        )
+
+
 # ── Provider registry ───────────────────────────────────────────────────────
 # Register new providers here. Key = value of JOB_SEARCH_PROVIDER in .env.
 
 _PROVIDERS: dict[str, type[JobSearchProvider]] = {
     "jsearch": JSearchProvider,
     "openai_web": OpenAIWebSearchProvider,
+    "cascade": CascadeProvider,
     "dummy": DummyProvider,
 }
 
 
 def get_provider() -> JobSearchProvider:
     """Instantiate and return the provider configured in JOB_SEARCH_PROVIDER."""
-    key = (settings.job_search_provider or "jsearch").lower()
+    key = (settings.job_search_provider or "cascade").lower()
     provider_class = _PROVIDERS.get(key)
     if provider_class is None:
-        logger.warning("Unknown JOB_SEARCH_PROVIDER '%s' — falling back to DummyProvider.", key)
-        return DummyProvider()
+        logger.warning("Unknown JOB_SEARCH_PROVIDER '%s' — falling back to CascadeProvider.", key)
+        return CascadeProvider()
     return provider_class()
 
 

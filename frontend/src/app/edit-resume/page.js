@@ -1263,6 +1263,7 @@ export default function EditResumePage() {
                     <option value="nl">🇳🇱 Netherlands</option>
                     <option value="jp">🇯🇵 Japan</option>
                     <option value="kr">🇰🇷 South Korea</option>
+                    <option value="my">🇲🇾 Malaysia</option>
                     <option value="in">🇮🇳 India</option>
                   </select>
 
