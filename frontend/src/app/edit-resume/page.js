@@ -8,7 +8,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Redo2,
+
   Sparkles,
   AlertTriangle,
   Home,
@@ -758,12 +758,6 @@ export default function EditResumePage() {
                     icon={<RotateCcw size={17} />}
                     label="Re-evaluate"
                     onClick={reevaluateResume}
-                  />
-
-                  <ToolButton
-                    icon={<Redo2 size={17} />}
-                    label="Next issue"
-                    onClick={goNextSuggestion}
                   />
 
                   {previousState && (
