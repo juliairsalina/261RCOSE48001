@@ -59,11 +59,11 @@ async def retrieve_resume_context_node(state: AgentState) -> AgentState:
 
     if not job_json:
         new_errors.append("retrieve_resume_context_node: job_json is missing from state")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     if not resume_id:
         new_errors.append("retrieve_resume_context_node: resume_id is missing from state")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     try:
         # 1. Build retrieval query
@@ -97,9 +97,9 @@ async def retrieve_resume_context_node(state: AgentState) -> AgentState:
                 }
             ).execute()
 
-        return {**state, "retrieved_context": chunks, "errors": new_errors}
+        return {"retrieved_context": chunks, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("retrieve_resume_context_node failed: %s", exc)
         new_errors.append(f"retrieve_resume_context_node error: {exc}")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}

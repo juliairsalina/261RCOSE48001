@@ -39,11 +39,11 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
 
     if not resume_json:
         new_errors.append("generate_cover_letter_node: resume_json is missing from state")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     if not job_json:
         new_errors.append("generate_cover_letter_node: job_json is missing from state")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     try:
         company_name = job_json.get("company_name", "the company")
@@ -93,9 +93,9 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
                 }
             ).execute()
 
-        return {**state, "cover_letter": cover_letter_text, "errors": new_errors}
+        return {"cover_letter": cover_letter_text, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("generate_cover_letter_node failed: %s", exc)
         new_errors.append(f"generate_cover_letter_node error: {exc}")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}

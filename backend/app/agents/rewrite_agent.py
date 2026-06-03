@@ -43,15 +43,15 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
 
     if not ats_result:
         new_errors.append("generate_rewrite_suggestions_node: ats_result is missing from state")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     if not resume_json:
         new_errors.append("generate_rewrite_suggestions_node: resume_json is missing from state")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     if not job_json:
         new_errors.append("generate_rewrite_suggestions_node: job_json is missing from state")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     try:
         context_text = "\n".join(
@@ -105,9 +105,9 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
                     }
                 ).execute()
 
-        return {**state, "rewrite_suggestions": suggestions, "errors": new_errors}
+        return {"rewrite_suggestions": suggestions, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("generate_rewrite_suggestions_node failed: %s", exc)
         new_errors.append(f"generate_rewrite_suggestions_node error: {exc}")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}

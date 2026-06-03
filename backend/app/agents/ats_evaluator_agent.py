@@ -191,11 +191,11 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
 
     if not resume_json:
         new_errors.append("evaluate_ats_node: resume_json is missing from state")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     if not job_json:
         new_errors.append("evaluate_ats_node: job_json is missing from state")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     try:
         # 1. Compute deterministic score
@@ -256,9 +256,9 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
                 }
             ).execute()
 
-        return {**state, "ats_result": ats_result, "errors": new_errors}
+        return {"ats_result": ats_result, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("evaluate_ats_node failed: %s", exc)
         new_errors.append(f"evaluate_ats_node error: {exc}")
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
