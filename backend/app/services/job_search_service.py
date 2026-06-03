@@ -137,6 +137,10 @@ class JSearchProvider(JobSearchProvider):
 
         resolved_country = (country or settings.jsearch_country).lower()
 
+        # Use the correct language for the country
+        _COUNTRY_LANGUAGE = {"kr": "ko", "jp": "ja", "de": "de", "fr": "fr", "cn": "zh"}
+        resolved_language = _COUNTRY_LANGUAGE.get(resolved_country, settings.jsearch_language)
+
         headers = {
             "X-RapidAPI-Key": settings.jsearch_api_key,
             "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
@@ -153,7 +157,7 @@ class JSearchProvider(JobSearchProvider):
                     "query": f"{query} {location}".strip(),
                     "num_pages": 1,
                     "page": 1,
-                    "language": settings.jsearch_language,
+                    "language": resolved_language,
                     "country": resolved_country,
                 }
                 if job_type:
@@ -224,9 +228,28 @@ class OpenAIWebSearchProvider(JobSearchProvider):
     ) -> list[dict[str, Any]]:
         from app.services.openai_client import get_client
 
+        # Country-specific job board and language hints injected into the prompt
+        _COUNTRY_HINTS: dict[str, str] = {
+            "kr": (
+                "Search Korean job boards 사람인(saramin.co.kr), 원티드(wanted.co.kr), "
+                "잡코리아(jobkorea.co.kr), 링크드인 코리아(linkedin.com/jobs). "
+                "Write your search query in Korean. Job titles may appear in English or Korean."
+            ),
+            "jp": (
+                "Search Japanese job boards Rikunabi (rikunabi.com), Mynavi (job.mynavi.jp), "
+                "Indeed Japan (jp.indeed.com). Search in Japanese."
+            ),
+            "my": (
+                "Search Malaysian job boards JobStreet Malaysia (jobstreet.com.my), "
+                "LinkedIn Malaysia, Hiredly (hiredly.com). Jobs are typically listed in English."
+            ),
+        }
+
         client = get_client()
         results: list[dict[str, Any]] = []
         seen: set[str] = set()
+        resolved_country = (country or "").lower()
+        country_hint = _COUNTRY_HINTS.get(resolved_country, "")
 
         for query in queries[:4]:
             if len(results) >= limit:
@@ -236,7 +259,8 @@ class OpenAIWebSearchProvider(JobSearchProvider):
 
             prompt = (
                 f'Search the web for current job openings matching: "{search_query}"\n\n'
-                "Find 3-5 real, currently open job postings from company career pages or job boards "
+                + (f"{country_hint}\n\n" if country_hint else "")
+                + "Find 3-5 real, currently open job postings from company career pages or job boards "
                 "(LinkedIn, Indeed, Glassdoor, company sites). "
                 "For each job return a JSON object with these exact keys:\n"
                 "- company_name: the hiring company\n"
