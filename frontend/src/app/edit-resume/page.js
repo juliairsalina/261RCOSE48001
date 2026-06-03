@@ -138,6 +138,31 @@ export default function EditResumePage() {
   const [candidateProfile, setCandidateProfile] = useState(null);
   const [candidateProfileLoading, setCandidateProfileLoading] = useState(false);
 
+  // One-level undo — saved before any content/score/rewrite change
+  const [previousState, setPreviousState] = useState(null);
+
+  function saveSnapshot() {
+    setPreviousState({
+      resumeData: JSON.parse(JSON.stringify(resumeData)),
+      atsScoreValue,
+      resumeLevel,
+      metrics: { ...metrics },
+      backendSuggestions: [...backendSuggestions],
+      rewriteList: [...rewriteList],
+    });
+  }
+
+  function undoChanges() {
+    if (!previousState) return;
+    setResumeData(previousState.resumeData);
+    setAtsScoreValue(previousState.atsScoreValue);
+    setResumeLevel(previousState.resumeLevel);
+    setMetrics(previousState.metrics);
+    setBackendSuggestions(previousState.backendSuggestions);
+    setRewriteList(previousState.rewriteList);
+    setPreviousState(null);
+  }
+
   const suggestions = backendSuggestions || [];
 
   const currentSuggestion =
@@ -332,6 +357,7 @@ export default function EditResumePage() {
         body: JSON.stringify({ user_id: uid }),
       });
 
+      saveSnapshot();
       const score = evalResult.score || 0;
       setAtsScoreValue(score);
       setResumeLevel(getRankLabel(evalResult.rank));
@@ -395,6 +421,7 @@ export default function EditResumePage() {
   }
 
   async function approveRewrite(suggestionId) {
+    saveSnapshot();
     try {
       await callBackend(`/rewrite-suggestions/${suggestionId}`, {
         method: "PATCH",
@@ -409,6 +436,7 @@ export default function EditResumePage() {
   }
 
   async function rejectRewrite(suggestionId) {
+    saveSnapshot();
     try {
       await callBackend(`/rewrite-suggestions/${suggestionId}`, {
         method: "PATCH",
@@ -508,6 +536,7 @@ export default function EditResumePage() {
         body: JSON.stringify({ user_id: uid }),
       });
 
+      saveSnapshot();
       const score = evalResult.score || 0;
       setAtsScoreValue(score);
       setResumeLevel(getRankLabel(evalResult.rank));
@@ -737,6 +766,14 @@ export default function EditResumePage() {
                     onClick={goNextSuggestion}
                   />
 
+                  {previousState && (
+                    <ToolButton
+                      icon={<ArrowLeft size={17} />}
+                      label="Undo Changes"
+                      onClick={undoChanges}
+                    />
+                  )}
+
                   <div className="mx-3 h-6 w-px bg-[#243026]/15" />
 
                   <ToolButton
@@ -829,7 +866,7 @@ export default function EditResumePage() {
                     setActiveRewriteId(rw.id);
                     setActiveTab("rewrites");
                   }}
-                  onDataChange={setResumeData}
+                  onDataChange={(next) => { saveSnapshot(); setResumeData(next); }}
                 />
               </div>
             </div>
