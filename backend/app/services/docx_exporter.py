@@ -33,6 +33,21 @@ def _add_horizontal_rule(document) -> None:
     pPr.append(pBdr)
 
 
+def _to_str(value: Any) -> str:
+    """Safely convert a value to string, flattening dicts/lists if needed."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        # Try common text keys first
+        for key in ("text", "description", "name", "value", "content"):
+            if key in value:
+                return _to_str(value[key])
+        return " ".join(_to_str(v) for v in value.values() if v)
+    if isinstance(value, list):
+        return " ".join(_to_str(v) for v in value if v)
+    return str(value) if value is not None else ""
+
+
 def _apply_rewrites(resume_json: dict, approved_rewrites: list[dict]) -> dict:
     """Apply approved rewrite suggestions to the resume_json dict.
 
@@ -142,13 +157,13 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
         summary_para.paragraph_format.space_after = Pt(4)
 
     # ── Skills ────────────────────────────────────────────────────────────
-    skills: list[str] = data.get("skills", [])
+    skills: list = data.get("skills", [])
     if skills:
         doc.add_paragraph()
         heading = doc.add_paragraph("SKILLS")
         _set_heading_style(heading, font_size=11, bold=True)
         _add_horizontal_rule(doc)
-        skills_para = doc.add_paragraph(", ".join(skills))
+        skills_para = doc.add_paragraph(", ".join(_to_str(s) for s in skills if s))
         skills_para.paragraph_format.space_after = Pt(4)
 
     # ── Education ─────────────────────────────────────────────────────────
@@ -236,7 +251,7 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
                 bullet_para = doc.add_paragraph(style="List Bullet")
                 bullet_para.paragraph_format.space_before = Pt(0)
                 bullet_para.paragraph_format.space_after = Pt(1)
-                bullet_para.add_run(bullet)
+                bullet_para.add_run(_to_str(bullet))
 
             # Description fallback
             if description and not bullets:
@@ -270,7 +285,7 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
                 proj_para.add_run(f"  {date_str}")
 
             if technologies:
-                tech_para = doc.add_paragraph(f"Technologies: {', '.join(technologies)}")
+                tech_para = doc.add_paragraph(f"Technologies: {', '.join(_to_str(t) for t in technologies if t)}")
                 tech_para.paragraph_format.space_before = Pt(0)
                 tech_para.paragraph_format.space_after = Pt(1)
                 for run in tech_para.runs:
@@ -280,7 +295,7 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
                 bullet_para = doc.add_paragraph(style="List Bullet")
                 bullet_para.paragraph_format.space_before = Pt(0)
                 bullet_para.paragraph_format.space_after = Pt(1)
-                bullet_para.add_run(bullet)
+                bullet_para.add_run(_to_str(bullet))
 
             if proj_desc and not bullets_proj:
                 doc.add_paragraph(proj_desc)
@@ -290,31 +305,31 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
                 url_para.paragraph_format.space_after = Pt(2)
 
     # ── Additional Sections ───────────────────────────────────────────────
-    certifications: list[str] = data.get("certifications", [])
+    certifications: list = data.get("certifications", [])
     if certifications:
         doc.add_paragraph()
         heading = doc.add_paragraph("CERTIFICATIONS")
         _set_heading_style(heading, font_size=11, bold=True)
         _add_horizontal_rule(doc)
         for cert in certifications:
-            doc.add_paragraph(cert, style="List Bullet")
+            doc.add_paragraph(_to_str(cert), style="List Bullet")
 
-    achievements: list[str] = data.get("achievements", [])
+    achievements: list = data.get("achievements", [])
     if achievements:
         doc.add_paragraph()
         heading = doc.add_paragraph("ACHIEVEMENTS")
         _set_heading_style(heading, font_size=11, bold=True)
         _add_horizontal_rule(doc)
         for ach in achievements:
-            doc.add_paragraph(ach, style="List Bullet")
+            doc.add_paragraph(_to_str(ach), style="List Bullet")
 
-    languages: list[str] = data.get("languages", [])
+    languages: list = data.get("languages", [])
     if languages:
         doc.add_paragraph()
         heading = doc.add_paragraph("LANGUAGES")
         _set_heading_style(heading, font_size=11, bold=True)
         _add_horizontal_rule(doc)
-        doc.add_paragraph(", ".join(languages))
+        doc.add_paragraph(", ".join(_to_str(lang) for lang in languages if lang))
 
     # ── Serialize to bytes ────────────────────────────────────────────────
     buffer = io.BytesIO()

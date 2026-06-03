@@ -15,12 +15,13 @@ Rules:
 - Never invent skills or experience the candidate doesn't have
 - Improve clarity, impact, and keyword alignment
 - Add measurable results where possible based on existing evidence
-- If a skill is missing with no evidence, note it as something the user should consider adding
-- Focus only on sections where improvements will meaningfully increase ATS match score
+- ONLY suggest rewrites for work_experience bullet points/descriptions and projects bullet points/descriptions
+- Do NOT suggest changes to skills, summary, education, or any other section
+- Focus on making experience and project descriptions more impactful and keyword-aligned with the job
 
 Return a JSON object with key "suggestions" containing a list of objects with exactly these fields:
-- section: the resume section being improved (e.g. "summary", "work_experience", "skills", "projects")
-- original_text: the exact original text from the resume that should be replaced (quote it precisely)
+- section: must be either "work_experience" or "projects"
+- original_text: the exact original bullet point or description text from the resume (quote it precisely)
 - suggested_text: the improved replacement text
 - reason: a clear explanation of why this change improves ATS matching or impact
 
@@ -57,6 +58,12 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
             c.get("chunk_text", "") for c in retrieved_context[:5]
         ) if retrieved_context else "No additional context."
 
+        # Only pass experience and project sections to the model
+        resume_subset = {
+            "work_experience": resume_json.get("work_experience", []),
+            "projects": resume_json.get("projects", []),
+        }
+
         messages = [
             {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
             {
@@ -66,7 +73,7 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
                     f"Missing Skills: {', '.join(ats_result.get('missing_skills', []))}\n"
                     f"Weaknesses: {'; '.join(ats_result.get('weaknesses', []))}\n\n"
                     f"Job Requirements:\n{json.dumps(job_json.get('extracted_requirements', {}), ensure_ascii=False)}\n\n"
-                    f"Current Resume:\n{json.dumps(resume_json, ensure_ascii=False)[:3000]}\n\n"
+                    f"Experience and Projects:\n{json.dumps(resume_subset, ensure_ascii=False)[:3000]}\n\n"
                     f"Retrieved Resume Context:\n{context_text[:1500]}"
                 ),
             },
@@ -77,7 +84,11 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
             response_format={"type": "json_object"},
         )
         gpt_result: dict = json.loads(raw_response)
-        suggestions: list[dict[str, Any]] = gpt_result.get("suggestions", [])
+        raw_suggestions: list[dict[str, Any]] = gpt_result.get("suggestions", [])
+
+        # Filter to only experience and project suggestions (belt-and-suspenders)
+        allowed_sections = {"work_experience", "projects"}
+        suggestions = [s for s in raw_suggestions if s.get("section", "") in allowed_sections]
 
         # Save each suggestion to rewrite_suggestions table
         if application_id and suggestions:
