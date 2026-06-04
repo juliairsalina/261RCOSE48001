@@ -26,12 +26,6 @@ import {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
-function cleanBullet(text) {
-  return typeof text === "string"
-    ? text.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim()
-    : text;
-}
-
 export default function EditResumePage() {
   const router = useRouter();
 
@@ -1478,6 +1472,12 @@ function MetricBox({ title, value }) {
       <p className="mt-1 text-lg font-black text-[#243026]">{value}</p>
     </div>
   );
+}
+
+function cleanBullet(text) {
+  return typeof text === "string"
+    ? text.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim()
+    : text;
 }
 
 function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick, onDataChange }) {
