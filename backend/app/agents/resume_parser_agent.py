@@ -34,11 +34,27 @@ CRITICAL RULES
 16. If information is missing, use empty strings "" or empty arrays [].
 17. Return ONLY valid JSON.
 18. Every section found in the resume must be represented in the JSON.
-19. Generate a professional summary if the resume does not explicitly contain one.
-20. The summary must be 2-4 sentences and based only on information present in the resume.
-21. The summary must not invent experience, skills, achievements, or qualifications not found in the resume.
-22. Store the generated summary in the "summary" field.
+19. Leadership refers ONLY to student leadership positions in clubs, societies, committee roles, ambassador roles, club officer positions, volunteer leadership positions, and organizational leadership activities.
+20. Achievements refer ONLY to awards, honors, scholarships, competition results, recognitions, distinctions, rankings, prizes, dean's list awards, and notable accomplishments.
+21. Certifications refer ONLY to certifications, licenses, examinations, training certificates, and professional credentials.
+22. Do NOT place leadership activities into achievements.
+23. Do NOT place work experience into achievements.
+24. If an item contains a role title, organization, and responsibilities, it should usually be leadership or work_experience, not achievements.
+25. Achievements should never consist only of dates.
+26. If no achievements are found, return an empty achievements array.
+27. Generate a professional summary if the resume does not explicitly contain one.
+28. The summary must be 2-4 sentences and based only on information present in the resume.
+29. The summary must not invent experience, skills, achievements, or qualifications not found in the resume.
+30. Store the generated summary in the "summary" field.
+31. Dates must be extracted exactly as written in the resume.
+32. Do not infer start dates or end dates from education dates, project dates, or nearby sections.
+33. If the exact start date or end date cannot be determined, leave it empty.
 
+Datathon, Hackathon or any competition Classification Rules
+
+- Participation in a datathon, hackathon or any competition should normally be classified as work_experience if the candidate completed technical work, developed a project, conducted research, built a system, or applied skills.
+- Winning a datathon or hackathon should be classified as achievements.
+- Official certificates earned from training programs, examinations, or professional credentials should be classified as certifications.
 
 CRITICAL SCHEMA RULES
 
@@ -73,6 +89,21 @@ Work experience responsibilities
 Work experience summary
 → description
 
+Work experience includes:
+- Mentoring programs
+- Teaching programs
+- Language exchange programs
+- Editorial work
+- Volunteer work with defined responsibilities
+- Research assistantships
+- Internships
+- Part-time work
+- Freelance work
+- Datathons
+- Hackathons
+- Competitions where the candidate completed technical work, projects, research, analysis, development, or implementation tasks
+- other experiences where the candidate performed responsibilities or developed skills.
+
 Education highlights
 → description
 
@@ -90,6 +121,40 @@ Project repository links
 
 Language levels
 → proficiency
+
+Leadership responsibilities
+→ bullets
+
+Leadership summary
+→ description
+
+- Club President
+- Committee Member
+- Secretary
+- Student Ambassador
+- Student Representative
+- Editor of Student Publication
+→ leadership
+Mentoring programs, teaching programs, datathons, internships, volunteer work, and operational responsibilities should normally be classified as work_experience unless they are explicitly part of a formal leadership position within an organization.
+Any roles that are part of a committee, student organization, club, society, publication board, or leadership structure should be classified as leadership.
+
+Achievement examples:
+- Dean's List
+- Scholarship Recipient
+- Competition Winner
+- Best Paper Award
+- Top Performer Award
+- Gold Medal/ any medal
+- Competition Finalist
+- Competition Champion
+→ achievements
+
+Certification examples:
+- AWS Certified Cloud Practitioner
+- TOPIK Level 5
+- IELTS 7.5
+- Google Data Analytics Certificate
+→ certifications
 
 Return ONLY the following schema:
 
@@ -120,6 +185,17 @@ Return ONLY the following schema:
 "start_date": "",
 "end_date": "",
 "is_current": false,
+"description": "",
+"bullets": []
+}
+],
+
+"leadership": [
+{
+"title": "",
+"organization": "",
+"start_date": "",
+"end_date": "",
 "description": "",
 "bullets": []
 }
