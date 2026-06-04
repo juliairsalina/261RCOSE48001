@@ -41,7 +41,6 @@ CANDIDATE_PROFILE = {
 @pytest.mark.asyncio
 async def test_job_search_returns_normalized_results():
     """Mock Adzuna API and verify results are normalized to the expected structure."""
-    from unittest.mock import AsyncMock
 
     mock_response = MagicMock()
     mock_response.json.return_value = MOCK_ADZUNA_RESPONSE

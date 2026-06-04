@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response, StreamingResponse

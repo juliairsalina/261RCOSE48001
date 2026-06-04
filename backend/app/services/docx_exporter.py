@@ -112,8 +112,6 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
-    from docx.oxml.ns import qn
-    from docx.oxml import OxmlElement
 
     data = _apply_rewrites(resume_json, approved_rewrites)
     doc = Document()

@@ -71,7 +71,7 @@ def _compute_match_score(
     if matched_skills:
         match_reasons.append(f"Matching skills: {', '.join(sorted(matched_skills)[:5])}")
     if title_score > 0:
-        match_reasons.append(f"Role title alignment with target roles")
+        match_reasons.append("Role title alignment with target roles")
     if matched_keywords:
         match_reasons.append(f"Keyword match: {', '.join(sorted(matched_keywords)[:5])}")
 

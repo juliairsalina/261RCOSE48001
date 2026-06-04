@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -94,7 +94,6 @@ def test_extract_text_from_pdf():
     """Test PDF text extraction returns a non-empty string from valid PDF bytes."""
     pytest.importorskip("pypdf", reason="pypdf not installed")
     from pypdf import PdfWriter
-    from pypdf.generic import NameObject
 
     # Build a minimal in-memory PDF with one page
     writer = PdfWriter()
