@@ -19,6 +19,9 @@ STRICT SELECTION RULES — only suggest a rewrite if ALL of these are true:
 
 WHAT TO REWRITE:
 - Bullet points or descriptions in work_experience or projects that are vague ("worked on X", "helped with Y", "responsible for Z")
+- Leadership descriptions
+- Achievement descriptions
+- Certification descriptions (only descriptions, not certification names)
 - Text missing keywords from the job's required_skills or keywords list
 - Weak action verbs with no measurable outcome
 
@@ -26,7 +29,7 @@ WHAT NOT TO REWRITE:
 - Already strong bullets with numbers and results
 - Text that already contains the required keywords
 - Lines that are fine but you could "make slightly better" — skip those
-- Skills section, summary, education
+- Skills section, summary, education, certification names
 
 REWRITE RULES:
 - Keep the same experience — never fabricate achievements or tools the candidate didn't use
@@ -35,7 +38,7 @@ REWRITE RULES:
 - Keep the same approximate length
 
 Return a JSON object with key "suggestions" containing a list. Each object must have:
-- section: "work_experience" or "projects" only
+- section: "work_experience", "projects", "leadership", "achievements" or "certifications" only
 - original_text: exact original text (copy precisely)
 - suggested_text: the rewritten version
 - reason: one sentence — which specific keyword or weakness this fixes and how it raises the ATS score
@@ -74,13 +77,16 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
             c.get("chunk_text", "") for c in retrieved_context[:5]
         ) if retrieved_context else "No additional context."
 
-        # Only pass experience and project sections to the model
+        # Only pass experience, project, leadership, achievements, and certifications sections to the model
         resume_subset = {
             "work_experience": resume_json.get("work_experience", []),
             "projects": resume_json.get("projects", []),
+            "leadership": resume_json.get("leadership", []),
+            "achievements": resume_json.get("achievements", []),
+            "certifications": resume_json.get("certifications", []),
         }
 
-        requirements = job_json.get("extracted_requirements", {})
+        requirements = job_json.get("extracted_requirements") or {}
         required_keywords = (
             requirements.get("required_skills", []) +
             requirements.get("keywords", [])
@@ -96,7 +102,7 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
                     f"All required job keywords: {', '.join(required_keywords[:20])}\n"
                     f"Weaknesses identified: {'; '.join(ats_result.get('weaknesses', []))}\n\n"
                     f"Job title: {job_json.get('role_title', '')}\n\n"
-                    f"Experience and Projects to review:\n{json.dumps(resume_subset, ensure_ascii=False)[:3000]}\n\n"
+                    f"Resume sections to review:\n{json.dumps(resume_subset, ensure_ascii=False)[:3000]}\n\n"
                     f"Additional context:\n{context_text[:1000]}"
                 ),
             },
@@ -109,8 +115,8 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
         gpt_result: dict = json.loads(raw_response)
         raw_suggestions: list[dict[str, Any]] = gpt_result.get("suggestions", [])
 
-        # Filter to only experience and project suggestions (belt-and-suspenders)
-        allowed_sections = {"work_experience", "projects"}
+        # Filter to only experience, project, leadership, achievements and certifications suggestions (belt-and-suspenders)
+        allowed_sections = {"work_experience", "projects", "leadership", "achievements", "certifications", }
         suggestions = [s for s in raw_suggestions if s.get("section", "") in allowed_sections]
 
         # Save each suggestion to rewrite_suggestions table

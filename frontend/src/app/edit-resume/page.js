@@ -194,6 +194,11 @@ export default function EditResumePage() {
     if (savedParsed) {
       try {
         const parsed = JSON.parse(savedParsed);
+
+        console.log("PARSED JSON:", parsed);
+        console.log("LEADERSHIP:", parsed.leadership);
+        console.log("ACHIEVEMENTS:", parsed.achievements);
+        console.log("CERTIFICATIONS:", parsed.certifications);
         // Map backend fields to frontend resumeData shape
         setResumeData({
           name: parsed.name || "",
@@ -237,6 +242,27 @@ export default function EditResumePage() {
             description: p.description || "",
             technologies: p.technologies || [],
             bullets: p.bullets || [],
+          })),
+          leadership: (parsed.leadership || []).map(l => ({
+            title: l.title || "",
+            organization: l.organization || "",
+            start_date: l.start_date || "",
+            end_date: l.end_date || "",
+            description: l.description || "",
+            bullets: l.bullets || [],
+          })),
+
+          achievements: (parsed.achievements || []).map(a => ({
+            title: a.title || "",
+            date: a.date || "",
+            description: a.description || "",
+          })),
+
+          certifications: (parsed.certifications || []).map(c => ({
+            name: c.name || "",
+            issuer: c.issuer || "",
+            date: c.date || "",
+            description: c.description || "",
           })),
         });
       } catch (e) {
@@ -518,10 +544,27 @@ export default function EditResumePage() {
     setJobSearchLoading(true);
     setErrorMessage("");
     try {
+
+      console.log("JOB COUNTRY =", jobCountry);
+      console.log("JOB LOCATION =", jobLocation);
+
+      const payload = {
+        user_id: uid,
+        resume_id: rid,
+        location: jobLocation,
+        country: jobCountry,
+      };
+
+      console.log("PAYLOAD =", payload);
+      
       const result = await callBackend("/jobs/search-web", {
         method: "POST",
         body: JSON.stringify({ user_id: uid, resume_id: rid, location: jobLocation, country: jobCountry }),
       });
+
+      console.log("JOB SEARCH RESULT", result);
+      console.log("JOBS", result.jobs);
+
       setJobResults(result.jobs || []);
       setJobSearched(true);
     } catch (error) {
@@ -1552,6 +1595,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
   const education = resumeData.education || [];
   const experience = resumeData.experience || resumeData.work_experience || [];
   const projects = resumeData.projects || [];
+  const leadership = resumeData.leadership || [];
+  const achievements = resumeData.achievements || [];
+  const certifications = resumeData.certifications || [];
   const pendingCount = rewriteList.filter(r => r.status === "pending").length;
 
   return (
@@ -1817,6 +1863,248 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   ))}
                 </ul>
               )}
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Leadership */}
+      {leadership.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
+            Leadership
+          </h2>
+
+          {leadership.map((item, i) => (
+            <div key={i} className="mt-2">
+
+              <div className="flex justify-between">
+
+                <div>
+
+                  <Editable
+                    value={item.title || ""}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i ? { ...l, title: v } : l
+                      );
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    className="font-bold"
+                  />
+
+                  <Editable
+                    value={item.organization || ""}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i ? { ...l, organization: v } : l
+                      );
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    className="text-gray-600"
+                  />
+
+                </div>
+
+                <div className="text-gray-500 text-right shrink-0 ml-2">
+
+                  <Editable
+                    value={item.start_date || ""}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i
+                          ? { ...l, start_date: v }
+                          : l
+                      );
+
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    placeholder="Start Date"
+                  />
+
+                  <span> – </span>
+
+                  <Editable
+                    value={item.end_date || ""}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i
+                          ? { ...l, end_date: v }
+                          : l
+                      );
+
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    placeholder="End Date"
+                  />
+
+                </div>
+
+              </div>
+
+              {(item.bullets || []).length > 0 && (
+                <ul className="mt-1.5 list-disc pl-5">
+                  {item.bullets.map((b, j) => (
+                    <li key={j}>
+                      <RewritableBullet text={b}>
+                        <Editable
+                          value={b}
+                          onSave={upd ? (v) => {
+                            const newLeadership = leadership.map((l, li) => {
+                              if (li !== i) return l;
+
+                              const newBullets = [...(l.bullets || [])];
+                              newBullets[j] = v;
+
+                              return {
+                                ...l,
+                                bullets: newBullets,
+                              };
+                            });
+
+                            upd({ leadership: newLeadership });
+                          } : null}
+                        />
+                      </RewritableBullet>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Achievements */}
+      {achievements.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
+            Achievements
+          </h2>
+
+          {achievements.map((a, i) => (
+            <div key={i} className="mt-2">
+
+              <div className="flex justify-between">
+
+                <Editable
+                  value={a.title || ""}
+                  onSave={upd ? (v) => {
+                    const newAchievements = achievements.map((a2, ai) =>
+                      ai === i ? { ...a2, title: v } : a2
+                    );
+                    upd({ achievements: newAchievements });
+                  } : null}
+                  as="h3"
+                  className="font-bold"
+                />
+
+                <Editable
+                  value={a.date || ""}
+                  onSave={upd ? (v) => {
+                    const newAchievements = achievements.map((a2, ai) =>
+                      ai === i ? { ...a2, date: v } : a2
+                    );
+                    upd({ achievements: newAchievements });
+                  } : null}
+                  as="span"
+                  placeholder="Date"
+                  className="text-gray-500 shrink-0 ml-2"
+                />
+
+              </div>
+
+              <RewritableBullet text={a.description || ""}>
+                <Editable
+                  value={a.description || ""}
+                  onSave={upd ? (v) => {
+                    const newAchievements = achievements.map((a2, ai) =>
+                      ai === i ? { ...a2, description: v } : a2
+                    );
+                    upd({ achievements: newAchievements });
+                  } : null}
+                  as="p"
+                  placeholder="Describe this achievement..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
+
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Certifications */}
+      {certifications.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
+            Certifications
+          </h2>
+
+          {certifications.map((c, i) => (
+            <div key={i} className="mt-2">
+
+              <div className="flex justify-between">
+
+                <div>
+
+                  <Editable
+                    value={c.name || ""}
+                    onSave={upd ? (v) => {
+                      const newCerts = certifications.map((c2, ci) =>
+                        ci === i ? { ...c2, name: v } : c2
+                      );
+                      upd({ certifications: newCerts });
+                    } : null}
+                    as="h3"
+                    className="font-bold"
+                  />
+
+                  <Editable
+                    value={c.issuer || ""}
+                    onSave={upd ? (v) => {
+                      const newCerts = certifications.map((c2, ci) =>
+                        ci === i ? { ...c2, issuer: v } : c2
+                      );
+                      upd({ certifications: newCerts });
+                    } : null}
+                    as="p"
+                    className="text-gray-600"
+                  />
+
+                </div>
+
+                <Editable
+                  value={c.date || ""}
+                  onSave={upd ? (v) => {
+                    const newCerts = certifications.map((c2, ci) =>
+                      ci === i ? { ...c2, date: v } : c2
+                    );
+                    upd({ certifications: newCerts });
+                  } : null}
+                  as="span"
+                  placeholder="Date"
+                  className="text-gray-500 shrink-0 ml-2 min-w-[80px] text-right"
+                />
+
+              </div>
+
+              <RewritableBullet text={c.description || ""}>
+                <Editable
+                  value={c.description || ""}
+                  onSave={upd ? (v) => {
+                    const newCerts = certifications.map((c2, ci) =>
+                      ci === i ? { ...c2, description: v } : c2
+                    );
+                    upd({ certifications: newCerts });
+                  } : null}
+                  as="p"
+                  placeholder="Describe this certification..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
+
             </div>
           ))}
         </section>
