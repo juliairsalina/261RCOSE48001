@@ -273,6 +273,13 @@ export default function EditResumePage() {
     setActiveSuggestion(ids[nextIndex]);
   };
 
+  // Strip common PDF bullet glyphs that parsers capture as literal text
+  function cleanBullet(text) {
+    return typeof text === "string"
+      ? text.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim()
+      : text;
+  }
+
   async function callBackend(path, options = {}) {
     const isFormData = options.body instanceof FormData;
 
@@ -1691,9 +1698,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     ? exp.bullets
                     : exp.responsibilities || []).map((b, j) => (
                     <li key={j}>
-                      <RewritableBullet text={b}>
+                      <RewritableBullet text={cleanBullet(b)}>
                         <Editable
-                          value={b}
+                          value={cleanBullet(b)}
                           onSave={upd ? (v) => {
                             const newExp = experience.map((e, ei) => {
                               if (ei !== i) return e;
@@ -1817,9 +1824,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
                   {proj.bullets.map((b, j) => (
                     <li key={j}>
-                      <RewritableBullet text={b}>
+                      <RewritableBullet text={cleanBullet(b)}>
                         <Editable
-                          value={b}
+                          value={cleanBullet(b)}
                           onSave={upd ? (v) => {
                             const newProj = projects.map((p, pi) => {
                               if (pi !== i) return p;

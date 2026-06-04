@@ -140,7 +140,8 @@ async def upload_resume(
             temperature=0.1,
             response_format={"type": "json_object"},
         )
-        parsed_dict: dict = json.loads(raw_response)
+        from app.agents.resume_parser_agent import _clean_bullets
+        parsed_dict: dict = _clean_bullets(json.loads(raw_response))
         parsed_json = ResumeJSON(**parsed_dict)
     except Exception as exc:
         logger.exception("Failed to parse resume JSON: %s", exc)

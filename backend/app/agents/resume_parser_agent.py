@@ -193,6 +193,26 @@ async def _log_agent_run(
         logger.warning("Failed to log agent run: %s", exc)
 
 
+import re as _re
+
+_BULLET_GLYPH_RE = _re.compile(r"^[◆●•▪▫–—‒‐\-\*►▶■→·★✔✓]+\s*")
+
+
+def _strip_glyphs(text: str) -> str:
+    return _BULLET_GLYPH_RE.sub("", text).strip()
+
+
+def _clean_bullets(parsed: dict) -> dict:
+    """Strip PDF bullet glyphs (◆ ● • ► etc.) from bullet string fields."""
+    for section in ("work_experience", "projects", "education"):
+        for item in parsed.get(section) or []:
+            if isinstance(item, dict):
+                for key in ("bullets", "responsibilities"):
+                    if isinstance(item.get(key), list):
+                        item[key] = [_strip_glyphs(b) if isinstance(b, str) else b for b in item[key]]
+    return parsed
+
+
 async def parse_resume_node(state: AgentState) -> AgentState:
     """LangGraph node: parse raw resume text into structured JSON.
 
@@ -228,7 +248,7 @@ async def parse_resume_node(state: AgentState) -> AgentState:
             temperature=0.1,
             response_format={"type": "json_object"},
         )
-        parsed: dict = json.loads(raw_response)
+        parsed: dict = _clean_bullets(json.loads(raw_response))
 
         # 3. Save parsed_json back to resumes table
         db.table("resumes").update({"parsed_json": parsed}).eq("id", resume_id).execute()
