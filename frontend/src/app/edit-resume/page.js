@@ -194,11 +194,6 @@ export default function EditResumePage() {
     if (savedParsed) {
       try {
         const parsed = JSON.parse(savedParsed);
-
-        console.log("PARSED JSON:", parsed);
-        console.log("LEADERSHIP:", parsed.leadership);
-        console.log("ACHIEVEMENTS:", parsed.achievements);
-        console.log("CERTIFICATIONS:", parsed.certifications);
         // Map backend fields to frontend resumeData shape
         setResumeData({
           name: parsed.name || "",
@@ -544,27 +539,10 @@ export default function EditResumePage() {
     setJobSearchLoading(true);
     setErrorMessage("");
     try {
-
-      console.log("JOB COUNTRY =", jobCountry);
-      console.log("JOB LOCATION =", jobLocation);
-
-      const payload = {
-        user_id: uid,
-        resume_id: rid,
-        location: jobLocation,
-        country: jobCountry,
-      };
-
-      console.log("PAYLOAD =", payload);
-      
       const result = await callBackend("/jobs/search-web", {
         method: "POST",
         body: JSON.stringify({ user_id: uid, resume_id: rid, location: jobLocation, country: jobCountry }),
       });
-
-      console.log("JOB SEARCH RESULT", result);
-      console.log("JOBS", result.jobs);
-
       setJobResults(result.jobs || []);
       setJobSearched(true);
     } catch (error) {
