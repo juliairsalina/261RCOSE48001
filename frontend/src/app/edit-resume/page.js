@@ -251,6 +251,16 @@ export default function EditResumePage() {
   }, [vacancyLink]);
 
   useEffect(() => {
+    if (!applicationId || coverLetterText) return;
+    fetch(`${API_BASE_URL}/cover-letters/${applicationId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.content) setCoverLetterText(data.content);
+      })
+      .catch(() => {});
+  }, [applicationId]);
+
+  useEffect(() => {
     if (activeRewriteId && activeTab === "rewrites") {
       const el = document.getElementById(`rewrite-${activeRewriteId}`);
       el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
