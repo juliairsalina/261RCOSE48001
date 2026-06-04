@@ -145,7 +145,6 @@ class JSearchProvider(JobSearchProvider):
             "X-RapidAPI-Key": settings.jsearch_api_key,
             "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
         }
-        results_per_query = max(1, limit // max(len(queries), 1))
         seen: set[str] = set()
         all_results: list[dict[str, Any]] = []
 

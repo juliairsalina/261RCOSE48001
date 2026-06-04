@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+import re as _re
 
 from app.agents.state import AgentState
 from app.services import openai_client, supabase_client
@@ -192,8 +192,6 @@ async def _log_agent_run(
     except Exception as exc:
         logger.warning("Failed to log agent run: %s", exc)
 
-
-import re as _re
 
 _BULLET_GLYPH_RE = _re.compile(r"^[◆●•▪▫–—‒‐\-\*►▶■→·★✔✓]+\s*")
 

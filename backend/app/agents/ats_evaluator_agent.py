@@ -186,7 +186,6 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
     job_json = state.get("job_json")
     retrieved_context = state.get("retrieved_context") or []
     application_id = state.get("application_id")
-    user_id = state["user_id"]
     new_errors: list[str] = []
 
     if not resume_json:

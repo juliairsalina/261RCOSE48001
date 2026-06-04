@@ -29,7 +29,6 @@ async def analyze_selected_job_node(state: AgentState) -> AgentState:
     requirements, saves extracted_requirements back to job_posts, and updates state.
     """
     selected_job_post_id = state.get("selected_job_post_id")
-    user_id = state["user_id"]
     new_errors: list[str] = []
 
     if not selected_job_post_id:

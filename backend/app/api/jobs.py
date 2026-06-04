@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
 import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.schemas.job import JobDiscoverRequest, JobDiscoverResponse, JobRecommendation
-from app.services import openai_client, supabase_client
+from app.services import supabase_client
 from app.services.job_search_service import search_jobs
 
 logger = logging.getLogger(__name__)
@@ -236,9 +235,8 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
 
     parsed_json: dict = (result.data or {}).get("parsed_json") or {}
 
-    # Try to load candidate profile for target_roles and core_skills
+    # Try to load candidate profile for target_roles
     target_roles: list[str] = []
-    core_skills: list[str] = []
     try:
         profile_result = (
             db.table("candidate_profiles")
@@ -252,7 +250,6 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
         if profile_result.data:
             profile_json: dict = profile_result.data[0].get("profile_json") or {}
             target_roles = profile_json.get("target_roles") or []
-            core_skills = profile_json.get("core_skills") or []
     except Exception:
         pass  # fall back to resume-based queries below
 
@@ -266,16 +263,12 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
         role = _re.sub(r"/\w+", "", role)
         return role.strip()
 
-    loc = request.location.strip()
-
     if target_roles:
         # One clean query per target role — location is passed separately to the provider
         queries = [_clean_role(r) for r in target_roles[:4] if r]
     else:
         # Fall back: build queries from resume's work experience + skills
-        from app.services.job_search_service import _flatten_skills_from_dict
 
-        skills = _flatten_skills_from_dict(parsed_json.get("skills", []))[:5]
         exp_roles = [
             exp.get("title") or exp.get("role", "")
             for exp in (parsed_json.get("work_experience") or [])
