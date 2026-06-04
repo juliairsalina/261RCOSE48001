@@ -1474,13 +1474,13 @@ function MetricBox({ title, value }) {
   );
 }
 
-function cleanBullet(text) {
-  return typeof text === "string"
-    ? text.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim()
-    : text;
-}
-
 function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick, onDataChange }) {
+  function cleanBullet(text) {
+    return typeof text === "string"
+      ? text.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim()
+      : text;
+  }
+
   const rewriteMap = useMemo(() => {
     const m = new Map();
     for (const rw of rewriteList) {
