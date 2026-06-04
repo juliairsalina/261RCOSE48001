@@ -405,51 +405,29 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
 
     async def event_stream():
         NODE_STATUS: dict[str, str] = {
-            "retrieve_context": "Retrieving relevant resume sections...",
-            "research_company": "Researching company background...",
-            "evaluate_ats": "Evaluating ATS score...",
-            "generate_cover_letter": "Writing personalized cover letter...",
-            "generate_rewrites": "Generating rewrite suggestions...",
+            "retrieve_context": "[STATUS] Retrieving relevant resume sections...",
+            "research_company": "[STATUS] Researching company background...",
+            "evaluate_ats": "[STATUS] Evaluating ATS score...",
+            "generate_cover_letter": "[STATUS] Writing personalized cover letter...",
+            "generate_rewrites": "[STATUS] Generating rewrite suggestions...",
         }
 
         try:
             yield f"data: {json.dumps({'step': '[STATUS] Starting analysis pipeline...'})}\n\n"
 
             final_state: dict = dict(initial_state)
-            seen_nodes: set[str] = set()
 
-            async for event in analysis_graph.astream_events(initial_state, version="v2"):
-                event_type: str = event.get("event", "")
-                metadata: dict = event.get("metadata", {})
-                node_name: str = metadata.get("langgraph_node", "")
-                event_name: str = event.get("name", "")
-
-                # Emit [STATUS] once per node on first start
-                if (
-                    event_type == "on_chain_start"
-                    and node_name
-                    and node_name == event_name
-                    and node_name not in seen_nodes
-                    and node_name in NODE_STATUS
-                ):
-                    seen_nodes.add(node_name)
-                    yield f"data: {json.dumps({'step': f'[STATUS] {NODE_STATUS[node_name]}'})}\n\n"
-
-                # MCP browser tool calls inside research_company
-                elif event_type == "on_tool_start" and node_name == "research_company":
-                    if "navigate" in event_name.lower() or "browser" in event_name.lower():
-                        yield f"data: {json.dumps({'step': '[STATUS] Scraping job posting page...'})}\n\n"
-
-                # Collect node outputs for final result
-                elif (
-                    event_type == "on_chain_end"
-                    and node_name
-                    and node_name == event_name
-                    and node_name in NODE_STATUS
-                ):
-                    output = event.get("data", {}).get("output")
-                    if isinstance(output, dict):
-                        final_state.update(output)
+            # astream() yields {node_name: node_output} per step — reliable state collection.
+            # [STATUS] messages are emitted per node using the same node name keys.
+            async for chunk in analysis_graph.astream(initial_state):
+                for node_name, node_output in chunk.items():
+                    if node_name == "__end__":
+                        continue
+                    if isinstance(node_output, dict):
+                        final_state.update(node_output)
+                    status = NODE_STATUS.get(node_name)
+                    if status:
+                        yield f"data: {json.dumps({'step': status})}\n\n"
 
             ats = final_state.get("ats_result") or {}
 
