@@ -107,7 +107,6 @@ export default function EditResumePage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
-  const [statusLog, setStatusLog] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
 
   // Backend session state
@@ -266,13 +265,6 @@ export default function EditResumePage() {
     setZoom((prev) => Math.max(prev - 0.08, 0.5));
   };
 
-  const goNextSuggestion = () => {
-    const ids = suggestions.map((item) => item.id);
-    const currentIndex = ids.indexOf(activeSuggestion);
-    const nextIndex = (currentIndex + 1) % ids.length;
-    setActiveSuggestion(ids[nextIndex]);
-  };
-
   // Strip common PDF bullet glyphs that parsers capture as literal text
   function cleanBullet(text) {
     return typeof text === "string"
@@ -316,14 +308,6 @@ export default function EditResumePage() {
     setIsLoading(true);
     setStatusMessage(message);
     setErrorMessage("");
-  }
-
-  function appendStatus(step) {
-    if (step.startsWith("[STATUS]")) {
-      setStatusLog((prev) => [...prev, step]);
-    } else {
-      setStatusMessage(step);
-    }
   }
 
   function getRankLabel(rank) {
@@ -439,9 +423,8 @@ export default function EditResumePage() {
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      // LangGraph pipeline: retrieve → research_company → (ATS ∥ cover letter) → rewrites
-      setStatusLog([]);
-      const result = await streamAnalysis(appId, uid, appendStatus);
+      // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
 
       const jobSummaryText = hasLink
         ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
@@ -565,9 +548,8 @@ export default function EditResumePage() {
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      // LangGraph pipeline: retrieve → research_company → (ATS ∥ cover letter) → rewrites
-      setStatusLog([]);
-      const result = await streamAnalysis(appId, uid, appendStatus);
+      // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
       applyAnalysisResult(result, `${job.role_title} at ${job.company_name}`);
 
     } catch (error) {
@@ -877,25 +859,8 @@ export default function EditResumePage() {
                 </div>
               )}
 
-              {(statusMessage || errorMessage || (isLoading && statusLog.length > 0)) && (
+              {(statusMessage || errorMessage) && (
                 <div className="mt-3 space-y-2">
-                  {isLoading && statusLog.length > 0 && (
-                    <div className="rounded-2xl bg-[#1a2418]/90 px-4 py-3 font-mono text-[11px] leading-5">
-                      {statusLog.map((msg, i) => (
-                        <p
-                          key={i}
-                          className={
-                            i === statusLog.length - 1
-                              ? "text-green-300"
-                              : "text-green-600/70"
-                          }
-                        >
-                          {msg.replace("[STATUS] ", "▸ ")}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-
                   {statusMessage && (
                     <p className="rounded-2xl bg-white/55 px-4 py-2 text-xs font-bold text-[#243026]/65">
                       {statusMessage}
