@@ -26,6 +26,12 @@ import {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
+function cleanBullet(text) {
+  return typeof text === "string"
+    ? text.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim()
+    : text;
+}
+
 export default function EditResumePage() {
   const router = useRouter();
 
@@ -274,13 +280,6 @@ export default function EditResumePage() {
   const zoomOut = () => {
     setZoom((prev) => Math.max(prev - 0.08, 0.5));
   };
-
-  // Strip common PDF bullet glyphs that parsers capture as literal text
-  function cleanBullet(text) {
-    return typeof text === "string"
-      ? text.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim()
-      : text;
-  }
 
   async function callBackend(path, options = {}) {
     const isFormData = options.body instanceof FormData;
