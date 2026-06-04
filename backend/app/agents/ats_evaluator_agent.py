@@ -77,6 +77,10 @@ def _compute_ats_score(
     work_experience = resume_json.get("work_experience", [])
     projects = resume_json.get("projects", [])
 
+    leadership = resume_json.get("leadership", [])
+    achievements = resume_json.get("achievements", [])
+    certifications = resume_json.get("certifications", [])
+
     resume_text = " ".join(resume_skills)
     all_bullets: list[str] = []
     for exp in work_experience:
@@ -91,6 +95,19 @@ def _compute_ats_score(
         resume_text += " " + (proj.get("description") or "").lower()
         for tech in proj.get("technologies", []):
             resume_text += " " + tech.lower()
+    for item in leadership:
+        for b in item.get("bullets", []):
+            resume_text += " " + b.lower()
+            all_bullets.append(b)
+        resume_text += " " + (item.get("description") or "").lower()
+        resume_text += " " + (item.get("title") or "").lower()
+        resume_text += " " + (item.get("organization") or "").lower()
+    for ach in achievements:
+        resume_text += " " + (ach.get("title") or "").lower()
+        resume_text += " " + (ach.get("description") or "").lower()
+    for cert in certifications:
+        resume_text += " " + (cert.get("name") or "").lower()
+        resume_text += " " + (cert.get("issuer") or "").lower()
 
     has_requirements = bool(
         requirements.get("required_skills") or

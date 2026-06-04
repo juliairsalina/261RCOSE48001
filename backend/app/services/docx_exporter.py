@@ -38,7 +38,6 @@ def _to_str(value: Any) -> str:
     if isinstance(value, str):
         return value
     if isinstance(value, dict):
-        # Try common text keys first
         for key in ("text", "description", "name", "value", "content"):
             if key in value:
                 return _to_str(value[key])
@@ -94,6 +93,23 @@ def _apply_rewrites(resume_json: dict, approved_rewrites: list[dict]) -> dict:
                 proj["bullets"] = [suggested if b == original else b for b in bullets]
                 if isinstance(proj.get("description"), str):
                     proj["description"] = proj["description"].replace(original, suggested)
+
+        elif section in ("leadership",):
+            for item in data.get("leadership", []):
+                bullets = item.get("bullets", [])
+                item["bullets"] = [suggested if b == original else b for b in bullets]
+                if isinstance(item.get("description"), str):
+                    item["description"] = item["description"].replace(original, suggested)
+
+        elif section in ("achievements", "achievement"):
+            for ach in data.get("achievements", []):
+                if isinstance(ach.get("description"), str):
+                    ach["description"] = ach["description"].replace(original, suggested)
+
+        elif section in ("certifications", "certification"):
+            for cert in data.get("certifications", []):
+                if isinstance(cert.get("description"), str):
+                    cert["description"] = cert["description"].replace(original, suggested)
 
     return data
 
@@ -302,6 +318,48 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
                 url_para = doc.add_paragraph(f"URL: {url}")
                 url_para.paragraph_format.space_after = Pt(2)
 
+    # ── Leadership ────────────────────────────────────────────────────────
+    leadership: list[dict] = data.get("leadership", [])
+    if leadership:
+        doc.add_paragraph()
+        heading = doc.add_paragraph("LEADERSHIP")
+        _set_heading_style(heading, font_size=11, bold=True)
+        _add_horizontal_rule(doc)
+        for item in leadership:
+            l_title = item.get("title", "")
+            l_org = item.get("organization", "")
+            l_start = item.get("start_date", "")
+            l_end = item.get("end_date", "")
+            l_desc = item.get("description", "")
+            l_bullets: list[str] = item.get("bullets", [])
+            date_str = f"{l_start} – {l_end}" if (l_start or l_end) else ""
+
+            title_para = doc.add_paragraph()
+            title_para.paragraph_format.space_before = Pt(6)
+            title_para.paragraph_format.space_after = Pt(0)
+            title_run = title_para.add_run(l_title)
+            title_run.bold = True
+            if date_str:
+                title_para.add_run(f"  {date_str}")
+
+            if l_org:
+                org_para = doc.add_paragraph(l_org)
+                org_para.paragraph_format.space_before = Pt(0)
+                org_para.paragraph_format.space_after = Pt(2)
+                for run in org_para.runs:
+                    run.italic = True
+
+            for bullet in l_bullets:
+                bullet_para = doc.add_paragraph(style="List Bullet")
+                bullet_para.paragraph_format.space_before = Pt(0)
+                bullet_para.paragraph_format.space_after = Pt(1)
+                bullet_para.add_run(_to_str(bullet))
+
+            if l_desc and not l_bullets:
+                desc_para = doc.add_paragraph(l_desc)
+                desc_para.paragraph_format.space_before = Pt(0)
+                desc_para.paragraph_format.space_after = Pt(2)
+
     # ── Additional Sections ───────────────────────────────────────────────
     certifications: list = data.get("certifications", [])
     if certifications:
@@ -310,7 +368,31 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
         _set_heading_style(heading, font_size=11, bold=True)
         _add_horizontal_rule(doc)
         for cert in certifications:
-            doc.add_paragraph(_to_str(cert), style="List Bullet")
+            if isinstance(cert, dict):
+                cert_name = cert.get("name", "")
+                cert_issuer = cert.get("issuer", "")
+                cert_date = cert.get("date", "")
+                cert_desc = cert.get("description", "")
+
+                cert_para = doc.add_paragraph()
+                cert_para.paragraph_format.space_before = Pt(4)
+                cert_para.paragraph_format.space_after = Pt(0)
+                name_run = cert_para.add_run(cert_name)
+                name_run.bold = True
+                if cert_date:
+                    cert_para.add_run(f"  {cert_date}")
+
+                if cert_issuer:
+                    issuer_para = doc.add_paragraph(cert_issuer)
+                    issuer_para.paragraph_format.space_before = Pt(0)
+                    issuer_para.paragraph_format.space_after = Pt(1)
+                    for run in issuer_para.runs:
+                        run.italic = True
+
+                if cert_desc:
+                    doc.add_paragraph(cert_desc).paragraph_format.space_after = Pt(2)
+            else:
+                doc.add_paragraph(_to_str(cert), style="List Bullet")
 
     achievements: list = data.get("achievements", [])
     if achievements:
@@ -319,7 +401,23 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
         _set_heading_style(heading, font_size=11, bold=True)
         _add_horizontal_rule(doc)
         for ach in achievements:
-            doc.add_paragraph(_to_str(ach), style="List Bullet")
+            if isinstance(ach, dict):
+                ach_title = ach.get("title", "")
+                ach_date = ach.get("date", "")
+                ach_desc = ach.get("description", "")
+
+                ach_para = doc.add_paragraph()
+                ach_para.paragraph_format.space_before = Pt(4)
+                ach_para.paragraph_format.space_after = Pt(0)
+                title_run = ach_para.add_run(ach_title)
+                title_run.bold = True
+                if ach_date:
+                    ach_para.add_run(f"  {ach_date}")
+
+                if ach_desc:
+                    doc.add_paragraph(ach_desc).paragraph_format.space_after = Pt(2)
+            else:
+                doc.add_paragraph(_to_str(ach), style="List Bullet")
 
     languages: list = data.get("languages", [])
     if languages:
@@ -327,7 +425,15 @@ def generate_resume_docx(resume_json: dict[str, Any], approved_rewrites: list[di
         heading = doc.add_paragraph("LANGUAGES")
         _set_heading_style(heading, font_size=11, bold=True)
         _add_horizontal_rule(doc)
-        doc.add_paragraph(", ".join(_to_str(lang) for lang in languages if lang))
+        lang_parts: list[str] = []
+        for lang in languages:
+            if isinstance(lang, dict):
+                name = lang.get("language") or lang.get("name") or ""
+                prof = lang.get("proficiency") or lang.get("level") or ""
+                lang_parts.append(f"{name}: {prof}" if prof else name)
+            else:
+                lang_parts.append(_to_str(lang))
+        doc.add_paragraph(", ".join(p for p in lang_parts if p))
 
     # ── Serialize to bytes ────────────────────────────────────────────────
     buffer = io.BytesIO()

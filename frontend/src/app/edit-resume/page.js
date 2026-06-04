@@ -643,9 +643,9 @@ export default function EditResumePage() {
       summary: rd.summary || "",
       skills: rd.skills || [],
       education: (rd.education || []).map(e => ({
-        institution: e.institution || "",
+        institution: e.school || e.institution || "",
         degree: e.degree || "",
-        field_of_study: e.field || "",
+        field_of_study: e.field_of_study || e.field || "",
         start_date: e.start_date || "",
         end_date: e.end_date || "",
         gpa: e.gpa || "",
@@ -668,6 +668,29 @@ export default function EditResumePage() {
         bullets: p.bullets || [],
         start_date: p.start_date || "",
         end_date: p.end_date || "",
+      })),
+      leadership: (rd.leadership || []).map(l => ({
+        title: l.title || "",
+        organization: l.organization || "",
+        start_date: l.start_date || "",
+        end_date: l.end_date || "",
+        description: l.description || "",
+        bullets: l.bullets || [],
+      })),
+      achievements: (rd.achievements || []).map(a => ({
+        title: a.title || "",
+        date: a.date || "",
+        description: a.description || "",
+      })),
+      certifications: (rd.certifications || []).map(c => ({
+        name: c.name || "",
+        issuer: c.issuer || "",
+        date: c.date || "",
+        description: c.description || "",
+      })),
+      languages: (rd.languages || []).map(l => ({
+        language: l.language || l.name || "",
+        proficiency: l.proficiency || l.level || "",
       })),
     };
   }
