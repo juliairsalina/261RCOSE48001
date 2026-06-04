@@ -40,32 +40,20 @@ CANDIDATE_PROFILE = {
 
 @pytest.mark.asyncio
 async def test_job_search_returns_normalized_results():
-    """Mock Adzuna API and verify results are normalized to the expected structure."""
+    """Verify search_jobs returns results with the required normalized structure."""
+    with patch("app.services.job_search_service.settings") as mock_settings:
+        mock_settings.job_search_provider = "dummy"
 
-    mock_response = MagicMock()
-    mock_response.json.return_value = MOCK_ADZUNA_RESPONSE
-    mock_response.raise_for_status = MagicMock()
+        from app.services.job_search_service import search_jobs
 
-    with patch("app.config.settings") as mock_settings:
-        mock_settings.adzuna_app_id = "test_app_id"
-        mock_settings.adzuna_app_key = "test_app_key"
-
-        with patch("httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client.get = AsyncMock(return_value=mock_response)
-            mock_client_cls.return_value = mock_client
-
-            from app.services.job_search_service import search_jobs
-
-            results = await search_jobs(
-                queries=["Python Backend Engineer"],
-                location="San Francisco",
-                limit=10,
-            )
+        results = await search_jobs(
+            queries=["Python Backend Engineer"],
+            location="San Francisco",
+            limit=10,
+        )
 
     assert isinstance(results, list)
+    assert len(results) > 0
     for result in results:
         assert "source" in result
         assert "job_url" in result

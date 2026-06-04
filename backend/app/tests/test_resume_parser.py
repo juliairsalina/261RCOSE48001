@@ -187,7 +187,7 @@ async def test_resume_chunks_are_embedded():
     )
 
     with patch(
-        "app.services.openai_client.get_embedding",
+        "app.services.embedding_service.get_embedding",
         new=AsyncMock(return_value=dummy_embedding),
     ):
         from app.services.embedding_service import generate_embeddings_batch

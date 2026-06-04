@@ -28,7 +28,7 @@ jobs:
         run: ruff check app
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: pytest app/tests/ -v --tb=short
         env:
           OPENAI_API_KEY: "test-key"
           SUPABASE_URL: "https://placeholder.supabase.co"
