@@ -468,14 +468,18 @@ export default function EditResumePage() {
 
   async function approveRewrite(suggestionId) {
     saveSnapshot();
+    const rewrite = rewriteList.find((s) => s.id === suggestionId);
     try {
       await callBackend(`/rewrite-suggestions/${suggestionId}`, {
         method: "PATCH",
         body: JSON.stringify({ status: "approved" }),
       });
-      setRewriteList(prev =>
-        prev.map(s => s.id === suggestionId ? { ...s, status: "approved" } : s)
+      setRewriteList((prev) =>
+        prev.map((s) => s.id === suggestionId ? { ...s, status: "approved" } : s)
       );
+      if (rewrite) {
+        setResumeData((prev) => applyRewriteToResume(rewrite, prev));
+      }
     } catch (error) {
       setErrorMessage(error.message);
     }
@@ -2344,6 +2348,78 @@ function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
       {value || ""}
     </Tag>
   );
+}
+
+function applyRewriteToResume(rewrite, rd) {
+  const section = (rewrite.section || "").toLowerCase();
+  const original = (rewrite.original_text || "").trim();
+  const suggested = rewrite.suggested_text || "";
+  if (!original || !suggested) return rd;
+
+  const replaceBullets = (bullets) =>
+    (bullets || []).map((b) => {
+      const clean = typeof b === "string" ? b.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim() : b;
+      return clean === original ? suggested : b;
+    });
+
+  const replaceDesc = (desc) =>
+    typeof desc === "string" ? desc.replace(original, suggested) : desc;
+
+  if (["summary", "profile", "objective"].includes(section)) {
+    return { ...rd, summary: replaceDesc(rd.summary) };
+  }
+  if (["skills", "skill"].includes(section)) {
+    return { ...rd, skills: (rd.skills || []).map((s) => (s === original ? suggested : s)) };
+  }
+  if (["work_experience", "experience", "work experience"].includes(section)) {
+    return {
+      ...rd,
+      experience: (rd.experience || []).map((e) => ({
+        ...e,
+        bullets: replaceBullets(e.bullets),
+        description: replaceDesc(e.description),
+      })),
+    };
+  }
+  if (["projects", "project"].includes(section)) {
+    return {
+      ...rd,
+      projects: (rd.projects || []).map((p) => ({
+        ...p,
+        bullets: replaceBullets(p.bullets),
+        description: replaceDesc(p.description),
+      })),
+    };
+  }
+  if (section === "leadership") {
+    return {
+      ...rd,
+      leadership: (rd.leadership || []).map((l) => ({
+        ...l,
+        bullets: replaceBullets(l.bullets),
+        description: replaceDesc(l.description),
+      })),
+    };
+  }
+  if (["achievements", "achievement"].includes(section)) {
+    return {
+      ...rd,
+      achievements: (rd.achievements || []).map((a) => ({
+        ...a,
+        description: replaceDesc(a.description),
+      })),
+    };
+  }
+  if (section === "education") {
+    return {
+      ...rd,
+      education: (rd.education || []).map((e) => ({
+        ...e,
+        description: replaceDesc(e.description),
+      })),
+    };
+  }
+  return rd;
 }
 
 function flattenSkills(skills) {
