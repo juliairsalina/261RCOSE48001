@@ -41,7 +41,7 @@ async def research_company_node(state: AgentState) -> AgentState:
     job_url = job_json.get("job_url", "")
 
     if not company_name and not job_url:
-        return {**state, "errors": new_errors}
+        return {"errors": new_errors}
 
     from app.services.browser_mcp_client import browser_mcp_session
 
@@ -77,7 +77,7 @@ async def research_company_node(state: AgentState) -> AgentState:
         # No browser data — use the placeholder stub
         from app.services.company_research_service import get_company_background
         company_background = await get_company_background(company_name, job_url)
-        return {**state, "company_background": company_background, "errors": new_errors}
+        return {"company_background": company_background, "errors": new_errors}
 
     # Ask GPT to extract structured company info from scraped content
     try:

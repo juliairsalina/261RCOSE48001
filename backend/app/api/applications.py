@@ -364,12 +364,12 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
 async def analyze_application(application_id: str, request: GenericUserRequest) -> StreamingResponse:
     """Run the full analysis pipeline using LangGraph.
 
-    Graph: retrieve_context → (evaluate_ats ∥ generate_cover_letter) → generate_rewrites
+    Graph: retrieve_context → research_company → (evaluate_ats ∥ cover_letter) → rewrites
 
     Streams Server-Sent Events (SSE) so the frontend can show per-step progress:
-      {"step": "Evaluating ATS score..."}   — progress update
-      {"done": true, "result": {...}}        — final payload
-      {"error": "..."}                       — on failure
+      {"step": "[STATUS] <message>"}   — agent activity status (≤10 words)
+      {"done": true, "result": {...}}  — final payload
+      {"error": "..."}                 — on failure
     """
     from app.agents.graph import analysis_graph
     if analysis_graph is None:
@@ -404,25 +404,52 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
     initial_state["job_json"] = job_json
 
     async def event_stream():
-        _NEXT_STEP = {
-            "retrieve_context": "Evaluating ATS score & generating cover letter...",
-            "evaluate_ats": "Generating rewrite suggestions...",
-            "generate_cover_letter": None,  # parallel branch — no dedicated label
-            "generate_rewrites": "Analysis complete!",
+        NODE_STATUS: dict[str, str] = {
+            "retrieve_context": "Retrieving relevant resume sections...",
+            "research_company": "Researching company background...",
+            "evaluate_ats": "Evaluating ATS score...",
+            "generate_cover_letter": "Writing personalized cover letter...",
+            "generate_rewrites": "Generating rewrite suggestions...",
         }
 
         try:
-            yield f"data: {json.dumps({'step': 'Retrieving resume context...'})}\n\n"
+            yield f"data: {json.dumps({'step': '[STATUS] Starting analysis pipeline...'})}\n\n"
 
             final_state: dict = dict(initial_state)
-            async for chunk in analysis_graph.astream(initial_state):
-                for node_name, node_output in chunk.items():
-                    if node_name == "__end__":
-                        continue
-                    final_state.update(node_output)
-                    label = _NEXT_STEP.get(node_name)
-                    if label:
-                        yield f"data: {json.dumps({'step': label})}\n\n"
+            seen_nodes: set[str] = set()
+
+            async for event in analysis_graph.astream_events(initial_state, version="v2"):
+                event_type: str = event.get("event", "")
+                metadata: dict = event.get("metadata", {})
+                node_name: str = metadata.get("langgraph_node", "")
+                event_name: str = event.get("name", "")
+
+                # Emit [STATUS] once per node on first start
+                if (
+                    event_type == "on_chain_start"
+                    and node_name
+                    and node_name == event_name
+                    and node_name not in seen_nodes
+                    and node_name in NODE_STATUS
+                ):
+                    seen_nodes.add(node_name)
+                    yield f"data: {json.dumps({'step': f'[STATUS] {NODE_STATUS[node_name]}'})}\n\n"
+
+                # MCP browser tool calls inside research_company
+                elif event_type == "on_tool_start" and node_name == "research_company":
+                    if "navigate" in event_name.lower() or "browser" in event_name.lower():
+                        yield f"data: {json.dumps({'step': '[STATUS] Scraping job posting page...'})}\n\n"
+
+                # Collect node outputs for final result
+                elif (
+                    event_type == "on_chain_end"
+                    and node_name
+                    and node_name == event_name
+                    and node_name in NODE_STATUS
+                ):
+                    output = event.get("data", {}).get("output")
+                    if isinstance(output, dict):
+                        final_state.update(output)
 
             ats = final_state.get("ats_result") or {}
 

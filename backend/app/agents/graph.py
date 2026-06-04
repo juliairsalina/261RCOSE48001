@@ -65,31 +65,33 @@ def _build_career_agent_graph():
 
 
 def _build_analysis_graph():
-    """Analysis sub-graph: retrieve context → (evaluate ATS ∥ generate cover letter) → rewrite suggestions.
+    """Analysis sub-graph: retrieve → research company → (evaluate ATS ∥ cover letter) → rewrites.
 
-    After retrieve_context completes, evaluate_ats and generate_cover_letter run in
-    parallel (they're independent — both only need retrieved_context + resume + job).
-    generate_rewrite_suggestions waits for evaluate_ats before running.
-    LangGraph fans out after retrieve_context and fans back in before rewrites.
+    Sequential: retrieve_context → research_company (Playwright MCP scraping).
+    Fan-out: research_company → evaluate_ats ∥ generate_cover_letter (parallel).
+    Fan-in: both branches merge before generate_rewrites.
     """
     from langgraph.graph import END, START, StateGraph
 
     from app.agents.ats_evaluator_agent import evaluate_ats_node
+    from app.agents.company_research_agent import research_company_node
     from app.agents.cover_letter_agent import generate_cover_letter_node
     from app.agents.rag_retriever_agent import retrieve_resume_context_node
     from app.agents.rewrite_agent import generate_rewrite_suggestions_node
 
     builder = StateGraph(AgentState)
     builder.add_node("retrieve_context", retrieve_resume_context_node)
+    builder.add_node("research_company", research_company_node)
     builder.add_node("evaluate_ats", evaluate_ats_node)
     builder.add_node("generate_cover_letter", generate_cover_letter_node)
     builder.add_node("generate_rewrites", generate_rewrite_suggestions_node)
 
     builder.add_edge(START, "retrieve_context")
-    # Fan-out: both run in parallel after retrieval
-    builder.add_edge("retrieve_context", "evaluate_ats")
-    builder.add_edge("retrieve_context", "generate_cover_letter")
-    # Fan-in: rewrites wait for ATS (and for cover letter via LangGraph's merge)
+    builder.add_edge("retrieve_context", "research_company")
+    # Fan-out: both run in parallel after company research
+    builder.add_edge("research_company", "evaluate_ats")
+    builder.add_edge("research_company", "generate_cover_letter")
+    # Fan-in: rewrites wait for both branches
     builder.add_edge("evaluate_ats", "generate_rewrites")
     builder.add_edge("generate_cover_letter", "generate_rewrites")
     builder.add_edge("generate_rewrites", END)
