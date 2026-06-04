@@ -364,7 +364,7 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
 async def analyze_application(application_id: str, request: GenericUserRequest) -> StreamingResponse:
     """Run the full analysis pipeline using LangGraph.
 
-    Graph: retrieve_context → research_company → (evaluate_ats ∥ cover_letter) → rewrites
+    Graph: analyze_job → retrieve_context → research_company → (evaluate_ats ∥ cover_letter) → rewrites
 
     Streams Server-Sent Events (SSE) so the frontend can show per-step progress:
       {"step": "[STATUS] <message>"}   — agent activity status (≤10 words)
@@ -405,6 +405,7 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
 
     async def event_stream():
         NODE_STATUS: dict[str, str] = {
+            "analyze_job": "[STATUS] Extracting job requirements...",
             "retrieve_context": "[STATUS] Retrieving relevant resume sections...",
             "research_company": "[STATUS] Researching company background...",
             "evaluate_ats": "[STATUS] Evaluating ATS score...",

@@ -61,6 +61,17 @@ async def analyze_selected_job_node(state: AgentState) -> AgentState:
             new_errors.append("analyze_selected_job_node: job_description is empty")
             return {**state, "errors": new_errors}
 
+        # Skip extraction for general/placeholder evaluations — no real job to parse.
+        # The ATS evaluator detects this via is_placeholder and scores resume quality instead.
+        if "general resume evaluation" in job_description.lower():
+            job_json = {**job_data, "extracted_requirements": {}}
+            return {**state, "job_json": job_json, "errors": new_errors}
+
+        # If requirements were already extracted (e.g. a previous analysis run), reuse them.
+        if job_data.get("extracted_requirements"):
+            job_json = {**job_data}
+            return {**state, "job_json": job_json, "errors": new_errors}
+
         # 2. Call GPT to extract structured requirements
         messages = [
             {"role": "system", "content": JOB_ANALYZER_SYSTEM_PROMPT},

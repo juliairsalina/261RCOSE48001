@@ -65,28 +65,34 @@ def _build_career_agent_graph():
 
 
 def _build_analysis_graph():
-    """Analysis sub-graph: retrieve → research company → (evaluate ATS ∥ cover letter) → rewrites.
+    """Analysis sub-graph: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites.
 
-    Sequential: retrieve_context → research_company (Playwright MCP scraping).
-    Fan-out: research_company → evaluate_ats ∥ generate_cover_letter (parallel).
-    Fan-in: both branches merge before generate_rewrites.
+    analyze_job extracts structured requirements from the job description so that
+    the ATS evaluator always has required_skills/keywords to match against.
+
+    Sequential chain: analyze_job → retrieve_context → research_company
+    Fan-out:          research_company → evaluate_ats ∥ generate_cover_letter
+    Fan-in:           both branches merge before generate_rewrites
     """
     from langgraph.graph import END, START, StateGraph
 
     from app.agents.ats_evaluator_agent import evaluate_ats_node
     from app.agents.company_research_agent import research_company_node
     from app.agents.cover_letter_agent import generate_cover_letter_node
+    from app.agents.job_analyzer_agent import analyze_selected_job_node
     from app.agents.rag_retriever_agent import retrieve_resume_context_node
     from app.agents.rewrite_agent import generate_rewrite_suggestions_node
 
     builder = StateGraph(AgentState)
+    builder.add_node("analyze_job", analyze_selected_job_node)
     builder.add_node("retrieve_context", retrieve_resume_context_node)
     builder.add_node("research_company", research_company_node)
     builder.add_node("evaluate_ats", evaluate_ats_node)
     builder.add_node("generate_cover_letter", generate_cover_letter_node)
     builder.add_node("generate_rewrites", generate_rewrite_suggestions_node)
 
-    builder.add_edge(START, "retrieve_context")
+    builder.add_edge(START, "analyze_job")
+    builder.add_edge("analyze_job", "retrieve_context")
     builder.add_edge("retrieve_context", "research_company")
     # Fan-out: both run in parallel after company research
     builder.add_edge("research_company", "evaluate_ats")
