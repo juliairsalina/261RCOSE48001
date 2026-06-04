@@ -106,20 +106,20 @@ def test_ats_rank_is_valid():
 
 
 def test_high_skill_match_gives_high_score():
-    """When candidate has all required skills, score should be >= 80."""
+    """Full skill match should score >= 75 (floors removed, so score comes from real matches)."""
     from app.agents.ats_evaluator_agent import _compute_ats_score
 
     score, matched_skills, missing_skills = _compute_ats_score(FULL_MATCH_RESUME, FULL_REQUIREMENTS_JOB)
-    assert score >= 70, f"Expected high score for full skill match, got {score}"
+    assert score >= 75, f"Expected high score for full skill match, got {score}"
     assert len(matched_skills) >= 3
 
 
 def test_zero_skill_match_gives_low_score():
-    """When candidate has none of the required skills, score should be low."""
+    """Zero skill match should score < 40 with no floors inflating it."""
     from app.agents.ats_evaluator_agent import _compute_ats_score
 
     score, matched_skills, missing_skills = _compute_ats_score(ZERO_MATCH_RESUME, ZERO_REQUIREMENTS_JOB)
-    assert score < 55, f"Expected low score for zero skill match, got {score}"
+    assert score < 40, f"Expected low score for zero skill match, got {score}"
 
 
 def test_rank_mapping():

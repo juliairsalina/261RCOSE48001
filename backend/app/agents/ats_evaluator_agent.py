@@ -57,21 +57,22 @@ def _compute_ats_score(
 ) -> tuple[int, list[str], list[str]]:
     """Calculate a deterministic ATS score (0-100).
 
-    When a job posting is provided:
-      - Required skills match:         40 pts
-      - Preferred skills match:        20 pts
-      - Responsibility/exp match:      20 pts
-      - Keyword alignment:             10 pts
-      - Resume clarity (bullet count): 10 pts
+    Job-based scoring (no floors — missing skills actively hurt):
+      - Required skills match:         40 pts  (pure ratio, 0 if nothing matches)
+      - Preferred skills match:        20 pts  (pure ratio)
+      - Responsibility/exp match:      20 pts  (phrase-level: ≥50% of meaningful
+                                                words in a responsibility must appear
+                                                in resume to count as matched)
+      - Keyword alignment:             10 pts  (pure ratio)
+      - Resume depth (bullet count):  10 pts  (1 pt/bullet, cap 10)
 
-    When no job posting is provided (general evaluation):
-      Scores resume completeness and depth instead.
+    General evaluation (no job posting): scores resume completeness/depth.
     """
     requirements = job_json.get("extracted_requirements") or {}
     job_description = (job_json.get("job_description") or "").strip()
     is_placeholder = "general resume evaluation" in job_description.lower()
 
-    # Flatten resume content
+    # Flatten resume content into a single searchable string
     resume_skills = [_normalise(s) for s in _flatten_skills(resume_json.get("skills", []))]
     work_experience = resume_json.get("work_experience", [])
     projects = resume_json.get("projects", [])
@@ -97,7 +98,7 @@ def _compute_ats_score(
         requirements.get("keywords")
     )
 
-    # ── No job posting: score resume quality instead ──────────────────────
+    # ── No job posting: score resume completeness/depth ──────────────────
     if is_placeholder or not has_requirements:
         skill_count = len(resume_skills)
         exp_count = len(work_experience)
@@ -106,61 +107,66 @@ def _compute_ats_score(
         has_contact = bool(resume_json.get("name") and resume_json.get("email"))
         has_education = bool(resume_json.get("education"))
 
-        # Generous thresholds — a solid student resume should reach 70-80
-        skill_score  = min(30, 15 + skill_count * 2)   # 15 base + 2/skill up to 30
-        exp_score    = min(25, 10 + exp_count * 8)      # 10 base + 8/role up to 25
-        bullet_score = min(20, 5 + bullet_count * 2)    # 5 base + 2/bullet up to 20
-        proj_score   = min(15, 5 + proj_count * 5)      # 5 base + 5/project up to 15
-        base_score   = (8 if has_contact else 0) + (7 if has_education else 0)  # up to 15
+        # No free points — each component earned from zero
+        skill_score  = min(30, skill_count * 2)   # 2 pts/skill, need 15 for max
+        exp_score    = min(25, exp_count * 8)      # 8 pts/role, need 3 for max
+        bullet_score = min(20, bullet_count)       # 1 pt/bullet, need 20 for max
+        proj_score   = min(15, proj_count * 5)     # 5 pts/project, need 3 for max
+        base_score   = (5 if has_contact else 0) + (5 if has_education else 0)
 
         total = min(100, skill_score + exp_score + bullet_score + proj_score + base_score)
         return total, resume_skills[:10], []
 
-    # ── Job-based scoring ─────────────────────────────────────────────────
-    # Each category has a base floor so partial matches still give credit
+    # ── Job-based scoring (strict — no floors) ───────────────────────────
+
+    # Required skills: 40 pts
     required_skills = [_normalise(s) for s in requirements.get("required_skills", [])]
     if required_skills:
         matched_required = [s for s in required_skills if s in resume_text]
-        match_ratio = len(matched_required) / len(required_skills)
-        # Floor of 10 pts + up to 30 more for full match
-        required_score = 10 + int(match_ratio * 30)
+        required_score = int(len(matched_required) / len(required_skills) * 40)
     else:
         matched_required = []
-        required_score = 20  # no required skills listed → assume basic fit
+        required_score = 15  # job didn't list any → partial neutral credit
 
+    # Preferred skills: 20 pts
     preferred_skills = [_normalise(s) for s in requirements.get("preferred_skills", [])]
     if preferred_skills:
         matched_preferred = [s for s in preferred_skills if s in resume_text]
-        match_ratio = len(matched_preferred) / len(preferred_skills)
-        preferred_score = 5 + int(match_ratio * 15)
+        preferred_score = int(len(matched_preferred) / len(preferred_skills) * 20)
     else:
         matched_preferred = []
-        preferred_score = 10
+        preferred_score = 8  # job didn't list any → partial neutral credit
 
+    # Responsibilities: 20 pts
+    # A responsibility counts as matched only when ≥50% of its meaningful words
+    # (length > 3) appear in the resume — prevents single common words from scoring.
     responsibilities = [_normalise(r) for r in requirements.get("responsibilities", [])]
     if responsibilities:
-        resp_matches = sum(
-            1 for r in responsibilities
-            if any(word in resume_text for word in r.split() if len(word) > 4)
-        )
-        match_ratio = resp_matches / len(responsibilities)
-        resp_score = 5 + int(match_ratio * 15)  # floor 5, max 20
+        resp_matched = 0
+        for r in responsibilities:
+            meaningful = [w for w in r.split() if len(w) > 3]
+            if not meaningful:
+                continue
+            hit_ratio = sum(1 for w in meaningful if w in resume_text) / len(meaningful)
+            if hit_ratio >= 0.5:
+                resp_matched += 1
+        resp_score = int(resp_matched / len(responsibilities) * 20)
     else:
-        resp_score = 10  # no responsibilities listed → assume basic fit
+        resp_score = 8  # job didn't list any → partial neutral credit
 
+    # Keywords: 10 pts
     keywords = [_normalise(k) for k in requirements.get("keywords", [])]
     if keywords:
         matched_keywords = [k for k in keywords if k in resume_text]
-        match_ratio = len(matched_keywords) / len(keywords)
-        keyword_score = 3 + int(match_ratio * 7)  # floor 3, max 10
+        keyword_score = int(len(matched_keywords) / len(keywords) * 10)
     else:
         matched_keywords = []
-        keyword_score = 5  # no keywords listed → neutral
+        keyword_score = 4  # job didn't list any → partial neutral credit
 
-    # ── Resume clarity — bullet count (10 pts, floor 3) ──────────────────
-    clarity_score = min(10, 3 + len(all_bullets))
+    # Resume depth: 10 pts (1 pt per bullet, capped at 10)
+    depth_score = min(10, len(all_bullets))
 
-    total = min(100, required_score + preferred_score + resp_score + keyword_score + clarity_score)
+    total = min(100, required_score + preferred_score + resp_score + keyword_score + depth_score)
 
     matched_all = list(set(matched_required + matched_preferred))
     missing_all = [s for s in required_skills if s not in resume_text]
