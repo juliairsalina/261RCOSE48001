@@ -519,6 +519,45 @@ export default function EditResumePage() {
     }
   }
 
+  function downloadCoverLetterPDF() {
+    const name = resumeData.name || "";
+    const phone = resumeData.phone || "";
+    const email = resumeData.email || "";
+
+    const printEl = document.createElement("div");
+    printEl.id = "cover-letter-print";
+
+    const nameEl = document.createElement("div");
+    nameEl.textContent = name;
+    nameEl.style.cssText = "font-family: Arial, sans-serif; font-size: 18px; font-weight: bold; color: #111; margin-bottom: 4px;";
+
+    const contactEl = document.createElement("div");
+    contactEl.textContent = [phone, email].filter(Boolean).join("   |   ");
+    contactEl.style.cssText = "font-family: Arial, sans-serif; font-size: 11px; color: #444; margin-bottom: 16px;";
+
+    const hr = document.createElement("hr");
+    hr.style.cssText = "border: none; border-top: 1px solid #ccc; margin-bottom: 20px;";
+
+    const bodyEl = document.createElement("div");
+    bodyEl.textContent = coverLetterText;
+    bodyEl.style.cssText = "font-family: Arial, sans-serif; font-size: 11px; line-height: 1.75; white-space: pre-wrap; color: #111;";
+
+    printEl.appendChild(nameEl);
+    printEl.appendChild(contactEl);
+    printEl.appendChild(hr);
+    printEl.appendChild(bodyEl);
+
+    document.body.appendChild(printEl);
+    document.body.classList.add("printing-cover");
+
+    const restore = () => {
+      document.body.classList.remove("printing-cover");
+      printEl.remove();
+    };
+    window.addEventListener("afterprint", restore, { once: true });
+    setTimeout(() => window.print(), 50);
+  }
+
   function openSuggestionRewrite() {
     // Switch to Rewrites tab and highlight the first matching rewrite for this suggestion
     if (!currentSuggestion) return;
@@ -1227,6 +1266,13 @@ export default function EditResumePage() {
                         rows={18}
                         className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 p-4 text-sm leading-6 text-[#243026] outline-none focus:border-[#243026]/30 focus:bg-white/70"
                       />
+                      <div className="flex gap-2">
+                      <button
+                        onClick={downloadCoverLetterPDF}
+                        className="flex-1 rounded-[1.2rem] border border-[#243026]/20 bg-[#243026] py-3 text-xs font-black text-white transition hover:opacity-90"
+                      >
+                        Download as PDF
+                      </button>
                       <button
                         onClick={() => {
                           const blob = new Blob([coverLetterText], { type: "text/plain" });
@@ -1239,10 +1285,11 @@ export default function EditResumePage() {
                           a.remove();
                           URL.revokeObjectURL(url);
                         }}
-                        className="w-full rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80"
+                        className="flex-1 rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80"
                       >
                         Download as .txt
                       </button>
+                      </div>
                     </>
                   )}
                 </section>
