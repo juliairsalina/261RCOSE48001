@@ -523,39 +523,28 @@ export default function EditResumePage() {
     const name = resumeData.name || "";
     const phone = resumeData.phone || "";
     const email = resumeData.email || "";
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const contact = [phone, email].filter(Boolean).join("   |   ");
 
-    const printEl = document.createElement("div");
-    printEl.id = "cover-letter-print";
-
-    const nameEl = document.createElement("div");
-    nameEl.textContent = name;
-    nameEl.style.cssText = "font-family: Arial, sans-serif; font-size: 18px; font-weight: bold; color: #111; margin-bottom: 4px;";
-
-    const contactEl = document.createElement("div");
-    contactEl.textContent = [phone, email].filter(Boolean).join("   |   ");
-    contactEl.style.cssText = "font-family: Arial, sans-serif; font-size: 11px; color: #444; margin-bottom: 16px;";
-
-    const hr = document.createElement("hr");
-    hr.style.cssText = "border: none; border-top: 1px solid #ccc; margin-bottom: 20px;";
-
-    const bodyEl = document.createElement("div");
-    bodyEl.textContent = coverLetterText;
-    bodyEl.style.cssText = "font-family: Arial, sans-serif; font-size: 11px; line-height: 1.75; white-space: pre-wrap; color: #111;";
-
-    printEl.appendChild(nameEl);
-    printEl.appendChild(contactEl);
-    printEl.appendChild(hr);
-    printEl.appendChild(bodyEl);
-
-    document.body.appendChild(printEl);
-    document.body.classList.add("printing-cover");
-
-    const restore = () => {
-      document.body.classList.remove("printing-cover");
-      printEl.remove();
-    };
-    window.addEventListener("afterprint", restore, { once: true });
-    setTimeout(() => window.print(), 50);
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 20mm 18mm; }
+  body { font-family: Arial, sans-serif; margin: 0; color: #111; }
+  .name { font-size: 17px; font-weight: bold; margin-bottom: 4px; }
+  .contact { font-size: 11px; color: #444; margin-bottom: 14px; }
+  hr { border: none; border-top: 1px solid #ccc; margin-bottom: 18px; }
+  .body { font-size: 11px; line-height: 1.75; white-space: pre-wrap; }
+</style></head><body>
+<div class="name">${esc(name)}</div>
+<div class="contact">${esc(contact)}</div>
+<hr>
+<div class="body">${esc(coverLetterText)}</div>
+</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 250);
   }
 
   function openSuggestionRewrite() {
