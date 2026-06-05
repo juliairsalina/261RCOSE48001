@@ -1704,11 +1704,6 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       const newExp = experience.map((e, ei) => ei === i ? { ...e, role: v } : e);
                       upd({ experience: newExp });
                     } : null}
-                    onAdd={upd ? () => {
-                      const next = [...experience];
-                      next.splice(i + 1, 0, { role: "", company: "", start_date: "", end_date: "", bullets: [""] });
-                      upd({ experience: next });
-                    } : null}
                     as="h3"
                     placeholder="Job Title"
                     className="font-bold"
@@ -1811,9 +1806,10 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     upd({ projects: newProj });
                   } : null}
                   onAdd={upd ? () => {
-                    const next = [...projects];
-                    next.splice(i + 1, 0, { name: "", start_date: "", end_date: "", bullets: [""] });
-                    upd({ projects: next });
+                    const newProj = projects.map((p, pi) =>
+                      pi === i ? { ...p, description: "" } : p
+                    );
+                    upd({ projects: newProj });
                   } : null}
                   as="h3"
                   placeholder="Project Name"
@@ -1845,7 +1841,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              {proj.description && (
+              {"description" in proj && (
                 <Editable
                   value={proj.description || ""}
                   onSave={upd ? (v) => {
@@ -1853,7 +1849,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     upd({ projects: newProj });
                   } : null}
                   onDelete={upd ? () => {
-                    const newProj = projects.map((p, pi) => pi === i ? { ...p, description: "" } : p);
+                    const newProj = projects.map((p, pi) => {
+                      if (pi !== i) return p;
+                      const { description: _, ...rest } = p;
+                      return rest;
+                    });
                     upd({ projects: newProj });
                   } : null}
                   as="p"
@@ -1958,11 +1958,6 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                         li === i ? { ...l, title: v } : l
                       );
                       upd({ leadership: newLeadership });
-                    } : null}
-                    onAdd={upd ? () => {
-                      const next = [...leadership];
-                      next.splice(i + 1, 0, { title: "", organization: "", start_date: "", end_date: "", bullets: [] });
-                      upd({ leadership: next });
                     } : null}
                     className="font-bold"
                   />
@@ -2077,9 +2072,10 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     upd({ achievements: newAchievements });
                   } : null}
                   onAdd={upd ? () => {
-                    const next = [...achievements];
-                    next.splice(i + 1, 0, { title: "", date: "" });
-                    upd({ achievements: next });
+                    const newAchievements = achievements.map((a2, ai) =>
+                      ai === i ? { ...a2, description: "" } : a2
+                    );
+                    upd({ achievements: newAchievements });
                   } : null}
                   as="h3"
                   className="font-bold"
@@ -2100,7 +2096,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              {a.description && (
+              {"description" in a && (
                 <RewritableBullet text={a.description || ""}>
                   <Editable
                     value={a.description || ""}
@@ -2111,9 +2107,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       upd({ achievements: newAchievements });
                     } : null}
                     onDelete={upd ? () => {
-                      const newAchievements = achievements.map((a2, ai) =>
-                        ai === i ? { ...a2, description: "" } : a2
-                      );
+                      const newAchievements = achievements.map((a2, ai) => {
+                        if (ai !== i) return a2;
+                        const { description: _, ...rest } = a2;
+                        return rest;
+                      });
                       upd({ achievements: newAchievements });
                     } : null}
                     as="p"
@@ -2157,9 +2155,10 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       upd({ certifications: newCerts });
                     } : null}
                     onAdd={upd ? () => {
-                      const next = [...certifications];
-                      next.splice(i + 1, 0, { name: "", issuer: "", date: "" });
-                      upd({ certifications: next });
+                      const newCerts = certifications.map((c2, ci) =>
+                        ci === i ? { ...c2, description: "" } : c2
+                      );
+                      upd({ certifications: newCerts });
                     } : null}
                     as="h3"
                     className="font-bold"
@@ -2194,7 +2193,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              {c.description && (
+              {"description" in c && (
                 <RewritableBullet text={c.description || ""}>
                   <Editable
                     value={c.description || ""}
@@ -2205,9 +2204,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       upd({ certifications: newCerts });
                     } : null}
                     onDelete={upd ? () => {
-                      const newCerts = certifications.map((c2, ci) =>
-                        ci === i ? { ...c2, description: "" } : c2
-                      );
+                      const newCerts = certifications.map((c2, ci) => {
+                        if (ci !== i) return c2;
+                        const { description: _, ...rest } = c2;
+                        return rest;
+                      });
                       upd({ certifications: newCerts });
                     } : null}
                     as="p"
@@ -2241,11 +2242,6 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     onSave={upd ? (v) => {
                       const newEdu = education.map((e, ei) => ei === i ? { ...e, school: v } : e);
                       upd({ education: newEdu });
-                    } : null}
-                    onAdd={upd ? () => {
-                      const next = [...education];
-                      next.splice(i + 1, 0, { school: "", degree: "", start_date: "", end_date: "" });
-                      upd({ education: next });
                     } : null}
                     as="h3"
                     placeholder="School / University"
@@ -2396,7 +2392,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </RewritableBullet>
               )}
-              {edu.description && (
+              {"description" in edu && (
                 <RewritableBullet text={edu.description || ""}>
                   <Editable
                     value={edu.description || ""}
@@ -2407,9 +2403,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       upd({ education: newEdu });
                     } : null}
                     onDelete={upd ? () => {
-                      const newEdu = education.map((e, ei) =>
-                        ei === i ? { ...e, description: "" } : e
-                      );
+                      const newEdu = education.map((e, ei) => {
+                        if (ei !== i) return e;
+                        const { description: _, ...rest } = e;
+                        return rest;
+                      });
                       upd({ education: newEdu });
                     } : null}
                     as="p"
