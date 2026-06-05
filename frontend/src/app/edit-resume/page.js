@@ -701,7 +701,25 @@ export default function EditResumePage() {
       setErrorMessage("No resume loaded.");
       return;
     }
+
+    const resume = document.getElementById("resume-a4");
+    if (!resume) return;
+
+    // Move resume to <body> root so print CSS can target it with body > #resume-a4
+    const parent = resume.parentNode;
+    const placeholder = document.createComment("resume-placeholder");
+    const originalTransform = resume.style.transform;
+
+    parent.insertBefore(placeholder, resume);
+    resume.style.transform = "none";
+    document.body.appendChild(resume);
+
     window.print();
+
+    // Restore original position
+    resume.style.transform = originalTransform;
+    parent.insertBefore(resume, placeholder);
+    placeholder.remove();
   }
 
   return (

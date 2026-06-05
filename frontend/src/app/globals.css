@@ -40,21 +40,16 @@ body {
 }
 
 @media print {
-  @page { size: A4; margin: 0; }
+  @page { size: A4; margin: 10mm; }
 
-  body * { visibility: hidden !important; }
-
-  #resume-a4,
-  #resume-a4 * { visibility: visible !important; }
+  body > *:not(#resume-a4) { display: none !important; }
 
   #resume-a4 {
-    position: fixed !important;
-    inset: 0 !important;
     transform: none !important;
     box-shadow: none !important;
-    width: 210mm !important;
-    min-height: 297mm !important;
-    padding: 12mm 14mm !important;
-    overflow: visible !important;
+    width: 100% !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
   }
 }
