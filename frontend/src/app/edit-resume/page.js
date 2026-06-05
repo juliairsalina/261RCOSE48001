@@ -1,6 +1,5 @@
 "use client";
 
-import { cleanBullet } from "@/utils/cleanBullet";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -1524,6 +1523,10 @@ function MetricBox({ title, value }) {
 }
 
 function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick, onDataChange }) {
+  // Defined locally — top-level imports are not visible across Turbopack chunk boundaries
+  const cleanBullet = (text) =>
+    typeof text === "string" ? text.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim() : text;
+
   const rewriteMap = useMemo(() => {
     const m = new Map();
     for (const rw of rewriteList) {
