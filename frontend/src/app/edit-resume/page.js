@@ -1805,9 +1805,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     const newProj = projects.map((p, pi) => pi === i ? { ...p, name: v } : p);
                     upd({ projects: newProj });
                   } : null}
-                  onAdd={upd ? () => {
+                  onAdd={upd ? (currentVal) => {
                     const newProj = projects.map((p, pi) =>
-                      pi === i ? { ...p, description: "" } : p
+                      pi === i ? { ...p, name: currentVal, description: "" } : p
                     );
                     upd({ projects: newProj });
                   } : null}
@@ -1842,23 +1842,19 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                 </div>
               </div>
               {"description" in proj && (
-                <Editable
-                  value={proj.description || ""}
-                  onSave={upd ? (v) => {
-                    const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
-                    upd({ projects: newProj });
+                <DescriptionBullets
+                  description={proj.description}
+                  onChange={upd ? (v) => {
+                    upd({ projects: projects.map((p, pi) => pi === i ? { ...p, description: v } : p) });
                   } : null}
-                  onDelete={upd ? () => {
-                    const newProj = projects.map((p, pi) => {
+                  onRemoveAll={upd ? () => {
+                    upd({ projects: projects.map((p, pi) => {
                       if (pi !== i) return p;
                       const { description: _, ...rest } = p;
                       return rest;
-                    });
-                    upd({ projects: newProj });
+                    }) });
                   } : null}
-                  as="p"
                   placeholder="Describe this project..."
-                  className="mt-1 text-gray-700"
                 />
               )}
               {proj.contributions?.length > 0 && (
@@ -2071,9 +2067,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     );
                     upd({ achievements: newAchievements });
                   } : null}
-                  onAdd={upd ? () => {
+                  onAdd={upd ? (currentVal) => {
                     const newAchievements = achievements.map((a2, ai) =>
-                      ai === i ? { ...a2, description: "" } : a2
+                      ai === i ? { ...a2, title: currentVal, description: "" } : a2
                     );
                     upd({ achievements: newAchievements });
                   } : null}
@@ -2097,28 +2093,20 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
               </div>
 
               {"description" in a && (
-                <RewritableBullet text={a.description || ""}>
-                  <Editable
-                    value={a.description || ""}
-                    onSave={upd ? (v) => {
-                      const newAchievements = achievements.map((a2, ai) =>
-                        ai === i ? { ...a2, description: v } : a2
-                      );
-                      upd({ achievements: newAchievements });
-                    } : null}
-                    onDelete={upd ? () => {
-                      const newAchievements = achievements.map((a2, ai) => {
-                        if (ai !== i) return a2;
-                        const { description: _, ...rest } = a2;
-                        return rest;
-                      });
-                      upd({ achievements: newAchievements });
-                    } : null}
-                    as="p"
-                    placeholder="Describe this achievement..."
-                    className="mt-1 text-gray-700"
-                  />
-                </RewritableBullet>
+                <DescriptionBullets
+                  description={a.description}
+                  onChange={upd ? (v) => {
+                    upd({ achievements: achievements.map((a2, ai) => ai === i ? { ...a2, description: v } : a2) });
+                  } : null}
+                  onRemoveAll={upd ? () => {
+                    upd({ achievements: achievements.map((a2, ai) => {
+                      if (ai !== i) return a2;
+                      const { description: _, ...rest } = a2;
+                      return rest;
+                    }) });
+                  } : null}
+                  placeholder="Describe this achievement..."
+                />
               )}
 
             </div>
@@ -2154,9 +2142,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       );
                       upd({ certifications: newCerts });
                     } : null}
-                    onAdd={upd ? () => {
+                    onAdd={upd ? (currentVal) => {
                       const newCerts = certifications.map((c2, ci) =>
-                        ci === i ? { ...c2, description: "" } : c2
+                        ci === i ? { ...c2, name: currentVal, description: "" } : c2
                       );
                       upd({ certifications: newCerts });
                     } : null}
@@ -2194,28 +2182,20 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
               </div>
 
               {"description" in c && (
-                <RewritableBullet text={c.description || ""}>
-                  <Editable
-                    value={c.description || ""}
-                    onSave={upd ? (v) => {
-                      const newCerts = certifications.map((c2, ci) =>
-                        ci === i ? { ...c2, description: v } : c2
-                      );
-                      upd({ certifications: newCerts });
-                    } : null}
-                    onDelete={upd ? () => {
-                      const newCerts = certifications.map((c2, ci) => {
-                        if (ci !== i) return c2;
-                        const { description: _, ...rest } = c2;
-                        return rest;
-                      });
-                      upd({ certifications: newCerts });
-                    } : null}
-                    as="p"
-                    placeholder="Describe this certification..."
-                    className="mt-1 text-gray-700"
-                  />
-                </RewritableBullet>
+                <DescriptionBullets
+                  description={c.description}
+                  onChange={upd ? (v) => {
+                    upd({ certifications: certifications.map((c2, ci) => ci === i ? { ...c2, description: v } : c2) });
+                  } : null}
+                  onRemoveAll={upd ? () => {
+                    upd({ certifications: certifications.map((c2, ci) => {
+                      if (ci !== i) return c2;
+                      const { description: _, ...rest } = c2;
+                      return rest;
+                    }) });
+                  } : null}
+                  placeholder="Describe this certification..."
+                />
               )}
 
             </div>
@@ -2459,6 +2439,53 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
   );
 }
 
+// Multi-line bullet description for achievements, certifications, projects.
+// Stores content as a "\n"-joined string; each line renders as a <li> bullet.
+function DescriptionBullets({ description, onChange, onRemoveAll, placeholder }) {
+  const lines = (description ?? "").split("\n");
+  const display = lines.length > 0 ? lines : [""];
+
+  if (!onChange) {
+    const filled = lines.filter(l => l.trim());
+    return filled.length > 0 ? (
+      <ul className="mt-1 list-disc pl-5 text-gray-700">
+        {filled.map((l, i) => <li key={i}>{l}</li>)}
+      </ul>
+    ) : null;
+  }
+
+  return (
+    <ul className="mt-1 list-disc pl-5 text-gray-700">
+      {display.map((line, idx) => (
+        <li key={idx}>
+          <Editable
+            value={line}
+            onSave={(v) => {
+              const next = [...display];
+              next[idx] = v;
+              onChange(next.join("\n"));
+            }}
+            onAdd={(currentVal) => {
+              const next = [...display];
+              next[idx] = currentVal;
+              next.splice(idx + 1, 0, "");
+              onChange(next.join("\n"));
+            }}
+            onDelete={() => {
+              if (display.length === 1) {
+                onRemoveAll?.();
+              } else {
+                onChange(display.filter((_, li) => li !== idx).join("\n"));
+              }
+            }}
+            placeholder={idx === 0 ? placeholder : ""}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // Inline-editable text element for the resume preview.
 // Uses useRef so React re-renders never clobber what the user is typing.
 function Editable({ value, onSave, onDelete, onAdd, as: Tag = "span", className, placeholder }) {
@@ -2491,8 +2518,7 @@ function Editable({ value, onSave, onDelete, onAdd, as: Tag = "span", className,
           e.preventDefault();
           const v = (e.currentTarget.innerText ?? "").trim();
           committed.current = v;
-          if (v !== (value ?? "").trim()) onSave(v);
-          onAdd();
+          onAdd(v);
         } else if (e.key === "Enter") {
           e.preventDefault();
         }
