@@ -1823,16 +1823,22 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              <Editable
-                value={proj.description || ""}
-                onSave={upd ? (v) => {
-                  const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
-                  upd({ projects: newProj });
-                } : null}
-                as="p"
-                placeholder="Describe this project..."
-                className="mt-1 text-gray-700"
-              />
+              {proj.description && (
+                <Editable
+                  value={proj.description || ""}
+                  onSave={upd ? (v) => {
+                    const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
+                    upd({ projects: newProj });
+                  } : null}
+                  onDelete={upd ? () => {
+                    const newProj = projects.map((p, pi) => pi === i ? { ...p, description: "" } : p);
+                    upd({ projects: newProj });
+                  } : null}
+                  as="p"
+                  placeholder="Describe this project..."
+                  className="mt-1 text-gray-700"
+                />
+              )}
               {proj.contributions?.length > 0 && (
                 <ul className="mt-1 list-disc pl-5">
                   {proj.contributions.map((c, ci) => <li key={ci}>{c}</li>)}
@@ -2050,20 +2056,28 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              <RewritableBullet text={a.description || ""}>
-                <Editable
-                  value={a.description || ""}
-                  onSave={upd ? (v) => {
-                    const newAchievements = achievements.map((a2, ai) =>
-                      ai === i ? { ...a2, description: v } : a2
-                    );
-                    upd({ achievements: newAchievements });
-                  } : null}
-                  as="p"
-                  placeholder="Describe this achievement..."
-                  className="mt-1 text-gray-700"
-                />
-              </RewritableBullet>
+              {a.description && (
+                <RewritableBullet text={a.description || ""}>
+                  <Editable
+                    value={a.description || ""}
+                    onSave={upd ? (v) => {
+                      const newAchievements = achievements.map((a2, ai) =>
+                        ai === i ? { ...a2, description: v } : a2
+                      );
+                      upd({ achievements: newAchievements });
+                    } : null}
+                    onDelete={upd ? () => {
+                      const newAchievements = achievements.map((a2, ai) =>
+                        ai === i ? { ...a2, description: "" } : a2
+                      );
+                      upd({ achievements: newAchievements });
+                    } : null}
+                    as="p"
+                    placeholder="Describe this achievement..."
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
 
             </div>
           ))}
@@ -2125,20 +2139,28 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              <RewritableBullet text={c.description || ""}>
-                <Editable
-                  value={c.description || ""}
-                  onSave={upd ? (v) => {
-                    const newCerts = certifications.map((c2, ci) =>
-                      ci === i ? { ...c2, description: v } : c2
-                    );
-                    upd({ certifications: newCerts });
-                  } : null}
-                  as="p"
-                  placeholder="Describe this certification..."
-                  className="mt-1 text-gray-700"
-                />
-              </RewritableBullet>
+              {c.description && (
+                <RewritableBullet text={c.description || ""}>
+                  <Editable
+                    value={c.description || ""}
+                    onSave={upd ? (v) => {
+                      const newCerts = certifications.map((c2, ci) =>
+                        ci === i ? { ...c2, description: v } : c2
+                      );
+                      upd({ certifications: newCerts });
+                    } : null}
+                    onDelete={upd ? () => {
+                      const newCerts = certifications.map((c2, ci) =>
+                        ci === i ? { ...c2, description: "" } : c2
+                      );
+                      upd({ certifications: newCerts });
+                    } : null}
+                    as="p"
+                    placeholder="Describe this certification..."
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
 
             </div>
           ))}
@@ -2175,7 +2197,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       className="text-gray-600"
                     />
                   )}
-                  {(edu.field_of_study || upd) && (
+                  {edu.field_of_study && (
                     <RewritableBullet text={edu.field_of_study || ""}>
                       <Editable
                         value={edu.field_of_study || ""}
@@ -2257,7 +2279,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              {(edu.gpa || upd) && (
+              {edu.gpa && (
                 <p className="text-gray-600">
                   GPA:
                   <Editable
@@ -2278,7 +2300,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </p>
               )}
-              {((edu.coursework || []).length > 0 || upd) && (
+              {(edu.coursework || []).length > 0 && (
                 <RewritableBullet text={(edu.coursework || []).join(", ")}>
                   <Editable
                     value={(edu.coursework || []).join(", ")}
@@ -2308,7 +2330,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </RewritableBullet>
               )}
-              {(edu.description || upd) && (
+              {edu.description && (
                 <RewritableBullet text={edu.description || ""}>
                   <Editable
                     value={edu.description || ""}
