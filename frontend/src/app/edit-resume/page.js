@@ -173,8 +173,6 @@ export default function EditResumePage() {
     suggestions.find((item) => item.id === activeSuggestion) || suggestions[0];
 
   useEffect(() => {
-    localStorage.removeItem("reeracifyVacancyLink");
-
     const savedUserId = localStorage.getItem("reeracifyUserId");
     if (savedUserId) setUserId(savedUserId);
 
