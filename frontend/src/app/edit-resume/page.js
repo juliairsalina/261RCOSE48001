@@ -91,15 +91,19 @@ export default function EditResumePage() {
 
   const [atsScoreValue, setAtsScoreValue] = useState(0);
   const [resumeLevel, setResumeLevel] = useState("Waiting for evaluation");
-  const [jobSummary, setJobSummary] = useState(
-    "Paste a vacancy link and upload a resume to generate job-based evaluation."
-  );
+  const [jobSummary, setJobSummary] = useState(null);
 
   const [metrics, setMetrics] = useState({
     clarity: 0,
     keywordFit: 0,
     structure: 0,
     impact: 0,
+  });
+  const [metricHints, setMetricHints] = useState({
+    clarity: "",
+    keywordFit: "",
+    structure: "",
+    impact: "",
   });
 
   const [backendSuggestions, setBackendSuggestions] = useState([]);
@@ -374,13 +378,13 @@ export default function EditResumePage() {
     throw new Error("Analysis stream ended without a result.");
   }
 
-  function applyAnalysisResult(result, jobSummaryText) {
+  function applyAnalysisResult(result, jobPost) {
     saveSnapshot();
     const ats = result.ats || {};
     const score = ats.score || 0;
     setAtsScoreValue(score);
     setResumeLevel(getRankLabel(ats.rank));
-    setJobSummary(jobSummaryText);
+    setJobSummary(jobPost);
 
     const matched = ats.matched_skills?.length || 0;
     const missing = ats.missing_skills?.length || 0;
@@ -390,6 +394,15 @@ export default function EditResumePage() {
       keywordFit: Math.round((matched / total) * 100),
       structure: score,
       impact: Math.min(100, (ats.strengths?.length || 0) * 20),
+    });
+
+    setMetricHints({
+      clarity: ats.weaknesses?.[0] || (ats.weaknesses?.length === 0 ? "No major clarity issues detected." : ""),
+      keywordFit: missing > 0
+        ? `Missing: ${(ats.missing_skills || []).slice(0, 3).join(", ")}${missing > 3 ? ` +${missing - 3} more` : ""}.`
+        : matched > 0 ? `All key skills matched (${matched} found).` : "",
+      structure: ats.improvement_priority?.[0] || (score >= 80 ? "Strong overall structure." : ""),
+      impact: ats.strengths?.[0] || (ats.strengths?.length === 0 ? "Add more measurable outcomes to bullet points." : ""),
     });
 
     const atsSuggestions = [
@@ -450,10 +463,7 @@ export default function EditResumePage() {
       // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
       const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
 
-      const jobSummaryText = hasLink
-        ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
-        : "General resume evaluation — no job posting provided.";
-      applyAnalysisResult(result, jobSummaryText);
+      applyAnalysisResult(result, jobPost);
 
     } catch (error) {
       setIsLoading(false);
@@ -578,7 +588,7 @@ export default function EditResumePage() {
 
       // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
       const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
-      applyAnalysisResult(result, `${job.role_title} at ${job.company_name}`);
+      applyAnalysisResult(result, job);
 
     } catch (error) {
       setIsLoading(false);
@@ -1021,19 +1031,35 @@ export default function EditResumePage() {
                       />
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-2">
-                      <MetricBox title="Clarity" value={metrics.clarity} />
-                      <MetricBox title="Keyword" value={metrics.keywordFit} />
-                      <MetricBox title="Structure" value={metrics.structure} />
-                      <MetricBox title="Impact" value={metrics.impact} />
+                      <MetricBox title="Clarity" value={metrics.clarity} hint={metricHints.clarity} />
+                      <MetricBox title="Keyword" value={metrics.keywordFit} hint={metricHints.keywordFit} />
+                      <MetricBox title="Structure" value={metrics.structure} hint={metricHints.structure} />
+                      <MetricBox title="Impact" value={metrics.impact} hint={metricHints.impact} />
                     </div>
                   </section>
 
-                  <section className="border-b border-[#243026]/10 py-5">
-                    <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                      Job Link Summary
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-[#243026]/65">{jobSummary}</p>
-                  </section>
+                  {jobSummary && (
+                    <section className="border-b border-[#243026]/10 py-5">
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
+                        Job Summary
+                      </p>
+                      <div className="mt-3 space-y-1">
+                        <p className="text-sm font-black text-[#243026]">
+                          {jobSummary.role_title || "Role"}
+                          {jobSummary.company_name ? ` · ${jobSummary.company_name}` : ""}
+                        </p>
+                        {jobSummary.location && (
+                          <p className="text-xs text-[#243026]/50">{jobSummary.location}</p>
+                        )}
+                        {jobSummary.job_description && (
+                          <p className="mt-2 text-xs leading-5 text-[#243026]/65">
+                            {jobSummary.job_description.replace(/\s+/g, " ").slice(0, 220).trim()}
+                            {jobSummary.job_description.length > 220 ? "…" : ""}
+                          </p>
+                        )}
+                      </div>
+                    </section>
+                  )}
 
                   <section className="flex min-h-0 flex-1 flex-col py-5">
                     <div className="mb-4 flex items-center justify-between">
@@ -1518,11 +1544,14 @@ function LevelPill({ label, active }) {
   );
 }
 
-function MetricBox({ title, value }) {
+function MetricBox({ title, value, hint }) {
   return (
     <div className="rounded-[1.1rem] border border-white/45 bg-white/35 p-3">
       <p className="text-[11px] font-bold text-[#243026]/50">{title}</p>
       <p className="mt-1 text-lg font-black text-[#243026]">{value}</p>
+      {hint && (
+        <p className="mt-1.5 text-[10px] leading-[1.4] text-[#243026]/50">{hint}</p>
+      )}
     </div>
   );
 }
