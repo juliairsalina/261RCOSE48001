@@ -1688,6 +1688,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       {experience.length > 0 && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Experience</h2>
+          {upd && (
+            <button
+              onClick={() => upd({ experience: [...experience, { role: "", company: "", start_date: "", end_date: "", bullets: [""] }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add experience</button>
+          )}
           {experience.map((exp, i) => (
             <div key={i} className="mt-3">
               <div className="flex justify-between">
@@ -1697,6 +1703,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     onSave={upd ? (v) => {
                       const newExp = experience.map((e, ei) => ei === i ? { ...e, role: v } : e);
                       upd({ experience: newExp });
+                    } : null}
+                    onAdd={upd ? () => {
+                      const next = [...experience];
+                      next.splice(i + 1, 0, { role: "", company: "", start_date: "", end_date: "", bullets: [""] });
+                      upd({ experience: next });
                     } : null}
                     as="h3"
                     placeholder="Job Title"
@@ -1784,6 +1795,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       {projects.length > 0 && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Projects</h2>
+          {upd && (
+            <button
+              onClick={() => upd({ projects: [...projects, { name: "", start_date: "", end_date: "", bullets: [""] }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add project</button>
+          )}
           {projects.map((proj, i) => (
             <div key={i} className="mt-3">
               <div className="flex justify-between">
@@ -1792,6 +1809,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   onSave={upd ? (v) => {
                     const newProj = projects.map((p, pi) => pi === i ? { ...p, name: v } : p);
                     upd({ projects: newProj });
+                  } : null}
+                  onAdd={upd ? () => {
+                    const next = [...projects];
+                    next.splice(i + 1, 0, { name: "", start_date: "", end_date: "", bullets: [""] });
+                    upd({ projects: next });
                   } : null}
                   as="h3"
                   placeholder="Project Name"
@@ -1915,6 +1937,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
             Leadership
           </h2>
+          {upd && (
+            <button
+              onClick={() => upd({ leadership: [...leadership, { title: "", organization: "", start_date: "", end_date: "", bullets: [] }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add leadership</button>
+          )}
 
           {leadership.map((item, i) => (
             <div key={i} className="mt-2">
@@ -1930,6 +1958,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                         li === i ? { ...l, title: v } : l
                       );
                       upd({ leadership: newLeadership });
+                    } : null}
+                    onAdd={upd ? () => {
+                      const next = [...leadership];
+                      next.splice(i + 1, 0, { title: "", organization: "", start_date: "", end_date: "", bullets: [] });
+                      upd({ leadership: next });
                     } : null}
                     className="font-bold"
                   />
@@ -2024,6 +2057,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
             Achievements
           </h2>
 
+          {upd && (
+            <button
+              onClick={() => upd({ achievements: [...achievements, { title: "", date: "" }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add achievement</button>
+          )}
           {achievements.map((a, i) => (
             <div key={i} className="mt-2">
 
@@ -2036,6 +2075,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       ai === i ? { ...a2, title: v } : a2
                     );
                     upd({ achievements: newAchievements });
+                  } : null}
+                  onAdd={upd ? () => {
+                    const next = [...achievements];
+                    next.splice(i + 1, 0, { title: "", date: "" });
+                    upd({ achievements: next });
                   } : null}
                   as="h3"
                   className="font-bold"
@@ -2090,6 +2134,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
             Certifications
           </h2>
+          {upd && (
+            <button
+              onClick={() => upd({ certifications: [...certifications, { name: "", issuer: "", date: "" }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add certification</button>
+          )}
 
           {certifications.map((c, i) => (
             <div key={i} className="mt-2">
@@ -2105,6 +2155,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                         ci === i ? { ...c2, name: v } : c2
                       );
                       upd({ certifications: newCerts });
+                    } : null}
+                    onAdd={upd ? () => {
+                      const next = [...certifications];
+                      next.splice(i + 1, 0, { name: "", issuer: "", date: "" });
+                      upd({ certifications: next });
                     } : null}
                     as="h3"
                     className="font-bold"
@@ -2171,6 +2226,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       {education.length > 0 && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Education</h2>
+          {upd && (
+            <button
+              onClick={() => upd({ education: [...education, { school: "", degree: "", start_date: "", end_date: "" }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add education</button>
+          )}
           {education.map((edu, i) => (
             <div key={i} className="mt-2">
               <div className="flex justify-between">
@@ -2180,6 +2241,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     onSave={upd ? (v) => {
                       const newEdu = education.map((e, ei) => ei === i ? { ...e, school: v } : e);
                       upd({ education: newEdu });
+                    } : null}
+                    onAdd={upd ? () => {
+                      const next = [...education];
+                      next.splice(i + 1, 0, { school: "", degree: "", start_date: "", end_date: "" });
+                      upd({ education: next });
                     } : null}
                     as="h3"
                     placeholder="School / University"
@@ -2397,7 +2463,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
 // Inline-editable text element for the resume preview.
 // Uses useRef so React re-renders never clobber what the user is typing.
-function Editable({ value, onSave, onDelete, as: Tag = "span", className, placeholder }) {
+function Editable({ value, onSave, onDelete, onAdd, as: Tag = "span", className, placeholder }) {
   const ref = useRef(null);
   const committed = useRef(value ?? "");
 
@@ -2422,6 +2488,15 @@ function Editable({ value, onSave, onDelete, as: Tag = "span", className, placeh
         if (e.key === "Backspace" && !e.currentTarget.innerText.trim() && onDelete) {
           e.preventDefault();
           onDelete();
+        }
+        if (e.key === "Enter" && onAdd) {
+          e.preventDefault();
+          const v = (e.currentTarget.innerText ?? "").trim();
+          committed.current = v;
+          if (v !== (value ?? "").trim()) onSave(v);
+          onAdd();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
         }
       }}
       onBlur={(e) => {
