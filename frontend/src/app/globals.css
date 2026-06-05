@@ -38,3 +38,23 @@ body {
   min-height: 1.2em;
   display: block;
 }
+
+@media print {
+  @page { size: A4; margin: 0; }
+
+  body * { visibility: hidden !important; }
+
+  #resume-a4,
+  #resume-a4 * { visibility: visible !important; }
+
+  #resume-a4 {
+    position: fixed !important;
+    inset: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    padding: 12mm 14mm !important;
+    overflow: visible !important;
+  }
+}
