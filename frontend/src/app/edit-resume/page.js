@@ -173,11 +173,7 @@ export default function EditResumePage() {
     suggestions.find((item) => item.id === activeSuggestion) || suggestions[0];
 
   useEffect(() => {
-    const savedVacancyLink = localStorage.getItem("reeracifyVacancyLink");
-    if (savedVacancyLink) {
-      setVacancyLink(savedVacancyLink);
-      setJobSummary("Vacancy link loaded. Click Evaluate to analyze it.");
-    }
+    localStorage.removeItem("reeracifyVacancyLink");
 
     const savedUserId = localStorage.getItem("reeracifyUserId");
     if (savedUserId) setUserId(savedUserId);
@@ -269,11 +265,6 @@ export default function EditResumePage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (vacancyLink) {
-      localStorage.setItem("reeracifyVacancyLink", vacancyLink);
-    }
-  }, [vacancyLink]);
 
   useEffect(() => {
     if (!applicationId || coverLetterText) return;
@@ -576,7 +567,6 @@ export default function EditResumePage() {
 
       setLoadingState(`Analyzing fit for ${job.role_title} at ${job.company_name}…`);
       setVacancyLink(job.job_url);
-      localStorage.setItem("reeracifyVacancyLink", job.job_url);
 
       const app = await callBackend("/applications/create", {
         method: "POST",
