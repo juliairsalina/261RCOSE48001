@@ -85,28 +85,64 @@ Download DOCX — approved rewrites applied, all sections included
 │  │  API Routers                                                     │  │
 │  │  /resumes/*  /applications/*  /jobs/*  /job-posts/*              │  │
 │  │  /rewrite-suggestions/*  /cover-letters/*                        │  │
-│  └─────────────────────────┬────────────────────────────────────────┘  │
-│                             │                                            │
-│  ┌──────────────────────────▼────────────────────────────────────────┐  │
-│  │  LangGraph  analysis_graph  (graph.py)                           │  │
-│  │                                                                   │  │
-│  │  START → analyze_job → retrieve_context → research_company       │  │
-│  │                                │                                  │  │
-│  │                    ┌───────────┴──────────────┐                  │  │
-│  │              evaluate_ats          generate_cover_letter          │  │
-│  │                    └───────────┬──────────────┘                  │  │
-│  │                        generate_rewrites → END                   │  │
-│  │                                                                   │  │
-│  │  Each node streams a [STATUS] SSE event as it starts             │  │
-│  └─────────────────────────┬─────────────────────────────────────────┘  │
-│                             │                                            │
-│  ┌──────────────┐  ┌────────▼────────┐  ┌──────────────────────────┐  │
+│  └──────┬───────────────────────────────────────────────────────────┘  │
+│         │                                                                │
+│         │  called on upload ──────────────────────────────────────────► │
+│  ┌──────▼──────────────────┐   ┌──────────────────────────────────────┐ │
+│  │  [AGENT]                │   │  [AGENT]                             │ │
+│  │  resume_parser_agent    │   │  candidate_profile_agent             │ │
+│  │  GPT → structured JSON  │   │  GPT → target roles, skills, queries │ │
+│  └──────┬──────────────────┘   └──────────────────────────────────────┘ │
+│         │ text chunks                                                     │
+│  ┌──────▼──────────────────┐                                             │
+│  │  LangChain text splitter│ (only usage of LangChain in the project)    │
+│  │  + OpenAI embeddings    │                                             │
+│  │  → pgvector storage     │                                             │
+│  └─────────────────────────┘                                             │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  LangGraph  analysis_graph  (triggered on /analyze)               │  │
+│  │                                                                    │  │
+│  │  ┌─────────────────┐                                              │  │
+│  │  │ [AGENT]         │                                              │  │
+│  │  │ analyze_job     │ GPT → extract requirements from job URL      │  │
+│  │  └────────┬────────┘                                              │  │
+│  │           ▼                                                        │  │
+│  │  ┌─────────────────┐                                              │  │
+│  │  │ [AGENT]         │                                              │  │
+│  │  │ retrieve_context│ pgvector cosine search over resume chunks    │  │
+│  │  └────────┬────────┘                                              │  │
+│  │           ▼                                                        │  │
+│  │  ┌─────────────────┐                                              │  │
+│  │  │ [AGENT]         │                                              │  │
+│  │  │ research_company│ optional MCP / web — company background      │  │
+│  │  └────────┬────────┘                                              │  │
+│  │           │                                                        │  │
+│  │     ┌─────┴──────┐  (parallel fan-out)                            │  │
+│  │     ▼            ▼                                                 │  │
+│  │  ┌──────────┐  ┌───────────────────┐                              │  │
+│  │  │ [AGENT]  │  │ [AGENT]           │                              │  │
+│  │  │ evaluate │  │ generate_cover_   │                              │  │
+│  │  │ _ats     │  │ letter            │                              │  │
+│  │  │ score    │  │ GPT → letter      │                              │  │
+│  │  │ 0–100    │  │                   │                              │  │
+│  │  └────┬─────┘  └────────┬──────────┘                              │  │
+│  │       └────────┬─────────┘  (fan-in)                              │  │
+│  │                ▼                                                   │  │
+│  │  ┌─────────────────┐                                              │  │
+│  │  │ [AGENT]         │                                              │  │
+│  │  │ generate_rewrites│ GPT → per-bullet rewrite suggestions        │  │
+│  │  └─────────────────┘                                              │  │
+│  │                                                                    │  │
+│  │  Each agent streams a [STATUS] SSE event as it starts             │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│  ┌──────────────┐  ┌─────────────────┐  ┌──────────────────────────┐  │
 │  │ document_    │  │ openai_client   │  │ job_search_service       │  │
-│  │ parser.py    │  │ chat_completion │  │ cascade: JSearch (non-KR)│  │
-│  │ pypdf/docx   │  │ get_embedding   │  │ then OpenAI web fallback  │  │
-│  └──────────────┘  └─────────────────┘  │ openai_web: always GPT   │  │
-│                                          │ dummy: test stub          │  │
-│                                          └──────────────────────────┘  │
+│  │ parser.py    │  │ GPT-4o          │  │ cascade: JSearch (non-KR)│  │
+│  │ pypdf/docx   │  │ text-embedding  │  │ then OpenAI web fallback  │  │
+│  └──────────────┘  │ -3-small        │  └──────────────────────────┘  │
+│                    └─────────────────┘                                  │
 └──────────────┬──────────────────────────────────────────────────────────┘
                │
     ┌──────────┼────────────────────────────┐
@@ -114,7 +150,7 @@ Download DOCX — approved rewrites applied, all sections included
 ┌────────┐  ┌──────────────────────────┐  ┌────────────────────────┐
 │ OpenAI │  │  Supabase (Postgres +    │  │  Supabase Storage      │
 │        │  │  pgvector extension)     │  │                        │
-│ GPT    │  │                          │  │  Uploaded PDFs/DOCX    │
+│ GPT-4o │  │                          │  │  Uploaded PDFs/DOCX    │
 │ text-  │  │  resumes                 │  │  Exported DOCX files   │
 │ embed- │  │  resume_chunks           │  └────────────────────────┘
 │ ding-  │  │   └ embedding vector(1536)│
@@ -122,11 +158,9 @@ Download DOCX — approved rewrites applied, all sections included
 │        │  │  applications            │  │  LangSmith             │
 │ web_   │  │  retrieved_contexts      │  │  (optional tracing)    │
 │ search │  │  ats_evaluations         │  │  Every LLM call logged │
-└────────┘  │  rewrite_suggestions     │  │  with input/output/    │
-            │  cover_letters           │  │  latency/tokens        │
-            │  job_posts               │  └────────────────────────┘
-            │  job_recommendations     │
-            │  agent_runs              │
+└────────┘  │  rewrite_suggestions     │  └────────────────────────┘
+            │  cover_letters           │
+            │  job_posts · agent_runs  │
             └──────────────────────────┘
 ```
 
@@ -138,7 +172,8 @@ Download DOCX — approved rewrites applied, all sections included
 |---|---|
 | **Frontend** | Next.js 16, React 19, Tailwind CSS 4 |
 | **Backend** | FastAPI, Python 3.11, Uvicorn |
-| **AI / Agents** | OpenAI GPT-4o, LangGraph, LangChain, LangSmith |
+| **AI / Agents** | OpenAI GPT-4o, LangGraph, LangSmith |
+| **Text chunking** | LangChain `RecursiveCharacterTextSplitter` (text splitting only) |
 | **Database** | Supabase (PostgreSQL + pgvector) |
 | **Storage** | Supabase Storage |
 | **Hosting** | Vercel (frontend) · Render (backend) |
