@@ -87,12 +87,12 @@ Download DOCX — approved rewrites applied, all sections included
 │  │  /rewrite-suggestions/*  /cover-letters/*                        │  │
 │  └──────┬───────────────────────────────────────────────────────────┘  │
 │         │                                                                │
-│         │  on upload                    on /candidate-profile           │
-│  ┌──────▼──────────────────┐   ┌──────────────────────────────────────┐ │
-│  │  [AGENT]                │   │  [AGENT]                             │ │
-│  │  resume_parser_agent    │   │  candidate_profile_agent             │ │
-│  │  GPT → structured JSON  │   │  GPT → target roles, skills, queries │ │
-│  └──────┬──────────────────┘   └──────────────────────────────────────┘ │
+│         │  on upload                                                      │
+│  ┌──────▼──────────────────┐                                             │
+│  │  [AGENT]                │                                             │
+│  │  resume_parser_agent    │                                             │
+│  │  GPT → structured JSON  │                                             │
+│  └──────┬──────────────────┘                                             │
 │         │ text chunks                                                     │
 │  ┌──────▼───────────────────────────────────┐                           │
 │  │  RAG Pipeline (embed + store)            │                           │
@@ -104,10 +104,15 @@ Download DOCX — approved rewrites applied, all sections included
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │  LangGraph  analysis_graph  (triggered on /analyze)               │  │
 │  │                                                                    │  │
-│  │  ┌─────────────────┐                                              │  │
-│  │  │ [AGENT]         │                                              │  │
-│  │  │ analyze_job     │ GPT → extract requirements from job URL      │  │
-│  │  └────────┬────────┘                                              │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐ │  │
+│  │  │ [AGENT]  candidate_profile_agent  (runs once per resume)     │ │  │
+│  │  │ GPT → target roles, core skills, seniority, search queries   │ │  │
+│  │  └──────────────────────────┬───────────────────────────────────┘ │  │
+│  │                             │ profile used by analyze + job search  │  │
+│  │  ┌──────────────────────────▼───────────────────────────────────┐ │  │
+│  │  │ [AGENT]                                                      │ │  │
+│  │  │ analyze_job   GPT → extract requirements from job URL        │ │  │
+│  │  └────────┬─────────────────────────────────────────────────────┘ │  │
 │  │           ▼                                                        │  │
 │  │  ┌─────────────────────────────────────┐                          │  │
 │  │  │ [AGENT]  RAG retrieval              │                          │  │
