@@ -1,0 +1,15 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# NEVER commit terraform.tfvars — it contains secrets.
+
+vercel_api_token      = "your-vercel-api-token"
+vercel_team_id        = ""                          # leave empty for personal account
+
+supabase_access_token = "your-supabase-access-token"
+supabase_org_id       = "your-supabase-org-id"
+supabase_db_password  = "your-strong-db-password"
+
+github_token          = "your-github-pat"
+
+openai_api_key        = "sk-..."
+jsearch_api_key       = ""                          # optional
+langchain_api_key     = ""                          # optional
