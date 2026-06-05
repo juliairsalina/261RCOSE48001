@@ -14,6 +14,7 @@ from app.services import openai_client, supabase_client
 from app.services.document_parser import extract_text
 from app.services.embedding_service import generate_embeddings_batch
 from app.services.vector_store import store_resume_chunks
+from app.agents.resume_parser_agent import RESUME_PARSER_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -24,10 +25,6 @@ ALLOWED_CONTENT_TYPES = {
 }
 ALLOWED_EXTENSIONS = {"pdf", "docx"}
 
-RESUME_PARSER_SYSTEM_PROMPT = """You are a resume parser. Extract the candidate's information from the raw resume text and return a valid JSON object with these exact keys:
-name, email, phone, education, work_experience, projects, skills, languages, certifications, achievements.
-Return only valid JSON. Do not add markdown or extra text."""
-
 CANDIDATE_PROFILE_SYSTEM_PROMPT = """You are a career advisor. Analyze the candidate's parsed resume JSON and generate a structured candidate profile.
 
 Return a valid JSON object with exactly these keys:
@@ -37,7 +34,7 @@ Return a valid JSON object with exactly these keys:
 - domain_interests: list of 3-5 industry domains or interest areas inferred from experience
 - strongest_experiences: list of 3-5 strongest experience highlights (short phrases)
 - preferred_job_keywords: list of 10-15 keywords for job searching
-- search_queries: list of 5-8 optimised job search query strings ready to use in a job board
+- search_queries: list of 5-8 optimised job search query strings (e.g. "Machine Learning Engineer Python PyTorch", "NLP Research Intern deep learning")
 
 Return only valid JSON. Do not add markdown or extra text."""
 
@@ -144,7 +141,8 @@ async def upload_resume(
             temperature=0.1,
             response_format={"type": "json_object"},
         )
-        parsed_dict: dict = json.loads(raw_response)
+        from app.agents.resume_parser_agent import _clean_bullets
+        parsed_dict: dict = _clean_bullets(json.loads(raw_response))
         parsed_json = ResumeJSON(**parsed_dict)
     except Exception as exc:
         logger.exception("Failed to parse resume JSON: %s", exc)
@@ -266,7 +264,6 @@ async def create_candidate_profile(
                     "user_id": user_id,
                     "resume_id": resume_id,
                     "profile_json": profile,
-                    "search_queries": profile.get("search_queries", []),
                 }
             )
             .execute()

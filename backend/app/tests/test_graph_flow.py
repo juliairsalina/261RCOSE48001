@@ -25,7 +25,6 @@ def test_state_initialization():
         "errors",
     }
 
-    # Check that all required keys are in the TypedDict annotations
     annotations = AgentState.__annotations__
     for key in required_keys:
         assert key in annotations, f"Key '{key}' missing from AgentState"
@@ -58,58 +57,36 @@ def test_state_can_be_instantiated_as_dict():
     assert state["job_post_ids"] == []
 
 
-def test_graph_compiled_successfully():
-    """Import career_agent_graph without raising any errors."""
+def test_analysis_graph_compiled_successfully():
+    """Import analysis_graph without raising any errors."""
     pytest.importorskip("langgraph", reason="langgraph not installed")
-    from app.agents.graph import career_agent_graph
+    from app.agents.graph import analysis_graph
 
-    assert career_agent_graph is not None
+    assert analysis_graph is not None
 
 
-def test_graph_has_correct_node_names():
-    """Verify the graph contains all expected node names."""
+def test_analysis_graph_has_correct_node_names():
+    """Verify analysis_graph contains all expected node names."""
     pytest.importorskip("langgraph", reason="langgraph not installed")
-    from app.agents.graph import career_agent_graph
+    from app.agents.graph import analysis_graph
 
     expected_nodes = {
-        "parse_resume",
-        "create_candidate_profile",
-        "discover_jobs",
-        "analyze_selected_job",
-        "retrieve_resume_context",
+        "analyze_job",
+        "retrieve_context",
+        "research_company",
         "evaluate_ats",
-        "generate_rewrite_suggestions",
-        "export_resume",
         "generate_cover_letter",
+        "generate_rewrites",
     }
 
-    # LangGraph compiled graphs expose nodes via .nodes or graph attribute
     try:
-        graph_nodes = set(career_agent_graph.nodes.keys())
+        graph_nodes = set(analysis_graph.nodes.keys())
     except AttributeError:
-        # Some versions of LangGraph use a different attribute
         try:
-            graph_nodes = set(career_agent_graph.graph.nodes.keys())
+            graph_nodes = set(analysis_graph.graph.nodes.keys())
         except AttributeError:
-            # Skip detailed node check if the internal API differs
             pytest.skip("Cannot introspect graph nodes in this LangGraph version")
             return
 
     for node in expected_nodes:
-        assert node in graph_nodes, f"Node '{node}' not found in graph"
-
-
-def test_runner_functions_are_callable():
-    """Verify the convenience runner functions exist and are callable."""
-    pytest.importorskip("langgraph", reason="langgraph not installed")
-    import inspect
-    from app.agents.graph import run_until_job_selection, run_from_job_selected, run_cover_letter
-
-    assert callable(run_until_job_selection)
-    assert callable(run_from_job_selected)
-    assert callable(run_cover_letter)
-
-    # All three should be coroutine functions
-    assert inspect.iscoroutinefunction(run_until_job_selection)
-    assert inspect.iscoroutinefunction(run_from_job_selected)
-    assert inspect.iscoroutinefunction(run_cover_letter)
+        assert node in graph_nodes, f"Node '{node}' not found in analysis_graph"

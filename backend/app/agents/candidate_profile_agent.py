@@ -17,7 +17,7 @@ Return a valid JSON object with exactly these keys:
 - domain_interests: list of 3-5 industry domains or interest areas inferred from experience
 - strongest_experiences: list of 3-5 strongest experience highlights (short phrases)
 - preferred_job_keywords: list of 10-15 keywords for job searching
-- search_queries: list of 5-8 optimised job search query strings ready to use in a job board
+- search_queries: list of 5-8 optimised job search query strings (e.g. "Machine Learning Engineer Python PyTorch", "NLP Research Intern deep learning")
 
 Return only valid JSON. Do not add markdown or extra text."""
 
@@ -31,11 +31,11 @@ async def create_candidate_profile_node(state: AgentState) -> AgentState:
     resume_json = state.get("resume_json")
     user_id = state["user_id"]
     resume_id = state.get("resume_id")
-    errors: list[str] = list(state.get("errors", []))
+    new_errors: list[str] = []
 
     if not resume_json:
-        errors.append("create_candidate_profile_node: resume_json is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("create_candidate_profile_node: resume_json is missing from state")
+        return {**state, "errors": new_errors}
 
     try:
         # 1. Call GPT-4o to generate candidate profile
@@ -52,7 +52,6 @@ async def create_candidate_profile_node(state: AgentState) -> AgentState:
             response_format={"type": "json_object"},
         )
         profile: dict = json.loads(raw_response)
-        search_queries: list[str] = profile.get("search_queries", [])
 
         # 2. Save to candidate_profiles table
         db = supabase_client.get_client()
@@ -63,7 +62,6 @@ async def create_candidate_profile_node(state: AgentState) -> AgentState:
                     "user_id": user_id,
                     "resume_id": resume_id,
                     "profile_json": profile,
-                    "search_queries": search_queries,
                 }
             )
             .execute()
@@ -74,10 +72,10 @@ async def create_candidate_profile_node(state: AgentState) -> AgentState:
             **state,
             "candidate_profile": profile,
             "candidate_profile_id": profile_id,
-            "errors": errors,
+            "errors": new_errors,
         }
 
     except Exception as exc:
         logger.exception("create_candidate_profile_node failed: %s", exc)
-        errors.append(f"create_candidate_profile_node error: {exc}")
-        return {**state, "errors": errors}
+        new_errors.append(f"create_candidate_profile_node error: {exc}")
+        return {**state, "errors": new_errors}

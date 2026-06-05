@@ -9,22 +9,42 @@ from app.services import openai_client, supabase_client
 
 logger = logging.getLogger(__name__)
 
-REWRITE_SYSTEM_PROMPT = """You are a resume improvement expert. Based on the ATS evaluation and job requirements, suggest specific improvements to the resume.
+REWRITE_SYSTEM_PROMPT = """You are a resume ATS expert. Your job is to identify weak bullet points and descriptions that are hurting the candidate's ATS score, and rewrite only those.
 
-Rules:
-- Never invent skills or experience the candidate doesn't have
-- Improve clarity, impact, and keyword alignment
-- Add measurable results where possible based on existing evidence
-- If a skill is missing with no evidence, note it as something the user should consider adding
-- Focus only on sections where improvements will meaningfully increase ATS match score
+STRICT SELECTION RULES — only suggest a rewrite if ALL of these are true:
+1. The original text is genuinely weak: vague, missing key job keywords, lacks measurable impact, or uses passive/weak language
+2. The rewrite directly incorporates missing skills or keywords from the job requirements
+3. The rewrite will concretely increase the ATS match score (e.g. adds a required keyword that was missing)
+4. Do NOT rewrite text that is already strong, specific, or keyword-aligned
 
-Return a JSON object with key "suggestions" containing a list of objects with exactly these fields:
-- section: the resume section being improved (e.g. "summary", "work_experience", "skills", "projects")
-- original_text: the exact original text from the resume that should be replaced (quote it precisely)
-- suggested_text: the improved replacement text
-- reason: a clear explanation of why this change improves ATS matching or impact
+WHAT TO REWRITE:
+- Bullet points or descriptions in work_experience or projects that are vague ("worked on X", "helped with Y", "responsible for Z")
+- Leadership descriptions
+- Achievement descriptions
+- Certification descriptions (only descriptions, not certification names)
+- Text missing keywords from the job's required_skills or keywords list
+- Weak action verbs with no measurable outcome
 
-Return only valid JSON. Do not add markdown or extra text."""
+WHAT NOT TO REWRITE:
+- Already strong bullets with numbers and results
+- Text that already contains the required keywords
+- Lines that are fine but you could "make slightly better" — skip those
+- Skills section, summary, education, certification names
+
+REWRITE RULES:
+- Keep the same experience — never fabricate achievements or tools the candidate didn't use
+- Add measurable outcomes only if there's existing evidence to support them
+- Weave in missing job keywords naturally, not forcefully
+- Keep the same approximate length
+
+Return a JSON object with key "suggestions" containing a list. Each object must have:
+- section: "work_experience", "projects", "leadership", "achievements" or "certifications" only
+- original_text: exact original text (copy precisely)
+- suggested_text: the rewritten version
+- reason: one sentence — which specific keyword or weakness this fixes and how it raises the ATS score
+
+If no bullet points genuinely need improvement, return {"suggestions": []}.
+Return only valid JSON. No markdown."""
 
 
 async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
@@ -38,36 +58,52 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
     resume_json = state.get("resume_json")
     job_json = state.get("job_json")
     application_id = state.get("application_id")
-    errors: list[str] = list(state.get("errors", []))
+    new_errors: list[str] = []
 
     if not ats_result:
-        errors.append("generate_rewrite_suggestions_node: ats_result is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("generate_rewrite_suggestions_node: ats_result is missing from state")
+        return {"errors": new_errors}
 
     if not resume_json:
-        errors.append("generate_rewrite_suggestions_node: resume_json is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("generate_rewrite_suggestions_node: resume_json is missing from state")
+        return {"errors": new_errors}
 
     if not job_json:
-        errors.append("generate_rewrite_suggestions_node: job_json is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("generate_rewrite_suggestions_node: job_json is missing from state")
+        return {"errors": new_errors}
 
     try:
         context_text = "\n".join(
             c.get("chunk_text", "") for c in retrieved_context[:5]
         ) if retrieved_context else "No additional context."
 
+        # Only pass experience, project, leadership, achievements, and certifications sections to the model
+        resume_subset = {
+            "work_experience": resume_json.get("work_experience", []),
+            "projects": resume_json.get("projects", []),
+            "leadership": resume_json.get("leadership", []),
+            "achievements": resume_json.get("achievements", []),
+            "certifications": resume_json.get("certifications", []),
+        }
+
+        requirements = job_json.get("extracted_requirements") or {}
+        required_keywords = (
+            requirements.get("required_skills", []) +
+            requirements.get("keywords", [])
+        )
+
         messages = [
             {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
-                    f"ATS Score: {ats_result.get('score', 0)}/100 (Rank: {ats_result.get('rank', 'N/A')})\n"
-                    f"Missing Skills: {', '.join(ats_result.get('missing_skills', []))}\n"
-                    f"Weaknesses: {'; '.join(ats_result.get('weaknesses', []))}\n\n"
-                    f"Job Requirements:\n{json.dumps(job_json.get('extracted_requirements', {}), ensure_ascii=False)}\n\n"
-                    f"Current Resume:\n{json.dumps(resume_json, ensure_ascii=False)[:3000]}\n\n"
-                    f"Retrieved Resume Context:\n{context_text[:1500]}"
+                    f"ATS Score: {ats_result.get('score', 0)}/100\n"
+                    f"Missing keywords (MUST incorporate where naturally possible): {', '.join(ats_result.get('missing_skills', []))}\n"
+                    f"All required job keywords: {', '.join(required_keywords[:20])}\n"
+                    f"Weaknesses identified: {'; '.join(ats_result.get('weaknesses', []))}\n\n"
+                    f"Job title: {job_json.get('role_title', '')}\n\n"
+                    f"Resume sections to review:\n{json.dumps(resume_subset, ensure_ascii=False)[:3000]}\n\n"
+                    f"Additional context:\n{context_text[:1000]}"
                 ),
             },
         ]
@@ -77,7 +113,11 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
             response_format={"type": "json_object"},
         )
         gpt_result: dict = json.loads(raw_response)
-        suggestions: list[dict[str, Any]] = gpt_result.get("suggestions", [])
+        raw_suggestions: list[dict[str, Any]] = gpt_result.get("suggestions", [])
+
+        # Filter to only experience, project, leadership, achievements and certifications suggestions (belt-and-suspenders)
+        allowed_sections = {"work_experience", "projects", "leadership", "achievements", "certifications", }
+        suggestions = [s for s in raw_suggestions if s.get("section", "") in allowed_sections]
 
         # Save each suggestion to rewrite_suggestions table
         if application_id and suggestions:
@@ -94,9 +134,9 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
                     }
                 ).execute()
 
-        return {**state, "rewrite_suggestions": suggestions, "errors": errors}
+        return {"rewrite_suggestions": suggestions, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("generate_rewrite_suggestions_node failed: %s", exc)
-        errors.append(f"generate_rewrite_suggestions_node error: {exc}")
-        return {**state, "errors": errors}
+        new_errors.append(f"generate_rewrite_suggestions_node error: {exc}")
+        return {"errors": new_errors}

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
 import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.schemas.job import JobDiscoverRequest, JobDiscoverResponse, JobRecommendation
-from app.services import openai_client, supabase_client
+from app.services import supabase_client
 from app.services.job_search_service import search_jobs
 
 logger = logging.getLogger(__name__)
@@ -236,9 +235,8 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
 
     parsed_json: dict = (result.data or {}).get("parsed_json") or {}
 
-    # Try to load candidate profile for target_roles and core_skills
+    # Try to load candidate profile for target_roles
     target_roles: list[str] = []
-    core_skills: list[str] = []
     try:
         profile_result = (
             db.table("candidate_profiles")
@@ -252,7 +250,6 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
         if profile_result.data:
             profile_json: dict = profile_result.data[0].get("profile_json") or {}
             target_roles = profile_json.get("target_roles") or []
-            core_skills = profile_json.get("core_skills") or []
     except Exception:
         pass  # fall back to resume-based queries below
 
@@ -266,16 +263,12 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
         role = _re.sub(r"/\w+", "", role)
         return role.strip()
 
-    loc = request.location.strip()
-
     if target_roles:
         # One clean query per target role — location is passed separately to the provider
         queries = [_clean_role(r) for r in target_roles[:4] if r]
     else:
         # Fall back: build queries from resume's work experience + skills
-        from app.services.job_search_service import _flatten_skills_from_dict
 
-        skills = _flatten_skills_from_dict(parsed_json.get("skills", []))[:5]
         exp_roles = [
             exp.get("title") or exp.get("role", "")
             for exp in (parsed_json.get("work_experience") or [])
@@ -325,71 +318,3 @@ async def search_jobs_from_resume(request: WebJobSearchRequest) -> dict:
     }
 
 
-class JobAnalyzeRequest(BaseModel):
-    user_id: str
-
-
-@router.post("/{job_post_id}/analyze")
-async def analyze_job(job_post_id: str, request: JobAnalyzeRequest) -> dict:
-    """Extract structured requirements from a job posting using GPT-4o.
-
-    Loads the job_post from DB, calls GPT to extract requirements, saves
-    them back, and returns the extracted_requirements dict.
-    """
-    db = supabase_client.get_client()
-
-    try:
-        result = (
-            db.table("job_posts")
-            .select("id, company_name, role_title, job_description")
-            .eq("id", job_post_id)
-            .single()
-            .execute()
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"Job post not found: {exc}")
-
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Job post not found.")
-
-    job_data = result.data
-    job_description = job_data.get("job_description", "")
-
-    if not job_description:
-        raise HTTPException(status_code=422, detail="Job post has no description to analyze.")
-
-    try:
-        messages = [
-            {"role": "system", "content": JOB_ANALYZER_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"Company: {job_data.get('company_name', '')}\n"
-                    f"Role: {job_data.get('role_title', '')}\n\n"
-                    f"Job Description:\n{job_description}"
-                ),
-            },
-        ]
-        raw_response = await openai_client.chat_completion(
-            messages=messages,
-            temperature=0.1,
-            response_format={"type": "json_object"},
-        )
-        extracted_requirements: dict = json.loads(raw_response)
-    except Exception as exc:
-        logger.exception("Failed to extract job requirements: %s", exc)
-        raise HTTPException(status_code=500, detail=f"GPT extraction failed: {exc}")
-
-    try:
-        db.table("job_posts").update(
-            {"extracted_requirements": extracted_requirements}
-        ).eq("id", job_post_id).execute()
-    except Exception as exc:
-        logger.warning("Failed to save extracted_requirements: %s", exc)
-
-    return {
-        "job_post_id": job_post_id,
-        "company_name": job_data.get("company_name", ""),
-        "role_title": job_data.get("role_title", ""),
-        "extracted_requirements": extracted_requirements,
-    }

@@ -8,7 +8,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Redo2,
+
   Sparkles,
   AlertTriangle,
   Home,
@@ -138,6 +138,31 @@ export default function EditResumePage() {
   const [candidateProfile, setCandidateProfile] = useState(null);
   const [candidateProfileLoading, setCandidateProfileLoading] = useState(false);
 
+  // One-level undo — saved before any content/score/rewrite change
+  const [previousState, setPreviousState] = useState(null);
+
+  function saveSnapshot() {
+    setPreviousState({
+      resumeData: JSON.parse(JSON.stringify(resumeData)),
+      atsScoreValue,
+      resumeLevel,
+      metrics: { ...metrics },
+      backendSuggestions: [...backendSuggestions],
+      rewriteList: [...rewriteList],
+    });
+  }
+
+  function undoChanges() {
+    if (!previousState) return;
+    setResumeData(previousState.resumeData);
+    setAtsScoreValue(previousState.atsScoreValue);
+    setResumeLevel(previousState.resumeLevel);
+    setMetrics(previousState.metrics);
+    setBackendSuggestions(previousState.backendSuggestions);
+    setRewriteList(previousState.rewriteList);
+    setPreviousState(null);
+  }
+
   const suggestions = backendSuggestions || [];
 
   const currentSuggestion =
@@ -158,6 +183,11 @@ export default function EditResumePage() {
 
     const savedAppId = localStorage.getItem("reeracifyApplicationId");
     if (savedAppId) setApplicationId(savedAppId);
+
+    const savedProfile = localStorage.getItem("reeracifyCandidateProfile");
+    if (savedProfile) {
+      try { setCandidateProfile(JSON.parse(savedProfile)); } catch {}
+    }
 
     const savedParsed = localStorage.getItem("reeracifyParsedResume");
     if (savedParsed) {
@@ -181,11 +211,23 @@ export default function EditResumePage() {
           })),
           experience: (parsed.work_experience || []).map(e => ({
             role: e.position || e.title || e.role || "",
+
             company: e.company || "",
+            organization: e.organization || "",
+
             start_date: e.start_date || "",
-            end_date: e.is_current ? "Present" : (e.end_date || ""),
+            end_date:
+              e.end_date === "Current" ||
+              e.end_date === "Present" ||
+              e.is_current
+                ? "Present"
+                : (e.end_date || ""),
+
             description: e.description || "",
+
             bullets: e.bullets || [],
+
+            responsibilities: e.responsibilities || [],
           })),
           projects: (parsed.projects || []).map(p => ({
             name: p.title || p.name || "",
@@ -194,6 +236,27 @@ export default function EditResumePage() {
             description: p.description || "",
             technologies: p.technologies || [],
             bullets: p.bullets || [],
+          })),
+          leadership: (parsed.leadership || []).map(l => ({
+            title: l.title || "",
+            organization: l.organization || "",
+            start_date: l.start_date || "",
+            end_date: l.end_date || "",
+            description: l.description || "",
+            bullets: l.bullets || [],
+          })),
+
+          achievements: (parsed.achievements || []).map(a => ({
+            title: a.title || "",
+            date: a.date || "",
+            description: a.description || "",
+          })),
+
+          certifications: (parsed.certifications || []).map(c => ({
+            name: c.name || "",
+            issuer: c.issuer || "",
+            date: c.date || "",
+            description: c.description || "",
           })),
         });
       } catch (e) {
@@ -209,6 +272,16 @@ export default function EditResumePage() {
   }, [vacancyLink]);
 
   useEffect(() => {
+    if (!applicationId || coverLetterText) return;
+    fetch(`${API_BASE_URL}/cover-letters/${applicationId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.content) setCoverLetterText(data.content);
+      })
+      .catch(() => {});
+  }, [applicationId]);
+
+  useEffect(() => {
     if (activeRewriteId && activeTab === "rewrites") {
       const el = document.getElementById(`rewrite-${activeRewriteId}`);
       el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -221,13 +294,6 @@ export default function EditResumePage() {
 
   const zoomOut = () => {
     setZoom((prev) => Math.max(prev - 0.08, 0.5));
-  };
-
-  const goNextSuggestion = () => {
-    const ids = suggestions.map((item) => item.id);
-    const currentIndex = ids.indexOf(activeSuggestion);
-    const nextIndex = (currentIndex + 1) % ids.length;
-    setActiveSuggestion(ids[nextIndex]);
   };
 
   async function callBackend(path, options = {}) {
@@ -274,6 +340,84 @@ export default function EditResumePage() {
     return "Beginner";
   }
 
+  // Stream the LangGraph analysis pipeline (retrieve → ATS∥cover letter → rewrites).
+  // Calls onStep(msg) for each progress event; resolves with the final result object.
+  async function streamAnalysis(appId, uid, onStep) {
+    const response = await fetch(`${API_BASE_URL}/applications/${appId}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: uid }),
+    });
+    if (!response.ok) {
+      let detail = "";
+      try { detail = (await response.json()).detail || ""; } catch {}
+      throw new Error(`Analysis failed ${response.status}${detail ? `: ${detail}` : ""}`);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+        const msg = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        if (!msg.startsWith("data: ")) continue;
+        const data = JSON.parse(msg.slice(6));
+        if (data.step) onStep(data.step);
+        if (data.error) throw new Error(data.error);
+        if (data.done) return data.result;
+      }
+    }
+    throw new Error("Analysis stream ended without a result.");
+  }
+
+  function applyAnalysisResult(result, jobSummaryText) {
+    saveSnapshot();
+    const ats = result.ats || {};
+    const score = ats.score || 0;
+    setAtsScoreValue(score);
+    setResumeLevel(getRankLabel(ats.rank));
+    setJobSummary(jobSummaryText);
+
+    const matched = ats.matched_skills?.length || 0;
+    const missing = ats.missing_skills?.length || 0;
+    const total = matched + missing || 1;
+    setMetrics({
+      clarity: Math.max(0, 100 - (ats.weaknesses?.length || 0) * 15),
+      keywordFit: Math.round((matched / total) * 100),
+      structure: score,
+      impact: Math.min(100, (ats.strengths?.length || 0) * 20),
+    });
+
+    const atsSuggestions = [
+      ...(ats.missing_skills || []).map((s, i) => ({
+        id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
+        text: `"${s}" is required but not found in your resume.`,
+        suggestion: `Add "${s}" to your skills or experience section.`,
+      })),
+      ...(ats.weaknesses || []).map((w, i) => ({
+        id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
+        text: w, suggestion: w,
+      })),
+      ...(ats.improvement_priority || []).map((p, i) => ({
+        id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
+        text: p, suggestion: p,
+      })),
+    ];
+    setBackendSuggestions(atsSuggestions);
+    if (atsSuggestions.length > 0) setActiveSuggestion(atsSuggestions[0].id);
+
+    setRewriteList(result.suggestions || []);
+    if (result.cover_letter) setCoverLetterText(result.cover_letter);
+
+    setIsLoading(false);
+    setStatusMessage(`Analysis complete — ATS score: ${score}/100`);
+    setActiveTab("rewrites");
+  }
+
   async function evaluateResume() {
     if (!resumeId) {
       setErrorMessage("Please upload your resume on the home page first.");
@@ -284,93 +428,32 @@ export default function EditResumePage() {
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
 
     try {
-      // Step 1: Create job post from URL (vacancy link is optional)
+      // Auto-generate career profile if not yet available
+      await ensureCandidateProfile(uid, rid);
+
       const hasLink = vacancyLink.trim().length > 0;
-      setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing evaluation...");
+      setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing analysis...");
       const jobPost = await callBackend("/job-posts/create", {
         method: "POST",
         body: JSON.stringify({ job_url: vacancyLink.trim(), user_id: uid }),
       });
 
-      // Step 2: Create application
       setLoadingState("Creating application...");
       const app = await callBackend("/applications/create", {
         method: "POST",
-        body: JSON.stringify({
-          user_id: uid,
-          resume_id: rid,
-          job_post_id: jobPost.job_post_id,
-        }),
+        body: JSON.stringify({ user_id: uid, resume_id: rid, job_post_id: jobPost.job_post_id }),
       });
       const appId = app.id;
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      // Step 3: RAG retrieval
-      setLoadingState("Retrieving resume context...");
-      await callBackend(`/applications/${appId}/retrieve-context`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
+      // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
 
-      // Step 4: ATS evaluation
-      setLoadingState("Evaluating ATS score...");
-      const evalResult = await callBackend(`/applications/${appId}/evaluate`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
-
-      const score = evalResult.score || 0;
-      setAtsScoreValue(score);
-      setResumeLevel(getRankLabel(evalResult.rank));
-      setJobSummary(
-        hasLink
-          ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
-          : "General resume evaluation — no job posting provided."
-      );
-
-      const matched = evalResult.matched_skills?.length || 0;
-      const missing = evalResult.missing_skills?.length || 0;
-      const total = matched + missing || 1;
-      const weaknessCount = evalResult.weaknesses?.length || 0;
-      const strengthCount = evalResult.strengths?.length || 0;
-      setMetrics({
-        clarity: Math.max(0, 100 - weaknessCount * 15),
-        keywordFit: Math.round((matched / total) * 100),
-        structure: score,
-        impact: Math.min(100, strengthCount * 20),
-      });
-
-      const suggestions = [
-        ...(evalResult.missing_skills || []).map((s, i) => ({
-          id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
-          text: `"${s}" is required but not found in your resume.`,
-          suggestion: `Add "${s}" to your skills or experience section.`,
-        })),
-        ...(evalResult.weaknesses || []).map((w, i) => ({
-          id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
-          text: w, suggestion: w,
-        })),
-        ...(evalResult.improvement_priority || []).map((p, i) => ({
-          id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
-          text: p, suggestion: p,
-        })),
-      ];
-      setBackendSuggestions(suggestions);
-      if (suggestions.length > 0) setActiveSuggestion(suggestions[0].id);
-
-      // Step 5: Rewrite suggestions
-      setLoadingState("Generating rewrite suggestions...");
-      const rewriteResult = await callBackend(`/applications/${appId}/rewrite-suggestions`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
-      setRewriteList(rewriteResult.suggestions || []);
-
-      setIsLoading(false);
-      setStatusMessage(`Evaluation complete — ATS score: ${score}/100`);
-      // Switch to Rewrites tab so user sees highlights immediately
-      setActiveTab("rewrites");
+      const jobSummaryText = hasLink
+        ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
+        : "General resume evaluation — no job posting provided.";
+      applyAnalysisResult(result, jobSummaryText);
 
     } catch (error) {
       setIsLoading(false);
@@ -383,20 +466,26 @@ export default function EditResumePage() {
   }
 
   async function approveRewrite(suggestionId) {
+    saveSnapshot();
+    const rewrite = rewriteList.find((s) => s.id === suggestionId);
     try {
       await callBackend(`/rewrite-suggestions/${suggestionId}`, {
         method: "PATCH",
         body: JSON.stringify({ status: "approved" }),
       });
-      setRewriteList(prev =>
-        prev.map(s => s.id === suggestionId ? { ...s, status: "approved" } : s)
+      setRewriteList((prev) =>
+        prev.map((s) => s.id === suggestionId ? { ...s, status: "approved" } : s)
       );
+      if (rewrite) {
+        setResumeData((prev) => applyRewriteToResume(rewrite, prev));
+      }
     } catch (error) {
       setErrorMessage(error.message);
     }
   }
 
   async function rejectRewrite(suggestionId) {
+    saveSnapshot();
     try {
       await callBackend(`/rewrite-suggestions/${suggestionId}`, {
         method: "PATCH",
@@ -472,7 +561,10 @@ export default function EditResumePage() {
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
     if (!rid) return;
     try {
-      setLoadingState(`Evaluating against ${job.role_title} at ${job.company_name}…`);
+      // Auto-generate career profile if not yet available
+      await ensureCandidateProfile(uid, rid);
+
+      setLoadingState(`Analyzing fit for ${job.role_title} at ${job.company_name}…`);
       setVacancyLink(job.job_url);
       localStorage.setItem("reeracifyVacancyLink", job.job_url);
 
@@ -484,62 +576,10 @@ export default function EditResumePage() {
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      setLoadingState("Retrieving resume context…");
-      await callBackend(`/applications/${appId}/retrieve-context`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
+      // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
+      applyAnalysisResult(result, `${job.role_title} at ${job.company_name}`);
 
-      setLoadingState("Evaluating ATS score…");
-      const evalResult = await callBackend(`/applications/${appId}/evaluate`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
-
-      const score = evalResult.score || 0;
-      setAtsScoreValue(score);
-      setResumeLevel(getRankLabel(evalResult.rank));
-      setJobSummary(`${job.role_title} at ${job.company_name}`);
-      const matched = evalResult.matched_skills?.length || 0;
-      const missing = evalResult.missing_skills?.length || 0;
-      const total = matched + missing || 1;
-      const weaknessCount = evalResult.weaknesses?.length || 0;
-      const strengthCount = evalResult.strengths?.length || 0;
-      setMetrics({
-        clarity: Math.max(0, 100 - weaknessCount * 15),
-        keywordFit: Math.round((matched / total) * 100),
-        structure: score,
-        impact: Math.min(100, strengthCount * 20),
-      });
-
-      const jobSuggestions = [
-        ...(evalResult.missing_skills || []).map((s, i) => ({
-          id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
-          text: `"${s}" is required but not found in your resume.`,
-          suggestion: `Add "${s}" to your skills or experience section.`,
-        })),
-        ...(evalResult.weaknesses || []).map((w, i) => ({
-          id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
-          text: w, suggestion: w,
-        })),
-        ...(evalResult.improvement_priority || []).map((p, i) => ({
-          id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
-          text: p, suggestion: p,
-        })),
-      ];
-      setBackendSuggestions(jobSuggestions);
-      if (jobSuggestions.length > 0) setActiveSuggestion(jobSuggestions[0].id);
-
-      setLoadingState("Generating rewrite suggestions…");
-      const rwResult = await callBackend(`/applications/${appId}/rewrite-suggestions`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: uid }),
-      });
-      setRewriteList(rwResult.suggestions || []);
-
-      setIsLoading(false);
-      setStatusMessage(`Evaluated: ${job.role_title} — ATS score ${score}/100`);
-      setActiveTab("rewrites");
     } catch (error) {
       setIsLoading(false);
       setErrorMessage(error.message);
@@ -563,6 +603,7 @@ export default function EditResumePage() {
         body: formData,
       });
       setCandidateProfile(result.profile);
+      localStorage.setItem("reeracifyCandidateProfile", JSON.stringify(result.profile));
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
@@ -570,9 +611,91 @@ export default function EditResumePage() {
     }
   }
 
+  // Called at the start of Analyze — generates profile silently if not already available.
+  async function ensureCandidateProfile(uid, rid) {
+    if (candidateProfile) return;
+    const saved = localStorage.getItem("reeracifyCandidateProfile");
+    if (saved) {
+      try {
+        setCandidateProfile(JSON.parse(saved));
+        return;
+      } catch {}
+    }
+    setLoadingState("Generating career profile...");
+    const formData = new FormData();
+    formData.append("user_id", uid);
+    const result = await callBackend(`/resumes/${rid}/candidate-profile`, {
+      method: "POST",
+      body: formData,
+    });
+    setCandidateProfile(result.profile);
+    localStorage.setItem("reeracifyCandidateProfile", JSON.stringify(result.profile));
+  }
+
   async function searchJobsFromProfile() {
     setActiveTab("find-jobs");
     await findJobs();
+  }
+
+  // Convert frontend resumeData shape → backend resume_json shape for DOCX export.
+  function toResumeJson(rd) {
+    return {
+      name: rd.name || "",
+      email: rd.email || "",
+      phone: rd.phone || "",
+      summary: rd.summary || "",
+      skills: rd.skills || [],
+      education: (rd.education || []).map(e => ({
+        institution: e.school || e.institution || "",
+        degree: e.degree || "",
+        field_of_study: e.field_of_study || e.field || "",
+        start_date: e.start_date || "",
+        end_date: e.end_date || "",
+        gpa: e.gpa || "",
+        description: e.description || "",
+      })),
+      work_experience: (rd.experience || []).map(e => ({
+        title: e.role || "",
+        company: e.company || e.organization || "",
+        location: e.location || "",
+        start_date: e.start_date || "",
+        end_date: e.end_date === "Present" ? "" : (e.end_date || ""),
+        is_current: e.end_date === "Present",
+        description: e.description || "",
+        bullets: e.bullets || [],
+      })),
+      projects: (rd.projects || []).map(p => ({
+        name: p.name || "",
+        description: p.description || "",
+        technologies: p.technologies || [],
+        bullets: p.bullets || [],
+        start_date: p.start_date || "",
+        end_date: p.end_date || "",
+      })),
+      leadership: (rd.leadership || []).map(l => ({
+        title: l.title || "",
+        organization: l.organization || "",
+        start_date: l.start_date || "",
+        end_date: l.end_date || "",
+        description: l.description || "",
+        bullets: l.bullets || [],
+      })),
+      achievements: (rd.achievements || []).map(a => ({
+        title: a.title || "",
+        date: a.date || "",
+        description: a.description || "",
+      })),
+      certifications: (rd.certifications || []).map(c => ({
+        name: c.name || "",
+        issuer: c.issuer || "",
+        date: c.date || "",
+        description: c.description || "",
+      })),
+      languages: (rd.languages || []).map(l => ({
+        language: l.language || l.name || "",
+        proficiency: l.proficiency || l.level || "",
+      })),
+    };
   }
 
   async function downloadResume() {
@@ -583,14 +706,17 @@ export default function EditResumePage() {
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
     try {
       setLoadingState("Preparing download...");
-      const data = await callBackend(`/applications/${applicationId}/export-resume`, {
+      const res = await fetch(`${API_BASE_URL}/applications/${applicationId}/export-resume`, {
         method: "POST",
-        body: JSON.stringify({ user_id: uid }),
+        headers: { "Content-Type": "application/json" },
+        // Send current live resumeData so DOCX matches exactly what's displayed
+        body: JSON.stringify({ user_id: uid, resume_json: toResumeJson(resumeData) }),
       });
-      // Backend returns { file_url: "..." } — fetch the actual file
-      const fileRes = await fetch(data.file_url);
-      if (!fileRes.ok) throw new Error(`Could not fetch exported file: ${fileRes.status}`);
-      const blob = await fileRes.blob();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -719,11 +845,13 @@ export default function EditResumePage() {
                     onClick={reevaluateResume}
                   />
 
-                  <ToolButton
-                    icon={<Redo2 size={17} />}
-                    label="Next issue"
-                    onClick={goNextSuggestion}
-                  />
+                  {previousState && (
+                    <ToolButton
+                      icon={<ArrowLeft size={17} />}
+                      label="Undo Changes"
+                      onClick={undoChanges}
+                    />
+                  )}
 
                   <div className="mx-3 h-6 w-px bg-[#243026]/15" />
 
@@ -759,7 +887,7 @@ export default function EditResumePage() {
                     disabled={isLoading}
                     className="rounded-full bg-[#243026] px-7 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.02] disabled:opacity-50"
                   >
-                    {isLoading ? "Evaluating..." : "Evaluate"}
+                    {isLoading ? "Analyzing..." : "Analyze"}
                   </button>
 
                   <button
@@ -777,13 +905,13 @@ export default function EditResumePage() {
                 <div className="mt-3 flex items-center gap-3 rounded-2xl border border-[#243026]/15 bg-white/55 px-4 py-2.5">
                   <span className="flex h-2 w-2 shrink-0 rounded-full bg-green-500" />
                   <p className="text-xs font-bold text-[#243026]/70">
-                    Resume loaded{resumeData?.name ? ` — ${resumeData.name}` : ""}. Click <span className="text-[#243026]">Evaluate</span> to analyze and highlight rewrite suggestions.
+                    Resume loaded{resumeData?.name ? ` — ${resumeData.name}` : ""}. Click <span className="text-[#243026]">Analyze</span> to run the full AI pipeline and get rewrite suggestions.
                   </p>
                 </div>
               )}
 
               {(statusMessage || errorMessage) && (
-                <div className="mt-3">
+                <div className="mt-3 space-y-2">
                   {statusMessage && (
                     <p className="rounded-2xl bg-white/55 px-4 py-2 text-xs font-bold text-[#243026]/65">
                       {statusMessage}
@@ -791,7 +919,7 @@ export default function EditResumePage() {
                   )}
 
                   {errorMessage && (
-                    <p className="mt-2 rounded-2xl bg-red-100 px-4 py-2 text-xs font-bold text-red-700">
+                    <p className="rounded-2xl bg-red-100 px-4 py-2 text-xs font-bold text-red-700">
                       {errorMessage}
                     </p>
                   )}
@@ -807,7 +935,7 @@ export default function EditResumePage() {
                   transform: `scale(${zoom})`,
                   transformOrigin: "top center",
                 }}
-                className="h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)] print:shadow-none"
+                className="min-h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)] print:shadow-none"
               >
                 <ResumeDocument
                   resumeData={resumeData}
@@ -817,7 +945,7 @@ export default function EditResumePage() {
                     setActiveRewriteId(rw.id);
                     setActiveTab("rewrites");
                   }}
-                  onDataChange={setResumeData}
+                  onDataChange={(next) => { saveSnapshot(); setResumeData(next); }}
                 />
               </div>
             </div>
@@ -828,7 +956,7 @@ export default function EditResumePage() {
 
             {/* Tab bar */}
             <div className="flex shrink-0 gap-1 border-b border-[#243026]/10 px-4 pt-4">
-              {["analysis", "rewrites", "cover-letter", "find-jobs", "profile"].map((tab) => (
+              {["analysis", "rewrites", "cover-letter", "profile", "find-jobs"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -1209,19 +1337,6 @@ export default function EditResumePage() {
                         </div>
                       )}
 
-                      {/* Search Queries */}
-                      {candidateProfile.search_queries?.length > 0 && (
-                        <div className="rounded-[1.2rem] border border-white/45 bg-white/40 px-4 py-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#243026]/40 mb-2">Suggested Job Search Queries</p>
-                          <ul className="space-y-1">
-                            {candidateProfile.search_queries.map((q, i) => (
-                              <li key={i} className="text-xs font-mono text-[#243026]/65 bg-white/50 rounded-lg px-3 py-1.5">
-                                {q}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
 
                       <button
                         onClick={searchJobsFromProfile}
@@ -1263,6 +1378,7 @@ export default function EditResumePage() {
                     <option value="nl">🇳🇱 Netherlands</option>
                     <option value="jp">🇯🇵 Japan</option>
                     <option value="kr">🇰🇷 South Korea</option>
+                    <option value="my">🇲🇾 Malaysia</option>
                     <option value="in">🇮🇳 India</option>
                   </select>
 
@@ -1407,6 +1523,10 @@ function MetricBox({ title, value }) {
 }
 
 function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewriteClick, onDataChange }) {
+  // Defined locally — top-level imports are not visible across Turbopack chunk boundaries
+  const cleanBullet = (text) =>
+    typeof text === "string" ? text.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim() : text;
+
   const rewriteMap = useMemo(() => {
     const m = new Map();
     for (const rw of rewriteList) {
@@ -1424,13 +1544,21 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     return null;
   }
 
-  function RewritableBullet({ text }) {
+  function RewritableBullet({ text, children }) {
     const rw = matchRewrite(text);
-    if (!rw) return <>{text}</>;
+
+    if (!rw) {
+      return children || <>{text}</>;
+    }
+
     const isActive = rw.id === activeRewriteId;
+
     return (
       <span
-        onClick={(e) => { e.stopPropagation(); onRewriteClick?.(rw); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRewriteClick?.(rw);
+        }}
         title="Click to view rewrite suggestion"
         className={`cursor-pointer rounded px-0.5 transition ${
           isActive
@@ -1442,7 +1570,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
             : "bg-yellow-100 hover:bg-yellow-200"
         }`}
       >
-        {text}
+        {children || text}
       </span>
     );
   }
@@ -1475,6 +1603,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
   const education = resumeData.education || [];
   const experience = resumeData.experience || resumeData.work_experience || [];
   const projects = resumeData.projects || [];
+  const leadership = resumeData.leadership || [];
+  const achievements = resumeData.achievements || [];
+  const certifications = resumeData.certifications || [];
   const pendingCount = rewriteList.filter(r => r.status === "pending").length;
 
   return (
@@ -1514,13 +1645,15 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       {(resumeData.summary || upd) && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Summary</h2>
-          <Editable
-            value={resumeData.summary || ""}
-            onSave={upd ? (v) => upd({ summary: v }) : null}
-            as="p"
-            placeholder="Write a short professional summary..."
-            className="mt-2"
-          />
+          <RewritableBullet text={resumeData.summary || ""}>
+            <Editable
+              value={resumeData.summary || ""}
+              onSave={upd ? (v) => upd({ summary: v }) : null}
+              as="p"
+              placeholder="Write a short professional summary..."
+              className="mt-2"
+            />
+          </RewritableBullet>
         </section>
       )}
 
@@ -1553,21 +1686,33 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     className="text-gray-600"
                   />
                 </div>
-                <span className="shrink-0 text-gray-500 ml-2">
-                  {[exp.start_date, exp.end_date].filter(Boolean).join(" – ")}
-                </span>
+                <div className="shrink-0 text-gray-500 ml-2 text-right">
+                  <Editable
+                    value={exp.start_date || ""}
+                    onSave={upd ? (v) => {
+                      const newExp = experience.map((e, ei) =>
+                        ei === i ? { ...e, start_date: v } : e
+                      );
+                      upd({ experience: newExp });
+                    } : null}
+                    placeholder="Start Date"
+                  />
+
+                  <span> – </span>
+
+                  <Editable
+                    value={exp.end_date || ""}
+                    onSave={upd ? (v) => {
+                      const newExp = experience.map((e, ei) =>
+                        ei === i ? { ...e, end_date: v } : e
+                      );
+                      upd({ experience: newExp });
+                    } : null}
+                    placeholder="End Date"
+                  />
+                </div>
               </div>
               {/* Description always shown as editable so user can add one even if empty */}
-              <Editable
-                value={exp.description || ""}
-                onSave={upd ? (v) => {
-                  const newExp = experience.map((e, ei) => ei === i ? { ...e, description: v } : e);
-                  upd({ experience: newExp });
-                } : null}
-                as="p"
-                placeholder="Describe your responsibilities and achievements..."
-                className="mt-1 text-gray-700"
-              />
               {(exp.bullets?.length
                 ? exp.bullets
                 : exp.responsibilities || []).length > 0 && (
@@ -1576,7 +1721,29 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     ? exp.bullets
                     : exp.responsibilities || []).map((b, j) => (
                     <li key={j}>
-                      <RewritableBullet text={b} />
+                      <RewritableBullet text={cleanBullet(b)}>
+                        <Editable
+                          value={cleanBullet(b)}
+                          onSave={upd ? (v) => {
+                            const newExp = experience.map((e, ei) => {
+                              if (ei !== i) return e;
+
+                              const currentBullets =
+                                e.bullets?.length
+                                  ? [...e.bullets]
+                                  : [...(e.responsibilities || [])];
+
+                              currentBullets[j] = v;
+
+                              return e.bullets?.length
+                                ? { ...e, bullets: currentBullets }
+                                : { ...e, responsibilities: currentBullets };
+                            });
+
+                            upd({ experience: newExp });
+                          } : null}
+                        />
+                      </RewritableBullet>
                     </li>
                   ))}
                 </ul>
@@ -1603,9 +1770,31 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   placeholder="Project Name"
                   className="font-bold"
                 />
-                <span className="shrink-0 text-gray-500 ml-2">
-                  {[proj.start_date, proj.end_date].filter(Boolean).join(" – ")}
-                </span>
+                <div className="shrink-0 text-gray-500 ml-2 text-right">
+                  <Editable
+                    value={proj.start_date || ""}
+                    onSave={upd ? (v) => {
+                      const newProj = projects.map((p, pi) =>
+                        pi === i ? { ...p, start_date: v } : p
+                      );
+                      upd({ projects: newProj });
+                    } : null}
+                    placeholder="Start Date"
+                  />
+
+                  <span> – </span>
+
+                  <Editable
+                    value={proj.end_date || ""}
+                    onSave={upd ? (v) => {
+                      const newProj = projects.map((p, pi) =>
+                        pi === i ? { ...p, end_date: v } : p
+                      );
+                      upd({ projects: newProj });
+                    } : null}
+                    placeholder="End Date"
+                  />
+                </div>
               </div>
               <Editable
                 value={proj.description || ""}
@@ -1634,17 +1823,296 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                 <p className="mt-1 text-blue-600 break-all">{proj.links[0]}</p>
               )}
               {proj.technologies?.length > 0 && (
-                <p className="mt-1 text-gray-500 text-[11px]">
-                  Technologies: {proj.technologies.join(", ")}
-                </p>
+                <Editable
+                  value={`Technologies: ${proj.technologies.join(", ")}`}
+                  onSave={upd ? (v) => {
+                    const techs = v
+                      .replace(/^Technologies:\s*/i, "")
+                      .split(",")
+                      .map(t => t.trim())
+                      .filter(Boolean);
+
+                    const newProj = projects.map((p, pi) =>
+                      pi === i
+                        ? { ...p, technologies: techs }
+                        : p
+                    );
+
+                    upd({ projects: newProj });
+                  } : null}
+                  className="mt-1 text-gray-500 text-[11px]"
+                />
               )}
               {(proj.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
                   {proj.bullets.map((b, j) => (
-                    <li key={j}><RewritableBullet text={b} /></li>
+                    <li key={j}>
+                      <RewritableBullet text={cleanBullet(b)}>
+                        <Editable
+                          value={cleanBullet(b)}
+                          onSave={upd ? (v) => {
+                            const newProj = projects.map((p, pi) => {
+                              if (pi !== i) return p;
+
+                              const newBullets = [...(p.bullets || [])];
+                              newBullets[j] = v;
+
+                              return {
+                                ...p,
+                                bullets: newBullets
+                              };
+                            });
+
+                            upd({ projects: newProj });
+                          } : null}
+                        />
+                      </RewritableBullet>
+                    </li>
                   ))}
                 </ul>
               )}
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Leadership */}
+      {leadership.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
+            Leadership
+          </h2>
+
+          {leadership.map((item, i) => (
+            <div key={i} className="mt-2">
+
+              <div className="flex justify-between">
+
+                <div>
+
+                  <Editable
+                    value={item.title || ""}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i ? { ...l, title: v } : l
+                      );
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    className="font-bold"
+                  />
+
+                  <Editable
+                    value={item.organization || ""}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i ? { ...l, organization: v } : l
+                      );
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    className="text-gray-600"
+                  />
+
+                </div>
+
+                <div className="text-gray-500 text-right shrink-0 ml-2">
+
+                  <Editable
+                    value={item.start_date || ""}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i
+                          ? { ...l, start_date: v }
+                          : l
+                      );
+
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    placeholder="Start Date"
+                  />
+
+                  <span> – </span>
+
+                  <Editable
+                    value={item.end_date || ""}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i
+                          ? { ...l, end_date: v }
+                          : l
+                      );
+
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    placeholder="End Date"
+                  />
+
+                </div>
+
+              </div>
+
+              {(item.bullets || []).length > 0 && (
+                <ul className="mt-1.5 list-disc pl-5">
+                  {item.bullets.map((b, j) => (
+                    <li key={j}>
+                      <RewritableBullet text={b}>
+                        <Editable
+                          value={b}
+                          onSave={upd ? (v) => {
+                            const newLeadership = leadership.map((l, li) => {
+                              if (li !== i) return l;
+
+                              const newBullets = [...(l.bullets || [])];
+                              newBullets[j] = v;
+
+                              return {
+                                ...l,
+                                bullets: newBullets,
+                              };
+                            });
+
+                            upd({ leadership: newLeadership });
+                          } : null}
+                        />
+                      </RewritableBullet>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Achievements */}
+      {achievements.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
+            Achievements
+          </h2>
+
+          {achievements.map((a, i) => (
+            <div key={i} className="mt-2">
+
+              <div className="flex justify-between">
+
+                <Editable
+                  value={a.title || ""}
+                  onSave={upd ? (v) => {
+                    const newAchievements = achievements.map((a2, ai) =>
+                      ai === i ? { ...a2, title: v } : a2
+                    );
+                    upd({ achievements: newAchievements });
+                  } : null}
+                  as="h3"
+                  className="font-bold"
+                />
+
+                <Editable
+                  value={a.date || ""}
+                  onSave={upd ? (v) => {
+                    const newAchievements = achievements.map((a2, ai) =>
+                      ai === i ? { ...a2, date: v } : a2
+                    );
+                    upd({ achievements: newAchievements });
+                  } : null}
+                  as="span"
+                  placeholder="Date"
+                  className="text-gray-500 shrink-0 ml-2"
+                />
+
+              </div>
+
+              <RewritableBullet text={a.description || ""}>
+                <Editable
+                  value={a.description || ""}
+                  onSave={upd ? (v) => {
+                    const newAchievements = achievements.map((a2, ai) =>
+                      ai === i ? { ...a2, description: v } : a2
+                    );
+                    upd({ achievements: newAchievements });
+                  } : null}
+                  as="p"
+                  placeholder="Describe this achievement..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
+
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Certifications */}
+      {certifications.length > 0 && (
+        <section className="mt-4">
+          <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
+            Certifications
+          </h2>
+
+          {certifications.map((c, i) => (
+            <div key={i} className="mt-2">
+
+              <div className="flex justify-between">
+
+                <div>
+
+                  <Editable
+                    value={c.name || ""}
+                    onSave={upd ? (v) => {
+                      const newCerts = certifications.map((c2, ci) =>
+                        ci === i ? { ...c2, name: v } : c2
+                      );
+                      upd({ certifications: newCerts });
+                    } : null}
+                    as="h3"
+                    className="font-bold"
+                  />
+
+                  <Editable
+                    value={c.issuer || ""}
+                    onSave={upd ? (v) => {
+                      const newCerts = certifications.map((c2, ci) =>
+                        ci === i ? { ...c2, issuer: v } : c2
+                      );
+                      upd({ certifications: newCerts });
+                    } : null}
+                    as="p"
+                    className="text-gray-600"
+                  />
+
+                </div>
+
+                <Editable
+                  value={c.date || ""}
+                  onSave={upd ? (v) => {
+                    const newCerts = certifications.map((c2, ci) =>
+                      ci === i ? { ...c2, date: v } : c2
+                    );
+                    upd({ certifications: newCerts });
+                  } : null}
+                  as="span"
+                  placeholder="Date"
+                  className="text-gray-500 shrink-0 ml-2 min-w-[80px] text-right"
+                />
+
+              </div>
+
+              <RewritableBullet text={c.description || ""}>
+                <Editable
+                  value={c.description || ""}
+                  onSave={upd ? (v) => {
+                    const newCerts = certifications.map((c2, ci) =>
+                      ci === i ? { ...c2, description: v } : c2
+                    );
+                    upd({ certifications: newCerts });
+                  } : null}
+                  as="p"
+                  placeholder="Describe this certification..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
+
             </div>
           ))}
         </section>
@@ -1680,9 +2148,20 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       className="text-gray-600"
                     />
                   )}
-                  {edu.field_of_study && (
-                    <p className="text-gray-600">{edu.field_of_study}</p>
-                  )}
+                  <RewritableBullet text={edu.field_of_study || ""}>
+                    <Editable
+                      value={edu.field_of_study || ""}
+                      onSave={upd ? (v) => {
+                        const newEdu = education.map((e, ei) =>
+                          ei === i ? { ...e, field_of_study: v } : e
+                        );
+                        upd({ education: newEdu });
+                      } : null}
+                      as="p"
+                      placeholder="Field of Study"
+                      className="text-gray-600"
+                    />
+                  </RewritableBullet>
                   {edu.focus && (
                     <p className="mt-1 text-gray-700">
                       {Array.isArray(edu.focus) ? edu.focus.join(", ") : edu.focus}
@@ -1690,29 +2169,112 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   )}
                   {edu.highlights?.length > 0 && (
                     <ul className="mt-1 list-disc pl-5">
-                      {edu.highlights.map((h, hi) => <li key={hi}>{h}</li>)}
+                      {edu.highlights.map((h, hi) => (
+                        <li key={hi}>
+                          <RewritableBullet text={h}>
+                            <Editable
+                              value={h}
+                              onSave={upd ? (v) => {
+                                const newEdu = education.map((e, ei) => {
+                                  if (ei !== i) return e;
+
+                                  const newHighlights = [...(e.highlights || [])];
+                                  newHighlights[hi] = v;
+
+                                  return {
+                                    ...e,
+                                    highlights: newHighlights
+                                  };
+                                });
+
+                                upd({ education: newEdu });
+                              } : null}
+                            />
+                          </RewritableBullet>
+                        </li>
+                      ))}
                     </ul>
                   )}
                 </div>
-                <span className="text-gray-500 shrink-0 ml-2">
-                  {[edu.start_date, edu.end_date].filter(Boolean).join(" – ")}
-                </span>
-              </div>
-              {edu.gpa && (
-                <p className="text-gray-600">
-                  GPA: <Editable
-                    value={edu.gpa}
+                <div className="text-gray-500 shrink-0 ml-2 text-right">
+                  <Editable
+                    value={edu.start_date || ""}
                     onSave={upd ? (v) => {
-                      const newEdu = education.map((e, ei) => ei === i ? { ...e, gpa: v } : e);
+                      const newEdu = education.map((e, ei) =>
+                        ei === i ? { ...e, start_date: v } : e
+                      );
                       upd({ education: newEdu });
                     } : null}
-                    placeholder="0.00/4.00"
+                    placeholder="Start Date"
                   />
-                </p>
-              )}
-              {edu.description && (
-                <p className="mt-1 text-gray-700">{edu.description}</p>
-              )}
+
+                  <span> – </span>
+
+                  <Editable
+                    value={edu.end_date || ""}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i ? { ...e, end_date: v } : e
+                      );
+                      upd({ education: newEdu });
+                    } : null}
+                    placeholder="End Date"
+                  />
+                </div>
+              </div>
+              <p className="text-gray-600">
+                GPA:
+                <Editable
+                  value={edu.gpa || ""}
+                  onSave={upd ? (v) => {
+                    const newEdu = education.map((e, ei) =>
+                      ei === i ? { ...e, gpa: v } : e
+                    );
+                    upd({ education: newEdu });
+                  } : null}
+                  placeholder="3.86/4.00"
+                />
+              </p>
+              <RewritableBullet text={(edu.coursework || []).join(", ")}>
+                <Editable
+                  value={(edu.coursework || []).join(", ")}
+                  onSave={upd ? (v) => {
+                    const newEdu = education.map((e, ei) =>
+                      ei === i
+                        ? {
+                            ...e,
+                            coursework: v
+                              .split(",")
+                              .map((x) => x.trim())
+                              .filter(Boolean)
+                          }
+                        : e
+                    );
+
+                    upd({ education: newEdu });
+                  } : null}
+                  as="p"
+                  placeholder="Relevant Coursework (AI, Machine Learning, Databases)"
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
+              <RewritableBullet text={edu.description || ""}>
+                <Editable
+                  value={edu.description || ""}
+                  onSave={upd ? (v) => {
+                    const newEdu = education.map((e, ei) =>
+                      ei === i
+                        ? { ...e, description: v }
+                        : e
+                    );
+
+                    upd({ education: newEdu });
+                  } : null}
+                  as="p"
+                  placeholder="Education Description"
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
             </div>
           ))}
         </section>
@@ -1722,7 +2284,20 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       {skills.length > 0 && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Skills</h2>
-          <p className="mt-2">{skills.join(" · ")}</p>
+          <RewritableBullet text={skills.join(" · ")}>
+            <Editable
+              value={skills.join(" · ")}
+              onSave={upd ? (v) =>
+                upd({
+                  skills: v
+                    .split("·")
+                    .map(s => s.trim())
+                    .filter(Boolean)
+                })
+              : null}
+              className="mt-2"
+            />
+          </RewritableBullet>
         </section>
       )}
 
@@ -1776,6 +2351,78 @@ function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
       {value || ""}
     </Tag>
   );
+}
+
+function applyRewriteToResume(rewrite, rd) {
+  const section = (rewrite.section || "").toLowerCase();
+  const original = (rewrite.original_text || "").trim();
+  const suggested = rewrite.suggested_text || "";
+  if (!original || !suggested) return rd;
+
+  const replaceBullets = (bullets) =>
+    (bullets || []).map((b) => {
+      const clean = typeof b === "string" ? b.replace(/^[◆●•▪▫–—\-\*►▶•◆■▶→\s]+/, "").trim() : b;
+      return clean === original ? suggested : b;
+    });
+
+  const replaceDesc = (desc) =>
+    typeof desc === "string" ? desc.replace(original, suggested) : desc;
+
+  if (["summary", "profile", "objective"].includes(section)) {
+    return { ...rd, summary: replaceDesc(rd.summary) };
+  }
+  if (["skills", "skill"].includes(section)) {
+    return { ...rd, skills: (rd.skills || []).map((s) => (s === original ? suggested : s)) };
+  }
+  if (["work_experience", "experience", "work experience"].includes(section)) {
+    return {
+      ...rd,
+      experience: (rd.experience || []).map((e) => ({
+        ...e,
+        bullets: replaceBullets(e.bullets),
+        description: replaceDesc(e.description),
+      })),
+    };
+  }
+  if (["projects", "project"].includes(section)) {
+    return {
+      ...rd,
+      projects: (rd.projects || []).map((p) => ({
+        ...p,
+        bullets: replaceBullets(p.bullets),
+        description: replaceDesc(p.description),
+      })),
+    };
+  }
+  if (section === "leadership") {
+    return {
+      ...rd,
+      leadership: (rd.leadership || []).map((l) => ({
+        ...l,
+        bullets: replaceBullets(l.bullets),
+        description: replaceDesc(l.description),
+      })),
+    };
+  }
+  if (["achievements", "achievement"].includes(section)) {
+    return {
+      ...rd,
+      achievements: (rd.achievements || []).map((a) => ({
+        ...a,
+        description: replaceDesc(a.description),
+      })),
+    };
+  }
+  if (section === "education") {
+    return {
+      ...rd,
+      education: (rd.education || []).map((e) => ({
+        ...e,
+        description: replaceDesc(e.description),
+      })),
+    };
+  }
+  return rd;
 }
 
 function flattenSkills(skills) {

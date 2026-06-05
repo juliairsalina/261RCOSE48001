@@ -71,7 +71,7 @@ def _compute_match_score(
     if matched_skills:
         match_reasons.append(f"Matching skills: {', '.join(sorted(matched_skills)[:5])}")
     if title_score > 0:
-        match_reasons.append(f"Role title alignment with target roles")
+        match_reasons.append("Role title alignment with target roles")
     if matched_keywords:
         match_reasons.append(f"Keyword match: {', '.join(sorted(matched_keywords)[:5])}")
 
@@ -97,17 +97,17 @@ async def discover_jobs_node(state: AgentState) -> AgentState:
     candidate_profile = state.get("candidate_profile")
     user_id = state["user_id"]
     resume_id = state.get("resume_id", "")
-    errors: list[str] = list(state.get("errors", []))
+    new_errors: list[str] = []
 
     if not candidate_profile:
-        errors.append("discover_jobs_node: candidate_profile is missing from state")
-        return {**state, "errors": errors}
+        new_errors.append("discover_jobs_node: candidate_profile is missing from state")
+        return {**state, "errors": new_errors}
 
     try:
         search_queries: list[str] = candidate_profile.get("search_queries", [])
         if not search_queries:
-            errors.append("discover_jobs_node: no search_queries in candidate_profile")
-            return {**state, "errors": errors}
+            new_errors.append("discover_jobs_node: no search_queries in candidate_profile")
+            return {**state, "errors": new_errors}
 
         # 1. Search for jobs
         raw_jobs = await search_jobs(queries=search_queries, limit=20)
@@ -160,9 +160,9 @@ async def discover_jobs_node(state: AgentState) -> AgentState:
                 logger.warning("Failed to process job: %s", job_exc)
                 continue
 
-        return {**state, "job_post_ids": job_post_ids, "errors": errors}
+        return {**state, "job_post_ids": job_post_ids, "errors": new_errors}
 
     except Exception as exc:
         logger.exception("discover_jobs_node failed: %s", exc)
-        errors.append(f"discover_jobs_node error: {exc}")
-        return {**state, "errors": errors}
+        new_errors.append(f"discover_jobs_node error: {exc}")
+        return {**state, "errors": new_errors}

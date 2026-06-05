@@ -137,11 +137,14 @@ class JSearchProvider(JobSearchProvider):
 
         resolved_country = (country or settings.jsearch_country).lower()
 
+        # Use the correct language for the country
+        _COUNTRY_LANGUAGE = {"kr": "ko", "jp": "ja", "de": "de", "fr": "fr", "cn": "zh"}
+        resolved_language = _COUNTRY_LANGUAGE.get(resolved_country, settings.jsearch_language)
+
         headers = {
             "X-RapidAPI-Key": settings.jsearch_api_key,
             "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
         }
-        results_per_query = max(1, limit // max(len(queries), 1))
         seen: set[str] = set()
         all_results: list[dict[str, Any]] = []
 
@@ -153,7 +156,7 @@ class JSearchProvider(JobSearchProvider):
                     "query": f"{query} {location}".strip(),
                     "num_pages": 1,
                     "page": 1,
-                    "language": settings.jsearch_language,
+                    "language": resolved_language,
                     "country": resolved_country,
                 }
                 if job_type:
@@ -224,9 +227,28 @@ class OpenAIWebSearchProvider(JobSearchProvider):
     ) -> list[dict[str, Any]]:
         from app.services.openai_client import get_client
 
+        # Country-specific job board and language hints injected into the prompt
+        _COUNTRY_HINTS: dict[str, str] = {
+            "kr": (
+                "Search Korean job boards 사람인(saramin.co.kr), 원티드(wanted.co.kr), "
+                "잡코리아(jobkorea.co.kr), 링크드인 코리아(linkedin.com/jobs). "
+                "Write your search query in Korean. Job titles may appear in English or Korean."
+            ),
+            "jp": (
+                "Search Japanese job boards Rikunabi (rikunabi.com), Mynavi (job.mynavi.jp), "
+                "Indeed Japan (jp.indeed.com). Search in Japanese."
+            ),
+            "my": (
+                "Search Malaysian job boards JobStreet Malaysia (jobstreet.com.my), "
+                "LinkedIn Malaysia, Hiredly (hiredly.com). Jobs are typically listed in English."
+            ),
+        }
+
         client = get_client()
         results: list[dict[str, Any]] = []
         seen: set[str] = set()
+        resolved_country = (country or "").lower()
+        country_hint = _COUNTRY_HINTS.get(resolved_country, "")
 
         for query in queries[:4]:
             if len(results) >= limit:
@@ -236,7 +258,8 @@ class OpenAIWebSearchProvider(JobSearchProvider):
 
             prompt = (
                 f'Search the web for current job openings matching: "{search_query}"\n\n'
-                "Find 3-5 real, currently open job postings from company career pages or job boards "
+                + (f"{country_hint}\n\n" if country_hint else "")
+                + "Find 3-5 real, currently open job postings from company career pages or job boards "
                 "(LinkedIn, Indeed, Glassdoor, company sites). "
                 "For each job return a JSON object with these exact keys:\n"
                 "- company_name: the hiring company\n"
@@ -326,23 +349,78 @@ class OpenAIWebSearchProvider(JobSearchProvider):
         return results[:limit]
 
 
+# ── Cascade provider (JSearch → OpenAI fallback) ────────────────────────────
+
+class CascadeProvider(JobSearchProvider):
+    """Tries JSearch first. Falls back to OpenAI web search when:
+    - The country has poor JSearch coverage (kr, my, th, id, ph, vn, sg)
+    - JSearch returns 0 results
+    - JSearch API key is missing or quota is exhausted
+    """
+
+    # Countries where JSearch has limited job board data — skip straight to OpenAI
+    _OPENAI_PREFERRED = {"kr", "my", "th", "id", "ph", "vn"}
+
+    async def search(
+        self,
+        queries: list[str],
+        location: str = "",
+        job_type: str = "",
+        country: str = "",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        resolved_country = (country or settings.jsearch_country or "us").lower()
+
+        if resolved_country in self._OPENAI_PREFERRED:
+            logger.info(
+                "Country '%s' has limited JSearch coverage — using OpenAI web search directly",
+                resolved_country,
+            )
+            return await OpenAIWebSearchProvider().search(
+                queries, location=location, job_type=job_type, country=country, limit=limit
+            )
+
+        # Try JSearch first
+        try:
+            results = await JSearchProvider().search(
+                queries, location=location, job_type=job_type, country=country, limit=limit
+            )
+        except Exception as exc:
+            logger.warning("JSearch raised an exception: %s — falling back to OpenAI web search", exc)
+            results = []
+
+        if results:
+            logger.info("JSearch returned %d results for country '%s'", len(results), resolved_country)
+            return results
+
+        # JSearch returned nothing — fall back to OpenAI web search
+        logger.info(
+            "JSearch returned 0 results for country '%s' — falling back to OpenAI web search",
+            resolved_country,
+        )
+        return await OpenAIWebSearchProvider().search(
+            queries, location=location, job_type=job_type, country=country, limit=limit
+        )
+
+
 # ── Provider registry ───────────────────────────────────────────────────────
 # Register new providers here. Key = value of JOB_SEARCH_PROVIDER in .env.
 
 _PROVIDERS: dict[str, type[JobSearchProvider]] = {
     "jsearch": JSearchProvider,
     "openai_web": OpenAIWebSearchProvider,
+    "cascade": CascadeProvider,
     "dummy": DummyProvider,
 }
 
 
 def get_provider() -> JobSearchProvider:
     """Instantiate and return the provider configured in JOB_SEARCH_PROVIDER."""
-    key = (settings.job_search_provider or "jsearch").lower()
+    key = (settings.job_search_provider or "cascade").lower()
     provider_class = _PROVIDERS.get(key)
     if provider_class is None:
-        logger.warning("Unknown JOB_SEARCH_PROVIDER '%s' — falling back to DummyProvider.", key)
-        return DummyProvider()
+        logger.warning("Unknown JOB_SEARCH_PROVIDER '%s' — falling back to CascadeProvider.", key)
+        return CascadeProvider()
     return provider_class()
 
 

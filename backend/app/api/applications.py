@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
-import uuid
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from app.agents.ats_evaluator_agent import evaluate_ats_node
@@ -25,6 +25,11 @@ router = APIRouter()
 
 class GenericUserRequest(BaseModel):
     user_id: str
+
+
+class ExportResumeRequest(BaseModel):
+    user_id: str
+    resume_json: dict | None = None  # current live resume from frontend; overrides DB version
 
 
 def _build_initial_state(user_id: str, resume_id: str, job_post_id: str, application_id: str) -> AgentState:
@@ -354,12 +359,128 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
     )
 
 
+@router.post("/{application_id}/analyze")
+async def analyze_application(application_id: str, request: GenericUserRequest) -> StreamingResponse:
+    """Run the full analysis pipeline using LangGraph.
+
+    Graph: analyze_job → retrieve_context → research_company → (evaluate_ats ∥ cover_letter) → rewrites
+
+    Streams Server-Sent Events (SSE) so the frontend can show per-step progress:
+      {"step": "[STATUS] <message>"}   — agent activity status (≤10 words)
+      {"done": true, "result": {...}}  — final payload
+      {"error": "..."}                 — on failure
+    """
+    from app.agents.graph import analysis_graph
+    if analysis_graph is None:
+        raise HTTPException(status_code=503, detail="LangGraph analysis graph not available.")
+
+    db = supabase_client.get_client()
+    try:
+        app_result = (
+            db.table("applications")
+            .select("id, user_id, resume_id, job_post_id")
+            .eq("id", application_id)
+            .single()
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Application not found: {exc}")
+
+    app_row = app_result.data
+    resume_id = app_row["resume_id"]
+    job_post_id = app_row["job_post_id"]
+
+    resume_json = _load_resume_json(db, resume_id)
+    if not resume_json:
+        raw = db.table("resumes").select("raw_text").eq("id", resume_id).single().execute()
+        raw_text = (raw.data or {}).get("raw_text", "") or ""
+        resume_json = {"raw_text": raw_text[:4000], "name": "", "skills": [], "work_experience": [], "projects": []}
+
+    job_json = _load_job_json(db, job_post_id)
+
+    initial_state = _build_initial_state(request.user_id, resume_id, job_post_id, application_id)
+    initial_state["resume_json"] = resume_json
+    initial_state["job_json"] = job_json
+
+    async def event_stream():
+        NODE_STATUS: dict[str, str] = {
+            "analyze_job": "[STATUS] Extracting job requirements...",
+            "retrieve_context": "[STATUS] Retrieving relevant resume sections...",
+            "research_company": "[STATUS] Researching company background...",
+            "evaluate_ats": "[STATUS] Evaluating ATS score...",
+            "generate_cover_letter": "[STATUS] Writing personalized cover letter...",
+            "generate_rewrites": "[STATUS] Generating rewrite suggestions...",
+        }
+
+        try:
+            yield f"data: {json.dumps({'step': '[STATUS] Starting analysis pipeline...'})}\n\n"
+
+            final_state: dict = dict(initial_state)
+
+            # astream() yields {node_name: node_output} per step — reliable state collection.
+            # [STATUS] messages are emitted per node using the same node name keys.
+            async for chunk in analysis_graph.astream(initial_state):
+                for node_name, node_output in chunk.items():
+                    if node_name == "__end__":
+                        continue
+                    if isinstance(node_output, dict):
+                        final_state.update(node_output)
+                    status = NODE_STATUS.get(node_name)
+                    if status:
+                        yield f"data: {json.dumps({'step': status})}\n\n"
+
+            ats = final_state.get("ats_result") or {}
+
+            saved = (
+                db.table("rewrite_suggestions")
+                .select("id, section, original_text, suggested_text, reason, status")
+                .eq("application_id", application_id)
+                .order("created_at")
+                .execute()
+            )
+            suggestions = saved.data or []
+
+            cover_letter = final_state.get("cover_letter") or ""
+            _update_application_status(db, application_id, ApplicationStatus.rewrite_pending.value)
+
+            result = {
+                "application_id": application_id,
+                "ats": {
+                    "score": ats.get("score", 0),
+                    "rank": ats.get("rank", ""),
+                    "matched_skills": ats.get("matched_skills", []),
+                    "missing_skills": ats.get("missing_skills", []),
+                    "strengths": ats.get("strengths", []),
+                    "weaknesses": ats.get("weaknesses", []),
+                    "improvement_priority": ats.get("improvement_priority", []),
+                    "evidence": [
+                        {"claim": e.get("claim", ""), "resume_evidence": e.get("resume_evidence", "")}
+                        for e in ats.get("evidence", [])
+                    ],
+                },
+                "suggestions": suggestions,
+                "cover_letter": cover_letter,
+                "errors": final_state.get("errors", []),
+            }
+            yield f"data: {json.dumps({'done': True, 'result': result})}\n\n"
+
+        except Exception as exc:
+            logger.exception("Analysis pipeline failed: %s", exc)
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.post("/{application_id}/export-resume")
-async def export_resume(application_id: str, request: GenericUserRequest) -> dict:
+async def export_resume(application_id: str, request: ExportResumeRequest) -> dict:
     """Export the resume as a DOCX file with approved rewrites applied.
 
-    Loads approved rewrite suggestions, generates DOCX, uploads to Supabase Storage,
-    and updates application status to resume_exported.
+    Uses resume_json from the request body when provided (matches the live
+    frontend display). Falls back to the DB version if not supplied.
     """
     db = supabase_client.get_client()
 
@@ -377,7 +498,8 @@ async def export_resume(application_id: str, request: GenericUserRequest) -> dic
     app_row = app_result.data
     resume_id = app_row["resume_id"]
 
-    resume_json = _load_resume_json(db, resume_id)
+    # Prefer the live resume sent by the frontend over the DB version
+    resume_json = request.resume_json or _load_resume_json(db, resume_id)
 
     # Load approved rewrites
     rewrites_result = (
@@ -399,24 +521,14 @@ async def export_resume(application_id: str, request: GenericUserRequest) -> dic
         logger.exception("Failed to generate DOCX: %s", exc)
         raise HTTPException(status_code=500, detail=f"DOCX generation failed: {exc}")
 
-    # Upload to Supabase Storage
-    storage_path = f"{request.user_id}/exports/{application_id}/resume.docx"
-    try:
-        from app.config import settings
-        from app.services.supabase_client import upload_file
-        file_url = upload_file(
-            bucket=settings.supabase_bucket,
-            path=storage_path,
-            file_bytes=docx_bytes,
-            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-    except Exception as exc:
-        logger.exception("Failed to upload DOCX: %s", exc)
-        raise HTTPException(status_code=500, detail=f"File upload failed: {exc}")
-
     _update_application_status(db, application_id, ApplicationStatus.resume_exported.value)
 
-    return {"application_id": application_id, "file_url": file_url}
+    # Stream the file directly — avoids Supabase Storage CORS/auth issues
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename=resume.docx"},
+    )
 
 
 @router.post("/{application_id}/cover-letter", response_model=CoverLetterResponse)
