@@ -65,96 +65,84 @@ Download DOCX — approved rewrites applied, all sections included
 
 ## Cloud Architecture
 
-```mermaid
-graph TB
-    subgraph Browser["User Browser"]
-        Home["Home — page.js\nUpload PDF/DOCX\nPaste vacancy link"]
-        Editor["Edit Resume — edit-resume/page.js\nAnalysis · Rewrites · Cover Letter\nFind Jobs · Career Profile\nLive inline editing"]
-    end
-
-    subgraph Vercel["Vercel (Frontend)"]
-        Next["Next.js 16.2.6\nReact 19 · Tailwind CSS 4\nApp Router · SSE client"]
-    end
-
-    subgraph Render["Render (Backend — Python 3.11)"]
-        FastAPI["FastAPI + Uvicorn\n/resumes · /applications · /jobs\n/rewrite-suggestions · /cover-letters"]
-
-        subgraph LangGraph["LangGraph analysis_graph"]
-            AJ["analyze_job\nExtract requirements"]
-            RC["retrieve_context\nRAG — pgvector search"]
-            RCo["research_company\nCompany background"]
-            ATS["evaluate_ats\nScore 0–100 + GPT analysis"]
-            CL["generate_cover_letter\nTailored letter"]
-            RW["generate_rewrites\nPer-bullet suggestions"]
-
-            AJ --> RC --> RCo
-            RCo --> ATS
-            RCo --> CL
-            ATS --> RW
-            CL --> RW
-        end
-
-        DocParser["document_parser.py\npypdf · python-docx"]
-        EmbedSvc["embedding_service.py\ntext-embedding-3-small\nChunk + store"]
-        JobSearch["job_search_service.py\nJSearch · OpenAI web_search\nCascade fallback"]
-    end
-
-    subgraph OpenAI["OpenAI API"]
-        GPT["GPT-4o\nParsing · ATS · Rewrites\nCover letter · Job search"]
-        Embed["text-embedding-3-small\n1536-dim vectors"]
-    end
-
-    subgraph SupabaseDB["Supabase — ap-southeast-1"]
-        Postgres["PostgreSQL + pgvector\nresumes · resume_chunks\ncandidate_profiles\napplications · job_posts\nats_evaluations\nrewrite_suggestions\ncover_letters · agent_runs"]
-        Storage["Storage Bucket: resumes\nUploaded PDFs / DOCX\nExported DOCX files"]
-    end
-
-    LangSmith["LangSmith\nAgent tracing\nToken counts · Latency"]
-    GitHub["GitHub Actions CI\nruff lint · pytest\nnpm build"]
-
-    Browser --> Vercel
-    Home -->|HTTPS POST /resumes/upload| FastAPI
-    Editor -->|HTTPS SSE /applications/analyze| FastAPI
-    FastAPI --> LangGraph
-    FastAPI --> DocParser
-    FastAPI --> EmbedSvc
-    FastAPI --> JobSearch
-    LangGraph -->|chat completions| GPT
-    EmbedSvc -->|embeddings| Embed
-    JobSearch -->|web_search_preview| GPT
-    LangGraph -->|read/write| Postgres
-    EmbedSvc -->|insert vectors| Postgres
-    FastAPI -->|upload files| Storage
-    LangGraph -.->|traces| LangSmith
-    GitHub -.->|CI on push| Render
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              USER BROWSER                               │
+│                    Next.js 16.2.6 + React 19 (Vercel)                  │
+│                                                                         │
+│  Home (page.js)           Edit Resume (/edit-resume/page.js)            │
+│  ─────────────            ────────────────────────────────              │
+│  Upload PDF/DOCX          Analysis │ Rewrites │ Cover Letter            │
+│  Show name + level        Find Jobs │ Career Profile                    │
+│  "Continue →"             Live preview + inline editing                 │
+└──────────┬──────────────────────────┬──────────────────────────────────┘
+           │ HTTPS                    │ HTTPS  (SSE streaming on /analyze)
+           ▼                          ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    FastAPI Backend (Render, Python 3.11)                 │
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │  API Routers                                                     │  │
+│  │  /resumes/*  /applications/*  /jobs/*  /job-posts/*              │  │
+│  │  /rewrite-suggestions/*  /cover-letters/*                        │  │
+│  └─────────────────────────┬────────────────────────────────────────┘  │
+│                             │                                            │
+│  ┌──────────────────────────▼────────────────────────────────────────┐  │
+│  │  LangGraph  analysis_graph  (graph.py)                           │  │
+│  │                                                                   │  │
+│  │  START → analyze_job → retrieve_context → research_company       │  │
+│  │                                │                                  │  │
+│  │                    ┌───────────┴──────────────┐                  │  │
+│  │              evaluate_ats          generate_cover_letter          │  │
+│  │                    └───────────┬──────────────┘                  │  │
+│  │                        generate_rewrites → END                   │  │
+│  │                                                                   │  │
+│  │  Each node streams a [STATUS] SSE event as it starts             │  │
+│  └─────────────────────────┬─────────────────────────────────────────┘  │
+│                             │                                            │
+│  ┌──────────────┐  ┌────────▼────────┐  ┌──────────────────────────┐  │
+│  │ document_    │  │ openai_client   │  │ job_search_service       │  │
+│  │ parser.py    │  │ chat_completion │  │ cascade: JSearch (non-KR)│  │
+│  │ pypdf/docx   │  │ get_embedding   │  │ then OpenAI web fallback  │  │
+│  └──────────────┘  └─────────────────┘  │ openai_web: always GPT   │  │
+│                                          │ dummy: test stub          │  │
+│                                          └──────────────────────────┘  │
+└──────────────┬──────────────────────────────────────────────────────────┘
+               │
+    ┌──────────┼────────────────────────────┐
+    ▼          ▼                            ▼
+┌────────┐  ┌──────────────────────────┐  ┌────────────────────────┐
+│ OpenAI │  │  Supabase (Postgres +    │  │  Supabase Storage      │
+│        │  │  pgvector extension)     │  │                        │
+│ GPT    │  │                          │  │  Uploaded PDFs/DOCX    │
+│ text-  │  │  resumes                 │  │  Exported DOCX files   │
+│ embed- │  │  resume_chunks           │  └────────────────────────┘
+│ ding-  │  │   └ embedding vector(1536)│
+│ 3-small│  │  candidate_profiles      │  ┌────────────────────────┐
+│        │  │  applications            │  │  LangSmith             │
+│ web_   │  │  retrieved_contexts      │  │  (optional tracing)    │
+│ search │  │  ats_evaluations         │  │  Every LLM call logged │
+└────────┘  │  rewrite_suggestions     │  │  with input/output/    │
+            │  cover_letters           │  │  latency/tokens        │
+            │  job_posts               │  └────────────────────────┘
+            │  job_recommendations     │
+            │  agent_runs              │
+            └──────────────────────────┘
 ```
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Version | Purpose |
-|-------|-----------|---------|---------|
-| **Frontend** | Next.js | 16.2.6 | App router, SSR, SSE streaming client |
-| **Frontend** | React | 19.2.4 | UI, inline resume editing |
-| **Frontend** | Tailwind CSS | 4.x | Styling |
-| **Backend** | FastAPI | 0.115+ | Async REST API, StreamingResponse for SSE |
-| **Backend** | Python | 3.11 | Runtime |
-| **Backend** | Uvicorn | 0.30+ | ASGI server |
-| **AI / LLM** | OpenAI GPT | configured via env | Parsing, scoring, rewrites, cover letters |
-| **Embeddings** | text-embedding-3-small | 1536-dim | Chunk vectorization for RAG |
-| **Agents** | LangGraph | 0.2+ | Stateful multi-step workflow with fan-out/fan-in |
-| **Agents** | LangChain | 0.3+ | LLM wrappers, prompt templates |
-| **Observability** | LangSmith | 0.1+ | Agent tracing, token counts, debug |
-| **Database** | Supabase Postgres | — | Structured data |
-| **Vector Search** | pgvector | 1536-dim cosine | Resume chunk similarity search |
-| **File Storage** | Supabase Storage | — | PDF/DOCX uploads, exported files |
-| **Job Search** | JSearch (RapidAPI) | — | Real job postings |
-| **Job Search** | OpenAI web_search_preview | — | Fallback / KR+MY markets |
-| **File Parsing** | pypdf, python-docx | — | Extract text from uploaded files |
-| **Hosting** | Vercel | — | Frontend, auto-deploy on push |
-| **Hosting** | Render | — | Backend, auto-deploy on push |
-| **CI/CD** | GitHub Actions | — | Lint (ruff) + pytest on every push |
+| Layer | Technology |
+|---|---|
+| **Frontend** | Next.js 16, React 19, Tailwind CSS 4 |
+| **Backend** | FastAPI, Python 3.11, Uvicorn |
+| **AI / Agents** | OpenAI GPT-4o, LangGraph, LangChain, LangSmith |
+| **Database** | Supabase (PostgreSQL + pgvector) |
+| **Storage** | Supabase Storage |
+| **Hosting** | Vercel (frontend) · Render (backend) |
+| **CI/CD** | GitHub Actions |
 
 ---
 
