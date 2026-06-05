@@ -180,7 +180,16 @@ export default function EditResumePage() {
     if (savedResumeId) setResumeId(savedResumeId);
 
     const savedAppId = localStorage.getItem("reeracifyApplicationId");
-    if (savedAppId) setApplicationId(savedAppId);
+    const savedAppResumeId = localStorage.getItem("reeracifyApplicationResumeId");
+    // Only restore applicationId if it was created for the same resume
+    if (savedAppId && savedAppResumeId === savedResumeId) {
+      setApplicationId(savedAppId);
+    } else {
+      localStorage.removeItem("reeracifyApplicationId");
+      localStorage.removeItem("reeracifyApplicationResumeId");
+      // Don't carry over a cover letter that belongs to a different resume
+      setCoverLetterText("");
+    }
 
     const savedProfile = localStorage.getItem("reeracifyCandidateProfile");
     if (savedProfile) {
@@ -448,6 +457,7 @@ export default function EditResumePage() {
       const appId = app.id;
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
+      localStorage.setItem("reeracifyApplicationResumeId", rid);
 
       // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
       const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
@@ -601,6 +611,7 @@ export default function EditResumePage() {
       const appId = app.id;
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
+      localStorage.setItem("reeracifyApplicationResumeId", rid);
 
       // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
       const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
