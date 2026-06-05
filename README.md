@@ -87,18 +87,19 @@ Download DOCX — approved rewrites applied, all sections included
 │  │  /rewrite-suggestions/*  /cover-letters/*                        │  │
 │  └──────┬───────────────────────────────────────────────────────────┘  │
 │         │                                                                │
-│         │  called on upload ──────────────────────────────────────────► │
+│         │  on upload                    on /candidate-profile           │
 │  ┌──────▼──────────────────┐   ┌──────────────────────────────────────┐ │
 │  │  [AGENT]                │   │  [AGENT]                             │ │
 │  │  resume_parser_agent    │   │  candidate_profile_agent             │ │
 │  │  GPT → structured JSON  │   │  GPT → target roles, skills, queries │ │
 │  └──────┬──────────────────┘   └──────────────────────────────────────┘ │
 │         │ text chunks                                                     │
-│  ┌──────▼──────────────────┐                                             │
-│  │  LangChain text splitter│ (only usage of LangChain in the project)    │
-│  │  + OpenAI embeddings    │                                             │
-│  │  → pgvector storage     │                                             │
-│  └─────────────────────────┘                                             │
+│  ┌──────▼───────────────────────────────────┐                           │
+│  │  RAG Pipeline (embed + store)            │                           │
+│  │  LangChain text splitter                 │                           │
+│  │  → OpenAI text-embedding-3-small (1536d) │                           │
+│  │  → Supabase pgvector storage             │                           │
+│  └──────────────────────────────────────────┘                           │
 │                                                                          │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │  LangGraph  analysis_graph  (triggered on /analyze)               │  │
@@ -108,15 +109,19 @@ Download DOCX — approved rewrites applied, all sections included
 │  │  │ analyze_job     │ GPT → extract requirements from job URL      │  │
 │  │  └────────┬────────┘                                              │  │
 │  │           ▼                                                        │  │
-│  │  ┌─────────────────┐                                              │  │
-│  │  │ [AGENT]         │                                              │  │
-│  │  │ retrieve_context│ pgvector cosine search over resume chunks    │  │
-│  │  └────────┬────────┘                                              │  │
+│  │  ┌─────────────────────────────────────┐                          │  │
+│  │  │ [AGENT]  RAG retrieval              │                          │  │
+│  │  │ retrieve_context                    │                          │  │
+│  │  │ embed job desc → cosine similarity  │                          │  │
+│  │  │ search pgvector → top resume chunks │                          │  │
+│  │  └────────┬────────────────────────────┘                          │  │
 │  │           ▼                                                        │  │
-│  │  ┌─────────────────┐                                              │  │
-│  │  │ [AGENT]         │                                              │  │
-│  │  │ research_company│ optional MCP / web — company background      │  │
-│  │  └────────┬────────┘                                              │  │
+│  │  ┌─────────────────────────────────────┐                          │  │
+│  │  │ [AGENT]                             │                          │  │
+│  │  │ research_company                    │                          │  │
+│  │  │ MCP (optional) → browser automation │                          │  │
+│  │  │ or OpenAI web_search_preview        │                          │  │
+│  │  └────────┬────────────────────────────┘                          │  │
 │  │           │                                                        │  │
 │  │     ┌─────┴──────┐  (parallel fan-out)                            │  │
 │  │     ▼            ▼                                                 │  │
@@ -124,8 +129,8 @@ Download DOCX — approved rewrites applied, all sections included
 │  │  │ [AGENT]  │  │ [AGENT]           │                              │  │
 │  │  │ evaluate │  │ generate_cover_   │                              │  │
 │  │  │ _ats     │  │ letter            │                              │  │
-│  │  │ score    │  │ GPT → letter      │                              │  │
-│  │  │ 0–100    │  │                   │                              │  │
+│  │  │ score    │  │ GPT → tailored    │                              │  │
+│  │  │ 0–100    │  │ cover letter      │                              │  │
 │  │  └────┬─────┘  └────────┬──────────┘                              │  │
 │  │       └────────┬─────────┘  (fan-in)                              │  │
 │  │                ▼                                                   │  │
@@ -134,34 +139,34 @@ Download DOCX — approved rewrites applied, all sections included
 │  │  │ generate_rewrites│ GPT → per-bullet rewrite suggestions        │  │
 │  │  └─────────────────┘                                              │  │
 │  │                                                                    │  │
-│  │  Each agent streams a [STATUS] SSE event as it starts             │  │
+│  │  Each agent streams a [STATUS] SSE event to the browser           │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 │                                                                          │
 │  ┌──────────────┐  ┌─────────────────┐  ┌──────────────────────────┐  │
 │  │ document_    │  │ openai_client   │  │ job_search_service       │  │
-│  │ parser.py    │  │ GPT-4o          │  │ cascade: JSearch (non-KR)│  │
-│  │ pypdf/docx   │  │ text-embedding  │  │ then OpenAI web fallback  │  │
-│  └──────────────┘  │ -3-small        │  └──────────────────────────┘  │
-│                    └─────────────────┘                                  │
-└──────────────┬──────────────────────────────────────────────────────────┘
-               │
-    ┌──────────┼────────────────────────────┐
-    ▼          ▼                            ▼
-┌────────┐  ┌──────────────────────────┐  ┌────────────────────────┐
-│ OpenAI │  │  Supabase (Postgres +    │  │  Supabase Storage      │
-│        │  │  pgvector extension)     │  │                        │
-│ GPT-4o │  │                          │  │  Uploaded PDFs/DOCX    │
-│ text-  │  │  resumes                 │  │  Exported DOCX files   │
-│ embed- │  │  resume_chunks           │  └────────────────────────┘
-│ ding-  │  │   └ embedding vector(1536)│
-│ 3-small│  │  candidate_profiles      │  ┌────────────────────────┐
-│        │  │  applications            │  │  LangSmith             │
-│ web_   │  │  retrieved_contexts      │  │  (optional tracing)    │
-│ search │  │  ats_evaluations         │  │  Every LLM call logged │
-└────────┘  │  rewrite_suggestions     │  └────────────────────────┘
-            │  cover_letters           │
-            │  job_posts · agent_runs  │
-            └──────────────────────────┘
+│  │ parser.py    │  │ GPT-4o          │  │ JSearch API (RapidAPI)   │  │
+│  │ pypdf/docx   │  │ text-embedding  │  │ → OpenAI web_search_     │  │
+│  └──────────────┘  │ -3-small        │  │   preview (fallback)     │  │
+│                    └─────────────────┘  └──────────────────────────┘  │
+└──────────────┬──────────────────────────────────┬───────────────────────┘
+               │ outbound API calls               │ outbound API calls
+    ┌──────────▼───────────┐           ┌──────────▼──────────────────────┐
+    │  EXTERNAL SERVICES   │           │  YOUR CLOUD INFRASTRUCTURE      │
+    │                      │           │                                  │
+    │  OpenAI              │           │  Supabase (Postgres + pgvector) │
+    │  ├ GPT-4o            │           │  ├ resumes                      │
+    │  ├ text-embedding    │           │  ├ resume_chunks (vectors 1536d)│
+    │  │   -3-small        │           │  ├ candidate_profiles           │
+    │  └ web_search_       │           │  ├ applications                 │
+    │      preview         │           │  ├ ats_evaluations              │
+    │                      │           │  ├ rewrite_suggestions          │
+    │  JSearch (RapidAPI)  │           │  ├ cover_letters                │
+    │  └ real job listings │           │  └ agent_runs                   │
+    │                      │           │                                  │
+    │  LangSmith           │           │  Supabase Storage               │
+    │  └ agent tracing     │           │  ├ Uploaded PDFs/DOCX           │
+    │    (optional)        │           │  └ Exported DOCX files          │
+    └──────────────────────┘           └──────────────────────────────────┘
 ```
 
 ---
