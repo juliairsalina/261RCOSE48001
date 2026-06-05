@@ -697,34 +697,53 @@ export default function EditResumePage() {
   }
 
   async function downloadResume() {
-    if (!applicationId) {
-      setErrorMessage("Run Evaluate first to generate an application before downloading.");
+    if (!resumeData) {
+      setErrorMessage("No resume loaded.");
       return;
     }
-    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
     try {
-      setLoadingState("Preparing download...");
-      const res = await fetch(`${API_BASE_URL}/applications/${applicationId}/export-resume`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // Send current live resumeData so DOCX matches exactly what's displayed
-        body: JSON.stringify({ user_id: uid, resume_json: toResumeJson(resumeData) }),
+      setLoadingState("Generating PDF...");
+
+      const { default: html2canvas } = await import("html2canvas");
+      const { default: jsPDF } = await import("jspdf");
+
+      const element = document.getElementById("resume-a4");
+      if (!element) throw new Error("Resume element not found.");
+
+      // Temporarily reset zoom transform so we capture at full resolution
+      const prevTransform = element.style.transform;
+      element.style.transform = "none";
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || `Export failed (${res.status})`);
+
+      element.style.transform = prevTransform;
+
+      // A4 dimensions in mm: 210 x 297
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+
+      const imgW = pageW;
+      const imgH = (canvas.height * pageW) / canvas.width;
+
+      // If content is taller than one page, split across pages
+      let yOffset = 0;
+      while (yOffset < imgH) {
+        if (yOffset > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, -yOffset, imgW, imgH);
+        yOffset += pageH;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "resume.docx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+
+      const name = resumeData?.name?.trim().replace(/\s+/g, "_") || "resume";
+      pdf.save(`${name}.pdf`);
+
       setIsLoading(false);
-      setStatusMessage("Resume downloaded.");
+      setStatusMessage("PDF downloaded.");
     } catch (error) {
       setIsLoading(false);
       setErrorMessage(error.message);
@@ -890,9 +909,10 @@ export default function EditResumePage() {
 
                   <button
                     onClick={downloadResume}
-                    className="flex items-center gap-2 rounded-full px-4 py-3 text-sm font-black text-[#243026] transition hover:bg-white/70"
+                    disabled={isLoading}
+                    className="flex items-center gap-2 rounded-full px-4 py-3 text-sm font-black text-[#243026] transition hover:bg-white/70 disabled:opacity-50"
                   >
-                    Download
+                    {isLoading ? "Generating..." : "Download PDF"}
                     <Download size={18} strokeWidth={2.4} />
                   </button>
                 </div>
