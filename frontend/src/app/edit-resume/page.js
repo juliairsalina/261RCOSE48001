@@ -2444,6 +2444,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 function DescriptionBullets({ description, onChange, onRemoveAll, placeholder }) {
   const lines = (description ?? "").split("\n");
   const display = lines.length > 0 ? lines : [""];
+  // Track which bullet index should auto-focus after a state update.
+  // Use a ref so it survives re-renders without causing extra renders itself.
+  const focusIdxRef = useRef(description === "" ? 0 : null);
 
   if (!onChange) {
     const filled = lines.filter(l => l.trim());
@@ -2460,12 +2463,15 @@ function DescriptionBullets({ description, onChange, onRemoveAll, placeholder })
         <li key={idx}>
           <Editable
             value={line}
+            shouldFocus={idx === focusIdxRef.current}
+            onFocused={() => { focusIdxRef.current = null; }}
             onSave={(v) => {
               const next = [...display];
               next[idx] = v;
               onChange(next.join("\n"));
             }}
             onAdd={(currentVal) => {
+              focusIdxRef.current = idx + 1;
               const next = [...display];
               next[idx] = currentVal;
               next.splice(idx + 1, 0, "");
@@ -2475,6 +2481,7 @@ function DescriptionBullets({ description, onChange, onRemoveAll, placeholder })
               if (display.length === 1) {
                 onRemoveAll?.();
               } else {
+                focusIdxRef.current = Math.max(0, idx - 1);
                 onChange(display.filter((_, li) => li !== idx).join("\n"));
               }
             }}
@@ -2488,9 +2495,11 @@ function DescriptionBullets({ description, onChange, onRemoveAll, placeholder })
 
 // Inline-editable text element for the resume preview.
 // Uses useRef so React re-renders never clobber what the user is typing.
-function Editable({ value, onSave, onDelete, onAdd, as: Tag = "span", className, placeholder }) {
+function Editable({ value, onSave, onDelete, onAdd, shouldFocus, onFocused, as: Tag = "span", className, placeholder }) {
   const ref = useRef(null);
   const committed = useRef(value ?? "");
+  const onFocusedRef = useRef(onFocused);
+  onFocusedRef.current = onFocused;
 
   useEffect(() => {
     if (ref.current && committed.current !== (value ?? "")) {
@@ -2498,6 +2507,21 @@ function Editable({ value, onSave, onDelete, onAdd, as: Tag = "span", className,
       committed.current = value ?? "";
     }
   }, [value]);
+
+  useEffect(() => {
+    if (shouldFocus && ref.current) {
+      ref.current.focus();
+      // Place cursor at end of content
+      const el = ref.current;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+      onFocusedRef.current?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldFocus]);
 
   if (!onSave) {
     return <Tag className={className}>{value}</Tag>;
