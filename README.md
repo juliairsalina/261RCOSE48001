@@ -298,20 +298,21 @@ Resume uploaded
       │
       ▼
 Split into chunks (LangChain text splitter) → embed each chunk (text-embedding-3-small)
-      │                                         → store in resume_chunks (pgvector)
-      │
+                                              → store in resume_chunks (pgvector)
+
 When Analyze is clicked:
       │
       ▼
-Job description → embed → cosine similarity search against resume_chunks
-      │
+[2] retrieve_context node:
+    Job requirements → embed → cosine similarity search against resume_chunks
+                             → top 5 chunks stored in LangGraph state
+
+      │  (state.retrieved_context available to all downstream nodes)
       ▼
-Top N most relevant chunks
-      │
-      ├──────────────────────┬──────────────────┐
-      ▼                      ▼                  ▼
- ats_evaluator           rewrite_agent     cover_letter_agent
- (focused scoring)       (targeted fixes)  (relevant context)
+
+[4a] evaluate_ats      — reads retrieved_context from state for qualitative GPT analysis
+[4b] cover_letter      — reads retrieved_context from state for relevant resume passages
+[5]  generate_rewrites — reads retrieved_context from state for targeted bullet fixes
 ```
 
 Why RAG instead of sending the whole resume every time: token efficiency, relevance focus, avoids context window limits on long resumes.
