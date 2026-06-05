@@ -20,6 +20,8 @@ Write a compelling, personalised cover letter (250-400 words) that:
 - Uses professional but warm language
 - Avoids generic phrases ("I am writing to apply for...")
 - References specific details from the job description and company background
+- Start with "Dear Hiring Manager," and end with a signature like "Sincerely, [Candidate Name]".
+- Add Date and address block at the top as well.
 
 Return only the cover letter text, no JSON, no markdown, no subject line."""
 
