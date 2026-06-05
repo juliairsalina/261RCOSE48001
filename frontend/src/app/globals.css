@@ -42,14 +42,14 @@ body {
 @media print {
   @page { size: A4; margin: 10mm; }
 
-  body > *:not(#resume-a4) { display: none !important; }
+  body.printing > *:not(#resume-a4) { display: none !important; }
 
-  #resume-a4 {
+  body.printing > #resume-a4 {
+    display: block !important;
     transform: none !important;
     box-shadow: none !important;
-    width: 100% !important;
-    min-height: auto !important;
-    margin: 0 !important;
     border-radius: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
   }
 }

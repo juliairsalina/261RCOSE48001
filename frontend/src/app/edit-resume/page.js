@@ -705,21 +705,28 @@ export default function EditResumePage() {
     const resume = document.getElementById("resume-a4");
     if (!resume) return;
 
-    // Move resume to <body> root so print CSS can target it with body > #resume-a4
     const parent = resume.parentNode;
-    const placeholder = document.createComment("resume-placeholder");
+    const placeholder = document.createComment("resume-print-placeholder");
     const originalTransform = resume.style.transform;
 
+    // Move resume to body root and mark body so print CSS targets it cleanly
     parent.insertBefore(placeholder, resume);
     resume.style.transform = "none";
     document.body.appendChild(resume);
+    document.body.classList.add("printing");
 
-    window.print();
+    const restore = () => {
+      document.body.classList.remove("printing");
+      resume.style.transform = originalTransform;
+      parent.insertBefore(resume, placeholder);
+      placeholder.remove();
+    };
 
-    // Restore original position
-    resume.style.transform = originalTransform;
-    parent.insertBefore(resume, placeholder);
-    placeholder.remove();
+    // afterprint fires when the print dialog closes (save or cancel)
+    window.addEventListener("afterprint", restore, { once: true });
+
+    // Small delay so browser applies CSS before opening print dialog
+    setTimeout(() => window.print(), 50);
   }
 
   return (
