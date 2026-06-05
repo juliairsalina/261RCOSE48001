@@ -259,8 +259,10 @@ class OpenAIWebSearchProvider(JobSearchProvider):
             prompt = (
                 f'Search the web for current job openings matching: "{search_query}"\n\n'
                 + (f"{country_hint}\n\n" if country_hint else "")
-                + "Find 3-5 real, currently open job postings from company career pages or job boards "
-                "(LinkedIn, Indeed, Glassdoor, company sites). "
+                + "Find 3-5 real job postings that are currently open and were posted within the last month. "
+                "Only include jobs where the application is still actively accepting candidates. "
+                "Skip any job that appears closed, expired, or filled. "
+                "Source from company career pages or job boards (LinkedIn, Indeed, Glassdoor, company sites). "
                 "For each job return a JSON object with these exact keys:\n"
                 "- company_name: the hiring company\n"
                 "- role_title: exact job title\n"
