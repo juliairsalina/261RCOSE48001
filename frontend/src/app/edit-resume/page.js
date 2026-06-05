@@ -1117,7 +1117,12 @@ export default function EditResumePage() {
                       Run Evaluate to generate rewrite suggestions.
                     </p>
                   ) : (
-                    rewriteList.map((s) => (
+                    [...rewriteList].sort((a, b) => {
+                      const order = ["work_experience", "projects", "leadership", "achievements", "certifications"];
+                      const ai = order.indexOf(a.section);
+                      const bi = order.indexOf(b.section);
+                      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+                    }).map((s) => (
                       <div
                         key={s.id}
                         id={`rewrite-${s.id}`}
@@ -1530,14 +1535,18 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
   const rewriteMap = useMemo(() => {
     const m = new Map();
     for (const rw of rewriteList) {
-      if (rw.original_text) m.set(rw.original_text.trim(), rw);
+      if (rw.original_text) {
+        // Store by cleaned key so glyph-prefixed bullets (◆, ●, etc.) match correctly
+        const cleaned = cleanBullet(rw.original_text);
+        m.set(cleaned, rw);
+      }
     }
     return m;
-  }, [rewriteList]);
+  }, [rewriteList]); // cleanBullet is a stable inline const — not a reactive dep
 
   function matchRewrite(text) {
     if (!text) return null;
-    const t = text.trim();
+    const t = cleanBullet(text);
     for (const [orig, rw] of rewriteMap) {
       if (t === orig || t.includes(orig) || orig.includes(t)) return rw;
     }
@@ -1954,9 +1963,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                 <ul className="mt-1.5 list-disc pl-5">
                   {item.bullets.map((b, j) => (
                     <li key={j}>
-                      <RewritableBullet text={b}>
+                      <RewritableBullet text={cleanBullet(b)}>
                         <Editable
-                          value={b}
+                          value={cleanBullet(b)}
                           onSave={upd ? (v) => {
                             const newLeadership = leadership.map((l, li) => {
                               if (li !== i) return l;
