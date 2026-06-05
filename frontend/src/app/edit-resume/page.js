@@ -1536,9 +1536,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     const m = new Map();
     for (const rw of rewriteList) {
       if (rw.original_text) {
-        // Store by cleaned key so glyph-prefixed bullets (◆, ●, etc.) match correctly
-        const cleaned = cleanBullet(rw.original_text);
-        m.set(cleaned, rw);
+        // Index by cleaned original so pre-approval bullets match
+        m.set(cleanBullet(rw.original_text), rw);
+      }
+      // Also index by suggested_text so the bullet stays highlighted (green) after approval
+      if (rw.status === "approved" && rw.suggested_text) {
+        m.set(cleanBullet(rw.suggested_text), rw);
       }
     }
     return m;
