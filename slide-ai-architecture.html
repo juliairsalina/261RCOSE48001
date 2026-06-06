@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Architecture — Reeracify</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1280px;
+    height: 720px;
+    background: #0f1117;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #fff;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 48px 56px 40px;
+  }
+
+  /* Header */
+  .title {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #6b7280;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 36px;
+  }
+
+  .content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    flex: 1;
+  }
+
+  /* Left — bullets */
+  .bullets {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    justify-content: center;
+  }
+
+  .bullet {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: #1a1d27;
+    border: 1px solid #2a2d3a;
+    border-radius: 14px;
+    padding: 16px 18px;
+  }
+
+  .bullet-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .bullet-text strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 3px;
+  }
+
+  .bullet-text span {
+    font-size: 13px;
+    color: #9ca3af;
+    line-height: 1.5;
+  }
+
+  /* Right — pipeline diagram */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .pipe-label {
+    font-size: 11px;
+    color: #6b7280;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    text-align: center;
+  }
+
+  .pipe-node {
+    background: #1a1d27;
+    border: 1px solid #2a2d3a;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #e5e7eb;
+    text-align: center;
+    width: 200px;
+    position: relative;
+  }
+
+  .pipe-node.highlight {
+    border-color: #6366f1;
+    background: #1e1b4b;
+    color: #a5b4fc;
+  }
+
+  .pipe-node.rag {
+    border-color: #0ea5e9;
+    background: #082f49;
+    color: #7dd3fc;
+  }
+
+  .pipe-node.parallel-wrap {
+    display: flex;
+    gap: 10px;
+    width: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
+
+  .pipe-node.parallel {
+    border-color: #10b981;
+    background: #052e16;
+    color: #6ee7b7;
+    width: 130px;
+    font-size: 12px;
+  }
+
+  .arrow {
+    width: 2px;
+    height: 16px;
+    background: #374151;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #374151;
+  }
+
+  .fork {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    position: relative;
+    width: 280px;
+    justify-content: center;
+  }
+
+  .fork-line {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 152px;
+    height: 1px;
+    background: #374151;
+  }
+
+  .fork-arm {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .fork-arrow {
+    width: 2px;
+    height: 14px;
+    background: #374151;
+    margin: 0 auto;
+  }
+
+  .sse-badge {
+    margin-top: 20px;
+    background: #1a1d27;
+    border: 1px dashed #374151;
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 12px;
+    color: #f59e0b;
+    text-align: center;
+    width: 290px;
+  }
+
+  .sse-badge strong {
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-right: 6px;
+    letter-spacing: 0.5px;
+  }
+  .tag.purple { background: #3730a3; color: #a5b4fc; }
+  .tag.blue   { background: #0c4a6e; color: #7dd3fc; }
+  .tag.green  { background: #064e3b; color: #6ee7b7; }
+  .tag.amber  { background: #78350f; color: #fcd34d; }
+</style>
+</head>
+<body>
+
+  <div class="subtitle">Reeracify · Capstone</div>
+  <div class="title">AI Architecture</div>
+
+  <div class="content">
+
+    <!-- Left: bullet points -->
+    <div class="bullets">
+
+      <div class="bullet">
+        <div class="bullet-icon" style="background:#1e1b4b;">🤖</div>
+        <div class="bullet-text">
+          <strong>7 Agents coordinated by LangGraph</strong>
+          <span>Multi-agent DAG pipeline — each agent is a specialized GPT-4o call with a defined role and shared state</span>
+        </div>
+      </div>
+
+      <div class="bullet">
+        <div class="bullet-icon" style="background:#082f49;">🔍</div>
+        <div class="bullet-text">
+          <strong>RAG Pipeline</strong>
+          <span>Resume embedded into pgvector on upload · at query time, only the most relevant chunks are retrieved per job — not the full document</span>
+        </div>
+      </div>
+
+      <div class="bullet">
+        <div class="bullet-icon" style="background:#052e16;">⚡</div>
+        <div class="bullet-text">
+          <strong>Parallel fan-out</strong>
+          <span>ATS evaluation and cover letter generation run simultaneously after company research — results merge before rewrite suggestions</span>
+        </div>
+      </div>
+
+      <div class="bullet">
+        <div class="bullet-icon" style="background:#431407;">📡</div>
+        <div class="bullet-text">
+          <strong>Real-time SSE streaming</strong>
+          <span>Browser receives live status updates as each agent starts — no waiting behind a single spinner</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right: pipeline visual -->
+    <div class="pipeline">
+
+      <div class="pipe-label">LangGraph analysis_graph</div>
+
+      <div class="pipe-node highlight">
+        <span class="tag purple">AGENT</span>analyze_job
+      </div>
+      <div class="arrow"></div>
+
+      <div class="pipe-node rag">
+        <span class="tag blue">RAG</span>retrieve_context
+      </div>
+      <div class="arrow"></div>
+
+      <div class="pipe-node highlight">
+        <span class="tag purple">AGENT</span>research_company
+      </div>
+
+      <!-- fork -->
+      <div style="position:relative; width:290px; height:16px; margin:0 auto;">
+        <div style="position:absolute; top:0; left:50%; transform:translateX(-50%); width:152px; height:1px; background:#374151;"></div>
+        <div style="position:absolute; top:0; left:calc(50% - 76px); width:2px; height:16px; background:#374151;"></div>
+        <div style="position:absolute; top:0; right:calc(50% - 76px); width:2px; height:16px; background:#374151;"></div>
+      </div>
+
+      <div style="display:flex; gap:12px; align-items:flex-start;">
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div class="pipe-node parallel">
+            <span class="tag green">AGENT</span><br/>evaluate_ats
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div class="pipe-node parallel">
+            <span class="tag green">AGENT</span><br/>cover_letter
+          </div>
+        </div>
+      </div>
+
+      <!-- merge -->
+      <div style="position:relative; width:290px; height:16px; margin:0 auto;">
+        <div style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:152px; height:1px; background:#374151;"></div>
+        <div style="position:absolute; bottom:0; left:calc(50% - 76px); width:2px; height:16px; background:#374151;"></div>
+        <div style="position:absolute; bottom:0; right:calc(50% - 76px); width:2px; height:16px; background:#374151;"></div>
+      </div>
+
+      <div class="pipe-node highlight">
+        <span class="tag purple">AGENT</span>generate_rewrites
+      </div>
+
+      <div class="sse-badge">
+        <strong>📡 SSE Streaming</strong>
+        Each agent emits a live status event to the browser as it starts
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>
