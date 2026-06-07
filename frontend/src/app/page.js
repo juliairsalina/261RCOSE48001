@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { createClient } from "@supabase/supabase-js";
 import {
   Upload,
   Link as LinkIcon,
@@ -19,6 +20,11 @@ import {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
 export default function HomePage() {
   const router = useRouter();
 
@@ -27,6 +33,11 @@ export default function HomePage() {
   const [showLogin, setShowLogin] = useState(false);
   const [showLinkedIn, setShowLinkedIn] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [user, setUser] = useState(null);
+  const [authMode, setAuthMode] = useState("login");
 
   const [resumeFile, setResumeFile] = useState(null);
   const [vacancyLink, setVacancyLink] = useState("");
@@ -37,21 +48,88 @@ export default function HomePage() {
   const [parsedResumeData, setParsedResumeData] = useState(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
 
-  useEffect(() => {
+useEffect(() => {
+  const checkUser = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    setUser(user);
+    setIsLoggedIn(!!user);
     setMounted(true);
-  }, []);
+  };
+
+  checkUser();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, session) => {
+    setUser(session?.user ?? null);
+    setIsLoggedIn(!!session?.user);
+  });
+
+  return () => {
+    subscription.unsubscribe();
+  };
+}, []);
 
   if (!mounted) return null;
 
-  const handleLogin = (e) => {
+  const handleAuthSubmit = async (e) => {
     e.preventDefault();
-
-    setIsLoggedIn(true);
-    setShowLogin(false);
     setLoginMessage("");
+
+    if (authMode === "login") {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        setLoginMessage(error.message);
+        return;
+      }
+
+      setUser(data.user);
+      setIsLoggedIn(true);
+      setShowLogin(false);
+      setEmail("");
+      setPassword("");
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      setLoginMessage(error.message);
+      return;
+    }
+
+    setLoginMessage("Account created! Please check your email to confirm your account.");
+    setAuthMode("login");
+    setPassword("");
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+
+    setUser(null);
+    setIsLoggedIn(false);
+    setShowLogin(false);
   };
 
   const handleResumeUpload = async (e) => {
+    if (!isLoggedIn) {
+      e.target.value = "";
+      setAuthMode("login");
+      setLoginMessage("Please log in first before uploading your resume.");
+      setShowLogin(true);
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file) return;
     setResumeFile(file);
@@ -142,15 +220,16 @@ export default function HomePage() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-x-hidden text-white">
-      {/* Background */}
-      <div className="absolute inset-0 bg-[url('/nature-bg.jpg')] bg-cover bg-center" />
-      <div className="absolute inset-0 bg-black/20" />
-      <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/55" />
 
-      {/* Soft blur lights */}
-      <div className="absolute left-[-80px] top-16 h-72 w-72 rounded-full bg-blue-200/25 blur-3xl" />
-      <div className="absolute bottom-20 right-[-80px] h-80 w-80 rounded-full bg-blue-100/20 blur-3xl" />
+    <main
+        style={{
+          fontFamily:
+            'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+        }}
+        className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_15%_8%,rgba(144,171,188,0.95)_0%,rgba(95,126,137,0.72)_22%,transparent_42%),radial-gradient(circle_at_72%_22%,rgba(184,190,137,0.72)_0%,rgba(118,137,92,0.58)_30%,transparent_56%),radial-gradient(circle_at_35%_88%,rgba(38,82,61,0.95)_0%,rgba(43,74,55,0.88)_35%,transparent_62%),linear-gradient(135deg,#425f6f_0%,#536f66_28%,#69794e_55%,#263f33_100%)] text-white"
+      >
+
+      <div className="relative z-10 flex min-h-screen flex-col">
 
       {/* Top header */}
       <header className="relative z-10 flex w-full items-center justify-between px-3 pt-3 md:px-4 md:pt-4">
@@ -172,12 +251,13 @@ export default function HomePage() {
           ) : (
             <button
               onClick={() => {
+                setAuthMode("login");
                 setLoginMessage("");
                 setShowLogin(true);
               }}
-              className="rounded-full border border-white/25 bg-white/18 px-5 py-2 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:bg-white/28"
+                className="px-2 py-2 text-sm font-bold text-white underline decoration-white/45 underline-offset-8 transition hover:text-white/80 hover:decoration-white"
             >
-              Log In
+              ➜] Sign In 
             </button>
           )}
 
@@ -191,11 +271,11 @@ export default function HomePage() {
       </header>
 
       {/* Hero */}
-      <section className="relative z-10 flex min-h-[78vh] flex-col items-center px-4 pb-8 pt-1 text-center md:px-8">
+      <section className="relative z-10 flex min-h-[90vh] flex-col items-center px-4 pb-8 pt-1 text-center md:px-8">
         {/* Logo image */}
-        <div className="mt-10 flex justify-center">
+        <div className="mt-1 flex justify-center">
           <Image
-            src="/reeracify-logo.png"
+            src="/logo.svg"
             alt="Reeracify"
             width={900}
             height={270}
@@ -204,19 +284,19 @@ export default function HomePage() {
           />
         </div>
 
-        <p className="mt-8 text-[10px] font-semibold text-white/90 sm:text-[10px] md:text-[15px]">
-          Build a resume that feels clear, confident, and ready.
+        <p className="text-[10px] text-white/90 sm:text-[10px] md:text-[15px]">
+          Tailor resume to desired positions in seconds, powered by AI.
         </p>
 
         {/* Upload + link */}
-        <div className="mt-18 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mt-10 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
           {/* Upload Resume Box */}
           <label className={`flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-full border px-5 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:scale-[1.01] ${
             parsedName
-              ? "border-green-300/60 bg-green-600/70"
+              ? "border-green-300/60 bg-[#243026]"
               : uploading
-              ? "border-white/25 bg-[#98946a]/70 cursor-wait"
-              : "border-white/25 bg-[#98946a]/85"
+              ? "border-white/25 bg-[#243026] cursor-wait"
+              : "border-white/25 bg-[#243026]"
           }`}>
             {uploading ? (
               <>
@@ -249,26 +329,27 @@ export default function HomePage() {
           </label>
 
           {/* Paste Vacancy Link Box */}
-          <div className="flex h-11 w-full items-center gap-3 rounded-full border border-white/25 bg-white/18 px-5 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl">
+          <div className="flex h-11 w-full items-center gap-3 rounded-full bg-white/15 px-5 text-white shadow-xl backdrop-blur-2xl transition hover:bg-white/28">
             <LinkIcon size={18} className="shrink-0 text-white/85" />
 
             <input
               type="url"
               value={vacancyLink}
               onChange={(e) => setVacancyLink(e.target.value)}
-              placeholder="Paste Vacancy Link (optional)"
+              placeholder="Paste job vacancy URL"
               className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/70"
             />
 
             <button
               onClick={handleContinue}
               disabled={uploading || !resumeFile}
-              className="flex h-8 w-11 shrink-0 items-center justify-center rounded-full bg-white/72 text-slate-900 transition hover:scale-105 disabled:opacity-40"
+              className="flex h-9 w-11 shrink-0 items-center justify-center rounded-full bg-[#243026] text-white transition hover:scale-105 disabled:cursor-not-allowed"
             >
-              <ArrowRight size={18} />
+              <ArrowRight size={18} strokeWidth={2.8}/>
             </button>
           </div>
-        </div>
+
+          </div>
 
         {/* Upload feedback */}
         <div className="mt-4 w-full max-w-2xl">
@@ -327,10 +408,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Login modal */}
+      {/* Login / Register modal */}
       {showLogin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-[2rem] border border-white/30 bg-white/20 p-8 text-white shadow-2xl backdrop-blur-2xl">
+          <div className="relative w-full max-w-[380px] rounded-[1.7rem] border border-white/30 bg-white/20 p-6 text-white shadow-2xl backdrop-blur-2xl">
             <button
               onClick={() => setShowLogin(false)}
               className="absolute right-5 top-5 rounded-full bg-white/15 p-2 transition hover:bg-white/25"
@@ -338,39 +419,79 @@ export default function HomePage() {
               <X size={18} />
             </button>
 
-            <h2 className="text-3xl font-bold">Log In</h2>
-            <p className="mt-2 text-sm text-white/75">
-              Continue to your Reeracify workspace.
-            </p>
+            <h2 className="text-3xl font-bold">
+              {authMode === "login" ? "Log In" : "Register"}
+            </h2>
 
             {loginMessage && (
-              <p className="mt-4 rounded-2xl border border-white/25 bg-white/20 px-4 py-3 text-sm font-semibold text-white">
+              <p className="mt-3 text-xs font-bold leading-5 text-black">
                 {loginMessage}
               </p>
             )}
 
-            <form onSubmit={handleLogin} className="mt-6 space-y-4">
+            <form onSubmit={handleAuthSubmit} className="mt-4 space-y-3">
               <input
                 type="email"
                 placeholder="Email address"
                 required
-                className="w-full rounded-2xl border border-white/25 bg-white/20 px-4 py-3 text-white outline-none placeholder:text-white/60"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-2xl  bg-white/20 px-4 py-2 text-white outline-none placeholder:text-white/60"
               />
 
               <input
                 type="password"
                 placeholder="Password"
                 required
-                className="w-full rounded-2xl border border-white/25 bg-white/20 px-4 py-3 text-white outline-none placeholder:text-white/60"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-2xl  bg-white/20 px-4 py-2 text-white outline-none placeholder:text-white/60"
               />
 
               <button
                 type="submit"
-                className="w-full rounded-2xl bg-white px-4 py-3 font-semibold text-slate-900 transition hover:scale-[1.01]"
+                className="w-full rounded-2xl bg-white px-4 py-2 font-semibold text-slate-900 transition hover:scale-[1.01]"
               >
-                Continue
+                {authMode === "login" ? "Continue" : "Create Account"}
               </button>
             </form>
+
+            <div className="mt-3 text-center text-xs text-white/75">
+              <span>
+                {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginMessage("");
+                  setAuthMode(authMode === "login" ? "register" : "login");
+                }}
+                className="font-bold text-white underline decoration-white/45 underline-offset-4 transition hover:text-white/80 hover:decoration-white"
+              >
+                {authMode === "login" ? "Register Now" : "Log In"}
+              </button>
+            </div>
+
+            <p className="mt-6 text-center text-[10px] leading-5 text-white/55">
+              By signing up or logging in, you consent to Reeracify&apos;s{" "}
+              <button
+                type="button"
+                onClick={() => router.push("/terms")}
+                className="underline decoration-white/35 underline-offset-2 hover:text-white"
+              >
+                Terms of Use
+              </button>{" "}
+              and{" "}
+              <button
+                type="button"
+                onClick={() => router.push("/privacy")}
+                className="underline decoration-white/35 underline-offset-2 hover:text-white"
+              >
+                Privacy Policy
+              </button>
+              .
+            </p>
           </div>
         </div>
       )}
@@ -499,6 +620,7 @@ export default function HomePage() {
           </div>
         </div>
       )}
+      </div>
     </main>
   );
 }

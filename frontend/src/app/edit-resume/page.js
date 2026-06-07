@@ -8,6 +8,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  RefreshCcw,
 
   Sparkles,
   AlertTriangle,
@@ -30,8 +31,21 @@ export default function EditResumePage() {
   const router = useRouter();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [zoom, setZoom] = useState(0.72);
+  const [zoom, setZoom] = useState(0.82);
 
+  const UI = {
+  heading: "text-[2rem] font-black tracking-tight text-white",
+  subheading: "text-xl font-black uppercase tracking-[0.24em] text-white/88",
+  body: "text-sm font-medium leading-7 text-white/75",
+  bodyStrong: "text-sm font-bold text-white",
+  tab: "text-sm font-black",
+  line: "border-white/22",
+  lineStrong: "border-white/30",
+  glass: "border border-white/18 bg-white/10 backdrop-blur-xl",
+  glassSoft: "border border-white/16 bg-white/12 backdrop-blur-xl",
+};
+
+//Dummy data
   const [resumeData, setResumeData] = useState({
         name: "John Doe",
         email: "john@email.com",
@@ -64,6 +78,7 @@ export default function EditResumePage() {
             company: "ABC Tech",
             start_date: "Jun 2025",
             end_date: "Aug 2025",
+            
 
             bullets: [
               "Developed REST APIs using FastAPI.",
@@ -87,25 +102,13 @@ export default function EditResumePage() {
           }
         ]
       });
-  const [vacancyLink, setVacancyLink] = useState("");
 
-  const [atsScoreValue, setAtsScoreValue] = useState(0);
-  const [resumeLevel, setResumeLevel] = useState("Waiting for evaluation");
-  const [jobSummary, setJobSummary] = useState(
-    "Paste a vacancy link and upload a resume to generate job-based evaluation."
-  );
-
-  const [metrics, setMetrics] = useState({
-    clarity: 0,
-    keywordFit: 0,
-    structure: 0,
-    impact: 0,
-  });
-
+  
   const [backendSuggestions, setBackendSuggestions] = useState([]);
   const [activeSuggestion, setActiveSuggestion] = useState("summary");
 
   const [isLoading, setIsLoading] = useState(false);
+  const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -116,6 +119,7 @@ export default function EditResumePage() {
 
   // Right panel tab
   const [activeTab, setActiveTab] = useState("analysis");
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Rewrites tab
   const [rewriteList, setRewriteList] = useState([]);
@@ -140,6 +144,20 @@ export default function EditResumePage() {
 
   // One-level undo — saved before any content/score/rewrite change
   const [previousState, setPreviousState] = useState(null);
+  const [redoState, setRedoState] = useState(null);
+
+  const [vacancyLink, setVacancyLink] = useState("");
+  const [atsScoreValue, setAtsScoreValue] = useState(0);
+  const [resumeLevel, setResumeLevel] = useState("Waiting for evaluation");
+  const [jobSummary, setJobSummary] = useState(
+  "Paste a vacancy link and upload a resume to generate job-based evaluation."
+);
+  const [metrics, setMetrics] = useState({
+    clarity: 0,
+    keywordFit: 0,
+    structure: 0,
+    impact: 0,
+  });
 
   function saveSnapshot() {
     setPreviousState({
@@ -154,6 +172,16 @@ export default function EditResumePage() {
 
   function undoChanges() {
     if (!previousState) return;
+
+    setRedoState({
+      resumeData: JSON.parse(JSON.stringify(resumeData)),
+      atsScoreValue,
+      resumeLevel,
+      metrics: { ...metrics },
+      backendSuggestions: [...backendSuggestions],
+      rewriteList: [...rewriteList],
+    });
+
     setResumeData(previousState.resumeData);
     setAtsScoreValue(previousState.atsScoreValue);
     setResumeLevel(previousState.resumeLevel);
@@ -162,6 +190,27 @@ export default function EditResumePage() {
     setRewriteList(previousState.rewriteList);
     setPreviousState(null);
   }
+
+  function redoChanges() {
+  if (!redoState) return;
+
+  setPreviousState({
+    resumeData: JSON.parse(JSON.stringify(resumeData)),
+    atsScoreValue,
+    resumeLevel,
+    metrics: { ...metrics },
+    backendSuggestions: [...backendSuggestions],
+    rewriteList: [...rewriteList],
+  });
+
+  setResumeData(redoState.resumeData);
+  setAtsScoreValue(redoState.atsScoreValue);
+  setResumeLevel(redoState.resumeLevel);
+  setMetrics(redoState.metrics);
+  setBackendSuggestions(redoState.backendSuggestions);
+  setRewriteList(redoState.rewriteList);
+  setRedoState(null);
+}
 
   const suggestions = backendSuggestions || [];
 
@@ -414,6 +463,7 @@ export default function EditResumePage() {
     if (result.cover_letter) setCoverLetterText(result.cover_letter);
 
     setIsLoading(false);
+    setHasAnalyzed(true);
     setStatusMessage(`Analysis complete — ATS score: ${score}/100`);
     setActiveTab("rewrites");
   }
@@ -733,202 +783,252 @@ export default function EditResumePage() {
     }
   }
 
+  //Re-evaluate button in ATS score section
+  function localReevaluateChanges() {
+    saveSnapshot();
+
+    const skills = flattenSkills(resumeData.skills || []);
+    const experience = resumeData.experience || [];
+    const projects = resumeData.projects || [];
+    const education = resumeData.education || [];
+
+    const summaryText = resumeData.summary || "";
+    const bulletTexts = [
+      ...experience.flatMap((e) => e.bullets || e.responsibilities || []),
+      ...projects.flatMap((p) => p.bullets || []),
+    ];
+
+    const totalBullets = bulletTexts.length;
+    const strongBullets = bulletTexts.filter((b) =>
+      /\d+|%|improved|increased|reduced|built|developed|designed|implemented|optimized|created|managed|led/i.test(b)
+    ).length;
+
+    const hasBasicInfo =
+      resumeData.name && resumeData.email && resumeData.phone;
+
+    const structureScore = Math.round(
+      [
+        resumeData.summary ? 20 : 0,
+        skills.length > 0 ? 20 : 0,
+        experience.length > 0 ? 25 : 0,
+        education.length > 0 ? 20 : 0,
+        projects.length > 0 ? 15 : 0,
+      ].reduce((a, b) => a + b, 0)
+    );
+
+    const clarityScore = Math.min(
+      100,
+      Math.round(
+        (summaryText.length > 40 ? 35 : 15) +
+        (hasBasicInfo ? 25 : 10) +
+        (totalBullets > 0 ? 25 : 10) +
+        (skills.length >= 5 ? 15 : skills.length * 3)
+      )
+    );
+
+    const impactScore =
+      totalBullets === 0
+        ? 0
+        : Math.round((strongBullets / totalBullets) * 100);
+
+    const keywordScore = Math.min(100, skills.length * 10);
+
+    const newScore = Math.round(
+      clarityScore * 0.25 +
+      keywordScore * 0.25 +
+      structureScore * 0.25 +
+      impactScore * 0.25
+    );
+
+    setMetrics({
+      clarity: clarityScore,
+      keywordFit: keywordScore,
+      structure: structureScore,
+      impact: impactScore,
+    });
+
+    setAtsScoreValue(newScore);
+
+    if (newScore >= 80) setResumeLevel("Advanced");
+    else if (newScore >= 55) setResumeLevel("Intermediate");
+    else setResumeLevel("Beginner");
+
+    setStatusMessage("Re-evaluated based on your latest resume edits.");
+    setErrorMessage("");
+  }
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#dfe7da] text-[#243026]">
-      {/* Background */}
-      <div className="absolute inset-0 bg-[url('/nature-bg.jpg')] bg-cover bg-center" />
-      <div className="absolute inset-0 bg-[#e8ece4]/68" />
-      <div className="absolute inset-0 bg-gradient-to-b from-white/55 via-white/25 to-[#e3e8df]/85" />
 
-      {/* Soft light */}
-      <div className="absolute left-[8%] top-[8%] h-72 w-72 rounded-full bg-white/35 blur-3xl" />
-      <div className="absolute right-[12%] top-[18%] h-80 w-80 rounded-full bg-[#b9d1c0]/35 blur-3xl" />
-      <div className="absolute bottom-[8%] left-[30%] h-96 w-96 rounded-full bg-[#f4e8b5]/25 blur-3xl" />
+  <main
+  style={{
+    fontFamily:
+      'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+  }}
+  className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_15%_8%,rgba(144,171,188,0.95)_0%,rgba(95,126,137,0.72)_22%,transparent_42%),radial-gradient(circle_at_72%_22%,rgba(184,190,137,0.72)_0%,rgba(118,137,92,0.58)_30%,transparent_56%),radial-gradient(circle_at_35%_88%,rgba(38,82,61,0.95)_0%,rgba(43,74,55,0.88)_35%,transparent_62%),linear-gradient(135deg,#425f6f_0%,#536f66_28%,#69794e_55%,#263f33_100%)] font-mono text-white"
+>
+  <div className="relative z-10 flex min-h-screen flex-col">
 
-      <div className="relative z-10 flex min-h-screen">
-
-      {/* Sidebar */}
-      <aside
-        className={`flex h-screen shrink-0 flex-col rounded-r-[0.5rem] border-r border-white/45 bg-white/35 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.14)] backdrop-blur-2xl transition-all duration-300 ${
-          sidebarOpen ? "w-[230px]" : "w-[70px]"
-        }`}
-      >
-
-        {/* Sidebar Top / Brand + Toggle */}
-        <div className = "mb-6 flex items-center gap-3 px-1 pt-4"> 
-          
-          {/* Toggle button */}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#243026] text-lg font-black leading-none text-white shadow-lg transition duration-300 hover:scale-105"
-          >
-            <Menu size={18} strokeWidth={3.5} />
-          </button>
-
-            {/* Brand text */}
-          <div
-            className={`min-w-[130px] transition-all duration-500 ease-in-out ${
-              sidebarOpen
-                ? "translate-x-0 opacity-100"
-                : "-translate-x-3 opacity-0"
-            }`}
-          >
-              <p className="whitespace-nowrap text-[20px] font-black tracking-tight text-[#243026]">
-                   Reeracify
-              </p>
-            </div>
+      {/* Top Navbar */}
+      <header className="relative z-[999] flex h-[48px] shrink-0 items-center justify-between border-b border-white/60 bg-white/10 px-4 text-white backdrop-blur-xl">
+        {/* Left: mascot close to left */}
+        <div className="flex items-center">
+          <img
+            src="/mascot.png"
+            alt="Reeracify mascot"
+            className="h-12 w-12 object-contain"
+          />
+          <p className="py-2 text-[14px] font-bold text-white/88">
+            Reeracify
+          </p>
         </div>
 
-          <nav className="space-y-1">
-            <SidebarItem
-              icon={<Home size={18} />}
-              label="Home"
-              open={sidebarOpen}
-            />
-            <SidebarItem
-              icon={<FileText size={18} />}
-              label="Resume Editor"
-              active
-              open={sidebarOpen}
-            />
-          </nav>
+        {/* Right: settings + profile close to right */}
+          <div className="relative flex items-center gap-2">
+              <input
+                type="url"
+                value={vacancyLink}
+                onChange={(e) => setVacancyLink(e.target.value)}
+                placeholder=" → Paste job vacancy URL here"
+                className="h-8 w-[200px] rounded-xl border border-white/25 bg-white/12 px-5 text-xs font-semibold text-white outline-none backdrop-blur-xl placeholder:text-white/45 transition focus:border-white/45 focus:bg-white/18"
+              />
+            <button
+              onClick={() => setProfileOpen((prev) => !prev)}
+              className="h-9 w-9 overflow-hidden rounded-full border border-white/60 bg-white shadow-sm transition hover:scale-105 hover:bg-white/70"
+            >
+              <img
+                src="/profile icon.jpg"
+                alt="Profile"
+                className="h-full w-full object-cover"
+              />
+            </button>
 
-          <nav className="space-y-1">
-            <SidebarItem
-              icon={<MessageCircle size={18} />}
-              label="Newsletter"
-              open={sidebarOpen}
-            />
-          </nav>
+            {profileOpen && (
+              <div className="absolute right-0 top-12 z-[2000] w-72 rounded-[1.4rem] border border-white/20 bg-[#243026] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
+                <div className="flex items-center justify-between">
+                  <p className="text-lg font-semibold text-white">Profile</p>
 
-          <div className="flex-1" />
-
-          <nav className="space-y-1">
-            <SidebarItem
-              icon={<Settings size={18} />}
-              label="Settings"
-              open={sidebarOpen}
-            />
-            <SidebarItem
-              icon={<HelpCircle size={18} />}
-              label="Help & Support"
-              open={sidebarOpen}
-            />
-          </nav>
-
-          <button
-            onClick={() => router.push("/")}
-            className={`mt-5 flex items-center justify-center gap-2 rounded-2xl border border-white/50 bg-white/35 py-3 text-xs font-bold text-[#243026] shadow-sm transition hover:bg-white/60 ${
-              sidebarOpen ? "px-4" : "px-0"
-            }`}
-          >
-            <ArrowLeft size={16} />
-            {sidebarOpen && "Back Home"}
-          </button>
-        </aside>
-
-        {/* Main content */}
-        <section className="grid min-w-0 flex-1 grid-cols-[1fr_340px] gap-5 py-0 pl-5 pr-0">
-          
-          {/* Resume workspace */}
-          <div className="flex h-screen min-w-0 flex-col rounded-[0.5rem] border-y-0 border-white/35 bg-white/28 p-5 shadow-[0_25px_90px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
-            
-            {/* Header + toolbar */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between gap-4 rounded-full border border-white/50 bg-white/45 px-5 py-3 shadow-sm backdrop-blur-xl">
-                
-                {/* Left tools */}
-                <div className="flex items-center gap-2">
-                  <ToolButton
-                    icon={<RotateCcw size={17} />}
-                    label="Re-evaluate"
-                    onClick={reevaluateResume}
-                  />
-
-                  {previousState && (
-                    <ToolButton
-                      icon={<ArrowLeft size={17} />}
-                      label="Undo Changes"
-                      onClick={undoChanges}
-                    />
-                  )}
-
-                  <div className="mx-3 h-6 w-px bg-[#243026]/15" />
-
-                  <ToolButton
-                    icon={<ZoomOut size={17} />}
-                    label="Zoom out"
-                    onClick={zoomOut}
-                  />
-
-                  <span className="min-w-12 text-center text-xs font-black text-[#243026]/65">
-                    {Math.round(zoom * 100)}%
-                  </span>
-
-                  <ToolButton
-                    icon={<ZoomIn size={17} />}
-                    label="Zoom in"
-                    onClick={zoomIn}
-                  />
+                  <button
+                    onClick={() => setProfileOpen(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-lg text-white/88 transition hover:bg-white/10 hover:text-white"
+                  >
+                    ×
+                  </button>
                 </div>
 
-                {/* Right actions */}
-                <div className="flex items-center gap-3">
-                  <input
-                    type="url"
-                    value={vacancyLink}
-                    onChange={(e) => setVacancyLink(e.target.value)}
-                    placeholder="Paste vacancy link (optional)"
-                    className="hidden w-56 rounded-full border border-[#243026]/20 bg-white/55 px-4 py-2 text-xs font-semibold text-[#243026] outline-none placeholder:text-[#243026]/35 focus:border-[#243026]/40 focus:bg-white/80 sm:block"
+                <div className="mt-4 flex items-center gap-3">
+                  <img
+                    src="/profile icon.jpg"
+                    alt="Profile"
+                    className="h-11 w-11 rounded-full object-cover"
                   />
 
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-white/88">User ID</p>
+                    <p className="truncate text-base font-semibold text-white">
+                      {userId || "No user ID"}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    localStorage.removeItem("reeracifyUserId");
+                    localStorage.removeItem("reeracifyResumeId");
+                    localStorage.removeItem("reeracifyApplicationId");
+                    router.push("/");
+                  }}
+                  className="mt-5 w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#1f2420] shadow-sm transition hover:bg-white/90"
+                >
+                  Log Out
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* Main content */}
+        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] gap-0 divide-x divide-white/70 px-0 py-0">
+          
+          {/* Resume workspace */}
+          <div className="relative flex h-full min-w-0 flex-col">
+            
+           {/* Top action row */}
+            <div className="mb-4 mt-4 flex items-center justify-center px-2">
+              <div className="flex items-center gap-2">
+                {!hasAnalyzed && !isLoading && (
                   <button
                     onClick={evaluateResume}
                     disabled={isLoading}
-                    className="rounded-full bg-[#243026] px-7 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.02] disabled:opacity-50"
+                    className="rounded-[1.2rem] bg-[#243026] px-12 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.01] disabled:opacity-50"
                   >
-                    {isLoading ? "Analyzing..." : "Analyze"}
+                    Click here to evaluate your resume
                   </button>
+                )}
 
+                {isLoading && (
                   <button
-                    onClick={downloadResume}
-                    className="flex items-center gap-2 rounded-full px-4 py-3 text-sm font-black text-[#243026] transition hover:bg-white/70"
+                    disabled
+                    className="relative overflow-hidden rounded-[1.2rem] bg-[#243026] px-30 py-3 text-sm text-sm font-black tracking-wide text-white shadow-lg transition hover:scale-[1.01] hover:border-white/60 disabled:opacity-50"
                   >
-                    Download
-                    <Download size={18} strokeWidth={2.4} />
+                    <span className="relative z-10 animate-pulse">
+                      Agent is analyzing your resume
+                    </span>
+                    <span className="absolute inset-0 -translate-x-full animate-[scan_1.4s_infinite] bg-gradient-to-r from-transparent via-white/35 to-transparent" />
                   </button>
-                </div>
+                )}
+
+                {hasAnalyzed && !isLoading && (
+                  <>
+                    <button
+                      onClick={undoChanges}
+                      disabled={!previousState}
+                      title="Undo"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40 disabled:opacity-30"
+                    >
+                      <ArrowLeft size={18} />
+                    </button>
+
+                    <button
+                      onClick={redoChanges}
+                      disabled={!redoState}
+                      title="Redo"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40 disabled:opacity-30"
+                    >
+                      <ArrowLeft size={18} className="rotate-180" />
+                    </button>
+
+                    <button
+                      onClick={downloadResume}
+                      title="Download"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40"
+                    >
+                      <Download size={18} />
+                    </button>
+                  </>
+                )}
               </div>
-
-              {/* Ready-to-evaluate prompt */}
-              {!isLoading && !atsScoreValue && resumeId && !errorMessage && (
-                <div className="mt-3 flex items-center gap-3 rounded-2xl border border-[#243026]/15 bg-white/55 px-4 py-2.5">
-                  <span className="flex h-2 w-2 shrink-0 rounded-full bg-green-500" />
-                  <p className="text-xs font-bold text-[#243026]/70">
-                    Resume loaded{resumeData?.name ? ` — ${resumeData.name}` : ""}. Click <span className="text-[#243026]">Analyze</span> to run the full AI pipeline and get rewrite suggestions.
-                  </p>
-                </div>
-              )}
-
-              {(statusMessage || errorMessage) && (
-                <div className="mt-3 space-y-2">
-                  {statusMessage && (
-                    <p className="rounded-2xl bg-white/55 px-4 py-2 text-xs font-bold text-[#243026]/65">
-                      {statusMessage}
-                    </p>
-                  )}
-
-                  {errorMessage && (
-                    <p className="rounded-2xl bg-red-100 px-4 py-2 text-xs font-bold text-red-700">
-                      {errorMessage}
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
 
+            {(statusMessage || errorMessage) && (
+              <div className="mb-4 px-2">
+                {statusMessage && (
+                  <p className="text-xs font-bold text-[#243026]/60">
+                    {statusMessage}
+                  </p>
+                )}
+
+                {errorMessage && (
+                  <p className="mt-2 text-xs font-bold text-red-600">
+                    {errorMessage}
+                  </p>
+                )}
+              </div>
+            )}
+
+            
+
             {/* One resume section only */}
-            <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto rounded-[1.4rem] bg-white/18 px-8 py-8 backdrop-blur-xl">
+            <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto bg-transparent">
               <div
               id = "resume-a4"
                 style={{
@@ -949,21 +1049,50 @@ export default function EditResumePage() {
                 />
               </div>
             </div>
+
+            {/* Floating document controls */}
+            <div className="fixed bottom-6 left-[30%] z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/15 bg-[#243026]/75 px-4 py-0.2 text-white shadow-xl backdrop-blur-xl">
+              <span className="text-xs font-bold">Page</span>
+
+              <span className="text-sm font-black">1 / 1</span>
+
+              <div className="mx-1 h-5 w-px bg-white/25" />
+
+              <button
+                onClick={zoomOut}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 transition hover:bg-white/20"
+                title="Zoom out"
+              >
+                <ZoomOut size={15} />
+              </button>
+
+              <span className="min-w-10 text-center text-xs font-black">
+                {Math.round(zoom * 100)}%
+              </span>
+
+              <button
+                onClick={zoomIn}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 transition hover:bg-white/20"
+                title="Zoom in"
+              >
+                <ZoomIn size={15} />
+              </button>
+            </div>
           </div>
 
           {/* Right evaluation panel */}
-          <aside className="flex h-screen min-h-0 flex-col rounded-l-[0.5rem] border-y-0 border-r-0 border-white/45 bg-white/35 shadow-[0_24px_80px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
+          <aside className="flex h-full min-h-0 flex-col">
 
             {/* Tab bar */}
-            <div className="flex shrink-0 gap-1 border-b border-[#243026]/10 px-4 pt-4">
+            <div className="flex shrink-0 gap-1 px-4 pt-4">
               {["analysis", "rewrites", "cover-letter", "profile", "find-jobs"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`rounded-t-xl px-3 py-2 text-xs font-black transition ${
+                  className={`rounded-xl px-3 py-2 text-xs font-black transition ${
                     activeTab === tab
                       ? "bg-white/70 text-[#243026] shadow-sm"
-                      : "text-[#243026]/45 hover:text-[#243026]"
+                      : "text-white/88 hover:text-[#243026]"
                   }`}
                 >
                   {tab === "analysis" ? "Analysis"
@@ -981,67 +1110,74 @@ export default function EditResumePage() {
               {/* ── Analysis tab ── */}
               {activeTab === "analysis" && (
                 <>
-                  <section className="border-b border-[#243026]/10 pb-5">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                          Resume Level
-                        </p>
-                        <h2 className="mt-2 text-3xl font-black text-[#243026]">
-                          {resumeLevel}
-                        </h2>
-                      </div>
-                      <div className="rounded-2xl bg-[#dfe9ff]/80 p-3 text-[#2f5fa8]">
-                        <Target size={22} />
-                      </div>
-                    </div>
-                    <div className="mt-5 grid grid-cols-3 gap-2">
-                      <LevelPill label="Beginner" active={resumeLevel === "Beginner"} />
-                      <LevelPill label="Intermediate" active={resumeLevel === "Intermediate"} />
-                      <LevelPill label="Advanced" active={resumeLevel === "Advanced"} />
-                    </div>
-                  </section>
+                  <section className={`border-b ${UI.lineStrong} pb-5`}>
+                    <div className="rounded-[1.6rem] border border-white/16 bg-white/08 px-4 py-4 backdrop-blur-xl">
+                      {/* Top row */}
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-xl font-black text-[#243026]">
+                            Resume Level
+                          </p>
+                        </div>
 
-                  <section className="border-b border-[#243026]/10 py-5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                          ATS Score
-                        </p>
-                        <h2 className="mt-2 text-4xl font-black">{atsScoreValue}%</h2>
+                        <button
+                          onClick={localReevaluateChanges}
+                          title="Re-evaluate edited resume"
+                          className="rounded-2xl bg-white/18 p-3 text-white transition hover:scale-105 hover:bg-white/28"
+                        >
+                          <RefreshCcw size={22} />
+                        </button>
                       </div>
-                      <div className="rounded-2xl bg-white/50 p-3">
-                        <BarChart3 size={23} />
+
+                      {/* Middle row */}
+                      <div className="mt-4 grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-4">
+                        <div className="rounded-[1.2rem] bg-white/06 px-4 py-4">
+                          <p className={UI.subheading}>ATS Score</p>
+                          <p className="mt-2 text-[3rem] font-black leading-none text-white">
+                            {atsScoreValue}%
+                          </p>
+                        </div>
+
+                        <div className="flex items-end justify-end rounded-[1.2rem] bg-white/04 px-4 py-4">
+                          <p className="text-right text-[2.2rem] font-black uppercase leading-none text-white">
+                            {resumeLevel}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Progress bar */}
+                      <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/28">
+                        <div
+                          className="h-full rounded-full bg-white/88"
+                          style={{ width: `${Math.max(0, Math.min(atsScoreValue, 100))}%` }}
+                        />
+                      </div>
+
+                      {/* Pills */}
+                      <div className="mt-5 grid grid-cols-3 gap-3">
+                        <LevelPill label="Beginner" active={resumeLevel === "Beginner"} />
+                        <LevelPill label="Intermediate" active={resumeLevel === "Intermediate"} />
+                        <LevelPill label="Advanced" active={resumeLevel === "Advanced"} />
                       </div>
                     </div>
-                    <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/60">
-                      <div
-                        className="h-full rounded-full bg-[#243026]"
-                        style={{ width: `${Math.max(0, Math.min(atsScoreValue, 100))}%` }}
-                      />
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2">
+
+                    <div className="mt-5 grid grid-cols-2 gap-3">
                       <MetricBox title="Clarity" value={metrics.clarity} />
                       <MetricBox title="Keyword" value={metrics.keywordFit} />
                       <MetricBox title="Structure" value={metrics.structure} />
                       <MetricBox title="Impact" value={metrics.impact} />
                     </div>
                   </section>
-
-                  <section className="border-b border-[#243026]/10 py-5">
-                    <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                      Job Link Summary
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-[#243026]/65">{jobSummary}</p>
+                  
+                  <section className={`border-b ${UI.lineStrong} py-5`}>
+                    <p className="text-xl font-black text-[#243026]">Job Link Summary</p>
+                    <p className={`mt-3 ${UI.bodyStrong}`}>{jobSummary}</p>
                   </section>
 
                   <section className="flex min-h-0 flex-1 flex-col py-5">
                     <div className="mb-4 flex items-center justify-between">
                       <div>
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                          AI Comments
-                        </p>
-                        <h2 className="mt-1 text-xl font-black">Suggestions</h2>
+                        <p className="text-xl font-black text-[#243026]">AI Suggestions</p>
                       </div>
                       <div className="rounded-2xl bg-yellow-300/80 p-3 text-black">
                         <Wand2 size={21} />
@@ -1075,7 +1211,7 @@ export default function EditResumePage() {
                         </button>
                       ))}
                       {suggestions.length === 0 && (
-                        <p className="rounded-2xl bg-white/35 px-4 py-4 text-sm text-[#243026]/50">
+                        <p className={`${UI.body} rounded-2xl px-4 py-4 font-bold text-[#243026]/50`}>
                           Run Evaluate to see AI suggestions.
                         </p>
                       )}
@@ -1083,12 +1219,14 @@ export default function EditResumePage() {
                   </section>
 
                   {currentSuggestion && (
-                    <section className="border-t border-[#243026]/10 pt-5">
+                    <section className="border-t border-[#243026]/10 pt-10">
                       <div className="flex items-center gap-2">
                         <Sparkles size={17} />
-                        <h3 className="text-sm font-black">{currentSuggestion.title}</h3>
+                        <h3 className={`${UI.subheading} text-white`}>
+                          {currentSuggestion.title}
+                        </h3>
                       </div>
-                      <p className="mt-3 text-sm leading-6 text-[#243026]/65">
+                      <p className={`mt-3 ${UI.body} text-white/`}>
                         {currentSuggestion.text}
                       </p>
                       <button
@@ -1167,7 +1305,7 @@ export default function EditResumePage() {
 
                         {s.status !== "pending" && (
                           <p className={`mt-2 text-xs font-black uppercase tracking-wide ${
-                            s.status === "approved" ? "text-green-600" : "text-red-500"
+                            s.status === "approved" ? "text-green-600" : "text-red-700"
                           }`}>
                             {s.status}
                           </p>
@@ -1197,7 +1335,7 @@ export default function EditResumePage() {
                   </button>
 
                   {!applicationId && (
-                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                    <p className="rounded-2xl px-4 py-3 text-center text-xs font-bold text-red-700">
                       Run Evaluate first to enable cover letter generation.
                     </p>
                   )}
@@ -1241,7 +1379,7 @@ export default function EditResumePage() {
                     </div>
                   </div>
 
-                  <p className="text-xs text-[#243026]/55 leading-5">
+                  <p className="text-xs text-white/50 leading-5">
                     AI analyzes your full resume and builds a career intelligence profile — target roles, seniority, skills, and ready-to-use job search queries.
                   </p>
 
@@ -1360,7 +1498,7 @@ export default function EditResumePage() {
                     </div>
                   </div>
 
-                  <p className="text-xs text-[#243026]/55 leading-5">
+                  <p className="text-xs text-white/50 leading-5">
                     AI searches the web for real job postings that match your resume. Click any result to evaluate your fit.
                   </p>
 
@@ -1399,7 +1537,7 @@ export default function EditResumePage() {
                   </button>
 
                   {!resumeId && (
-                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-red-700">
                       Upload your resume on the home page first.
                     </p>
                   )}
@@ -1502,10 +1640,10 @@ function ToolButton({ icon, label, onClick }) {
 function LevelPill({ label, active }) {
   return (
     <div
-      className={`rounded-full px-3 py-2 text-center text-[11px] font-black ${
+      className={`rounded-full px-3 py-2 text-center text-xs font-black ${
         active
-          ? "bg-[#243026] text-white shadow-lg"
-          : "bg-white/45 text-[#243026]/55"
+          ? "bg-white text-[#1f2420] shadow-lg"
+          : "bg-white/25 text-white/88"
       }`}
     >
       {label}
@@ -1515,9 +1653,9 @@ function LevelPill({ label, active }) {
 
 function MetricBox({ title, value }) {
   return (
-    <div className="rounded-[1.1rem] border border-white/45 bg-white/35 p-3">
-      <p className="text-[11px] font-bold text-[#243026]/50">{title}</p>
-      <p className="mt-1 text-lg font-black text-[#243026]">{value}</p>
+    <div className="rounded-[1.1rem] border border-white/35 bg-white/20 p-3 backdrop-blur-xl">
+      <p className="text-sm font-black text-white/88">{title}</p>
+      <p className="mt-1 text-3xl font-black text-white">{value}</p>
     </div>
   );
 }
