@@ -2224,6 +2224,22 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
+              {item.description && (
+                <RewritableBullet text={item.description}>
+                  <Editable
+                    value={item.description}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i ? { ...l, description: v } : l
+                      );
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    as="p"
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
+
               {(item.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc pl-5">
                   {item.bullets.map((b, j) => (
