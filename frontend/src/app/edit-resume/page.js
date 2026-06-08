@@ -156,6 +156,7 @@ export default function EditResumePage() {
   const [jobSummary, setJobSummary] = useState(
   "Paste a vacancy link and upload a resume to generate job-based evaluation."
 );
+  const [jobDescription, setJobDescription] = useState("");
   const [metrics, setMetrics] = useState({
     clarity: 0,
     keywordFit: 0,
@@ -436,11 +437,11 @@ export default function EditResumePage() {
 
   // Stream the LangGraph analysis pipeline (retrieve → ATS∥cover letter → rewrites).
   // Calls onStep(msg) for each progress event; resolves with the final result object.
-  async function streamAnalysis(appId, uid, onStep) {
+  async function streamAnalysis(appId, uid, onStep, resumeJson = null) {
     const response = await fetch(`${API_BASE_URL}/applications/${appId}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: uid }),
+      body: JSON.stringify({ user_id: uid, ...(resumeJson ? { resume_json: resumeJson } : {}) }),
     });
     if (!response.ok) {
       let detail = "";
@@ -542,6 +543,7 @@ export default function EditResumePage() {
       setErrorMessage("Please upload your resume on the home page first.");
       return;
     }
+    setJobDescription("");
 
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
@@ -569,8 +571,8 @@ export default function EditResumePage() {
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
-      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
+      // Pass current resumeData so approved rewrites are reflected in the ATS score
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step), resumeData);
 
       let jobSummaryText;
       if (!hasLink) {
@@ -584,6 +586,7 @@ export default function EditResumePage() {
           jobSummaryText = "Job posting provided";
         }
       }
+      setJobDescription(jobPost.job_description || "");
       applyAnalysisResult(result, jobSummaryText);
 
     } catch (error) {
@@ -1279,7 +1282,12 @@ export default function EditResumePage() {
                   
                   <section className="py-5">
                     <p className="text-xl font-black text-[#243026]">Job Link Summary</p>
-                    <p className={`mt-3 ${UI.bodyStrong}`}>{jobSummary}</p>
+                    <p className={`mt-1 ${UI.bodyStrong}`}>{jobSummary}</p>
+                    {jobDescription && (
+                      <p className="mt-2 text-[12px] leading-[1.6] text-[#243026]/65 line-clamp-6">
+                        {jobDescription}
+                      </p>
+                    )}
 
                     {missingSkills.length > 0 && (
                       <div className="mt-4">
