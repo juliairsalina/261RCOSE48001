@@ -80,7 +80,13 @@ async def chat_completion(
 
 
 async def get_embedding(text: str) -> list[float]:
-    """Generate an embedding vector for the given text.
+    """Generate an embedding vector for the given text."""
+    results = await get_embeddings_batch([text])
+    return results[0]
+
+
+async def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
+    """Generate embeddings for multiple texts in a single API call.
 
     Raises:
         ValueError: If OPENAI_API_KEY is not configured.
@@ -94,14 +100,15 @@ async def get_embedding(text: str) -> list[float]:
     from openai import APIConnectionError, APIStatusError, AuthenticationError, RateLimitError
 
     client = get_client()
-    text = text.replace("\n", " ").strip()
+    cleaned = [t.replace("\n", " ").strip() for t in texts]
 
     try:
         response = await client.embeddings.create(
             model=settings.openai_embedding_model,
-            input=text,
+            input=cleaned,
         )
-        return response.data[0].embedding
+        ordered = sorted(response.data, key=lambda d: d.index)
+        return [d.embedding for d in ordered]
 
     except AuthenticationError as exc:
         raise RuntimeError(

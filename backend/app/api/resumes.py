@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -83,20 +84,7 @@ async def upload_resume(
     # ── Ensure user row exists (satisfies FK) ─────────────────────────────
     supabase_client.ensure_user(user_id)
 
-    # ── Upload file to Supabase Storage (non-fatal) ───────────────────────
-    storage_path = f"{user_id}/{uuid.uuid4()}/{filename}"
-    file_url = ""
-    try:
-        file_url = supabase_client.upload_file(
-            bucket=settings.supabase_bucket,
-            path=storage_path,
-            file_bytes=file_bytes,
-            content_type=content_type,
-        )
-    except Exception as exc:
-        logger.warning("File storage upload failed (non-fatal): %s", exc)
-
-    # ── Insert resume row ──────────────────────────────────────────────────
+    # ── Insert resume row early to get resume_id ───────────────────────────
     db = supabase_client.get_client()
     try:
         resume_insert = (
@@ -104,7 +92,7 @@ async def upload_resume(
             .insert(
                 {
                     "user_id": user_id,
-                    "file_url": file_url,
+                    "file_url": "",
                     "file_name": filename,
                     "file_type": ext,
                     "raw_text": raw_text,
@@ -117,32 +105,49 @@ async def upload_resume(
         logger.exception("Failed to insert resume row: %s", exc)
         raise HTTPException(status_code=500, detail=f"Database insert failed: {exc}")
 
-    # ── Parse resume JSON via GPT-4o ───────────────────────────────────────
-    parse_status = "ok"
-    try:
-        messages = [
-            {"role": "system", "content": RESUME_PARSER_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Parse this resume:\n\n{raw_text}"},
-        ]
-        raw_response = await openai_client.chat_completion(
-            messages=messages,
-            temperature=0.1,
-            response_format={"type": "json_object"},
-        )
-        from app.agents.resume_parser_agent import _clean_bullets
-        parsed_dict: dict = _clean_bullets(json.loads(raw_response))
-        parsed_json = ResumeJSON(**parsed_dict)
-    except Exception as exc:
-        logger.exception("Failed to parse resume JSON: %s", exc)
-        parse_status = "failed"
-        parsed_dict = {}
-        parsed_json = ResumeJSON()
+    # ── Storage upload + LLM parsing in parallel ───────────────────────────
+    storage_path = f"{user_id}/{uuid.uuid4()}/{filename}"
 
-    # Save parsed_json back to DB
+    async def _upload_file() -> str:
+        try:
+            return supabase_client.upload_file(
+                bucket=settings.supabase_bucket,
+                path=storage_path,
+                file_bytes=file_bytes,
+                content_type=content_type,
+            )
+        except Exception as exc:
+            logger.warning("File storage upload failed (non-fatal): %s", exc)
+            return ""
+
+    async def _parse_resume() -> tuple[dict, ResumeJSON, str]:
+        try:
+            messages = [
+                {"role": "system", "content": RESUME_PARSER_SYSTEM_PROMPT},
+                {"role": "user", "content": f"Parse this resume:\n\n{raw_text}"},
+            ]
+            raw_response = await openai_client.chat_completion(
+                messages=messages,
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
+            from app.agents.resume_parser_agent import _clean_bullets
+            d: dict = _clean_bullets(json.loads(raw_response))
+            return d, ResumeJSON(**d), "ok"
+        except Exception as exc:
+            logger.exception("Failed to parse resume JSON: %s", exc)
+            return {}, ResumeJSON(), "failed"
+
+    (file_url, (parsed_dict, parsed_json, parse_status)) = await asyncio.gather(
+        _upload_file(),
+        _parse_resume(),
+    )
+
+    # Save file_url and parsed_json back to the resume row
     try:
-        db.table("resumes").update({"parsed_json": parsed_dict}).eq("id", resume_id).execute()
+        db.table("resumes").update({"file_url": file_url, "parsed_json": parsed_dict}).eq("id", resume_id).execute()
     except Exception as exc:
-        logger.warning("Failed to save parsed_json: %s", exc)
+        logger.warning("Failed to update resume row: %s", exc)
 
     # ── Chunk and embed ────────────────────────────────────────────────────
     try:
