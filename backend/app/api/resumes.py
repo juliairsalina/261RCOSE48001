@@ -133,10 +133,11 @@ async def upload_resume(
             )
             from app.agents.resume_parser_agent import _clean_bullets
             d: dict = _clean_bullets(json.loads(raw_response))
+            logger.info("Resume parsed successfully — resume_id=%s, keys=%s", resume_id, list(d.keys()))
             return d, ResumeJSON(**d), "ok"
         except Exception as exc:
-            logger.exception("Failed to parse resume JSON: %s", exc)
-            return {}, ResumeJSON(), "failed"
+            logger.exception("Resume parsing FAILED — model=%s error=%s", settings.openai_model, exc)
+            return {}, ResumeJSON(), f"failed: {exc}"
 
     (file_url, (parsed_dict, parsed_json, parse_status)) = await asyncio.gather(
         _upload_file(),

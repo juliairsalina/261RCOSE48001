@@ -214,7 +214,7 @@ async def evaluate_application(application_id: str, request: GenericUserRequest)
     if not resume_json:
         raw = db.table("resumes").select("raw_text").eq("id", resume_id).single().execute()
         raw_text = (raw.data or {}).get("raw_text", "") or ""
-        resume_json = {"raw_text": raw_text[:4000], "name": "", "skills": [], "work_experience": [], "projects": []}
+        resume_json = {"raw_text": raw_text, "name": "", "skills": [], "work_experience": [], "projects": []}
 
     job_json = _load_job_json(db, job_post_id)
 
@@ -289,7 +289,7 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
     if not resume_json:
         raw = db.table("resumes").select("raw_text").eq("id", resume_id).single().execute()
         raw_text = (raw.data or {}).get("raw_text", "") or ""
-        resume_json = {"raw_text": raw_text[:4000], "name": "", "skills": [], "work_experience": [], "projects": []}
+        resume_json = {"raw_text": raw_text, "name": "", "skills": [], "work_experience": [], "projects": []}
 
     job_json = _load_job_json(db, job_post_id)
 
@@ -394,7 +394,7 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
     if not resume_json:
         raw = db.table("resumes").select("raw_text").eq("id", resume_id).single().execute()
         raw_text = (raw.data or {}).get("raw_text", "") or ""
-        resume_json = {"raw_text": raw_text[:4000], "name": "", "skills": [], "work_experience": [], "projects": []}
+        resume_json = {"raw_text": raw_text, "name": "", "skills": [], "work_experience": [], "projects": []}
 
     job_json = _load_job_json(db, job_post_id)
 
@@ -563,7 +563,7 @@ async def generate_cover_letter_endpoint(
     if not resume_json:
         raw = db.table("resumes").select("raw_text").eq("id", resume_id).single().execute()
         raw_text = (raw.data or {}).get("raw_text", "") or ""
-        resume_json = {"raw_text": raw_text[:4000], "name": "", "skills": [], "work_experience": [], "projects": []}
+        resume_json = {"raw_text": raw_text, "name": "", "skills": [], "work_experience": [], "projects": []}
 
     job_json = _load_job_json(db, job_post_id)
 
