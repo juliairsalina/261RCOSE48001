@@ -1034,6 +1034,7 @@ export default function EditResumePage() {
                 style={{
                   transform: `scale(${zoom})`,
                   transformOrigin: "top center",
+                  fontFamily: 'Calibri, "Segoe UI", Arial, sans-serif',
                 }}
                 className="min-h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)] print:shadow-none"
               >
