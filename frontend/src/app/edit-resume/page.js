@@ -991,7 +991,7 @@ export default function EditResumePage() {
           {/* Resume workspace */}
           <div className="relative flex h-full min-w-0 flex-col">
             
-           {/* Top action row */}
+           {/* Top action row — evaluate / loading button only */}
             <div className="mb-4 mt-4 flex items-center justify-center px-2">
               <div className="flex items-center gap-2">
                 {!hasAnalyzed && !isLoading && (
@@ -1015,52 +1015,12 @@ export default function EditResumePage() {
                     <span className="absolute inset-0 -translate-x-full animate-[scan_1.4s_infinite] bg-gradient-to-r from-transparent via-white/35 to-transparent" />
                   </button>
                 )}
-
-                {hasAnalyzed && !isLoading && (
-                  <>
-                    <button
-                      onClick={undoChanges}
-                      disabled={!previousState}
-                      title="Undo"
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40 disabled:opacity-30"
-                    >
-                      <ArrowLeft size={18} />
-                    </button>
-
-                    <button
-                      onClick={redoChanges}
-                      disabled={!redoState}
-                      title="Redo"
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40 disabled:opacity-30"
-                    >
-                      <ArrowLeft size={18} className="rotate-180" />
-                    </button>
-
-                    <button
-                      onClick={downloadResume}
-                      title="Download"
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40"
-                    >
-                      <Download size={18} />
-                    </button>
-                  </>
-                )}
               </div>
             </div>
 
-            {(statusMessage || errorMessage) && (
-              <div className="mb-4 px-2">
-                {statusMessage && (
-                  <p className="text-xs font-bold text-[#243026]/60">
-                    {statusMessage}
-                  </p>
-                )}
-
-                {errorMessage && (
-                  <p className="mt-2 text-xs font-bold text-red-600">
-                    {errorMessage}
-                  </p>
-                )}
+            {errorMessage && (
+              <div className="mb-4 px-2 text-center">
+                <p className="text-xs font-bold text-red-500">{errorMessage}</p>
               </div>
             )}
 
@@ -1090,13 +1050,49 @@ export default function EditResumePage() {
             </div>
 
             {/* Floating document controls */}
-            <div className="fixed bottom-6 left-[30%] z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/15 bg-[#243026]/75 px-4 py-0.2 text-white shadow-xl backdrop-blur-xl">
-              <span className="text-xs font-bold">Page</span>
+            <div className="fixed bottom-6 left-[30%] z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/15 bg-[#243026]/75 px-4 py-1 text-white shadow-xl backdrop-blur-xl">
 
-              <span className="text-sm font-black">1 / 1</span>
+              {/* Undo / Redo / Download — only after analysis */}
+              {hasAnalyzed && !isLoading && (
+                <>
+                  <button
+                    onClick={undoChanges}
+                    disabled={!previousState}
+                    title="Undo"
+                    className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/20 disabled:opacity-30"
+                  >
+                    <ArrowLeft size={16} />
+                  </button>
+                  <button
+                    onClick={redoChanges}
+                    disabled={!redoState}
+                    title="Redo"
+                    className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/20 disabled:opacity-30"
+                  >
+                    <ArrowLeft size={16} className="rotate-180" />
+                  </button>
+                  <button
+                    onClick={downloadResume}
+                    title="Download"
+                    className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/20"
+                  >
+                    <Download size={16} />
+                  </button>
+                  <div className="mx-1 h-5 w-px bg-white/25" />
+                </>
+              )}
 
-              <div className="mx-1 h-5 w-px bg-white/25" />
+              {/* Status message */}
+              {statusMessage && (
+                <>
+                  <span className="max-w-[200px] truncate text-xs font-bold text-white/80">
+                    {statusMessage}
+                  </span>
+                  <div className="mx-1 h-5 w-px bg-white/25" />
+                </>
+              )}
 
+              {/* Zoom controls */}
               <button
                 onClick={zoomOut}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 transition hover:bg-white/20"
