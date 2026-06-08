@@ -413,6 +413,7 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
         }
 
         try:
+            logger.info("Analysis pipeline started — application_id=%s", application_id)
             yield f"data: {json.dumps({'step': '[STATUS] Starting analysis pipeline...'})}\n\n"
 
             final_state: dict = dict(initial_state)
@@ -427,6 +428,7 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
                         final_state.update(node_output)
                     status = NODE_STATUS.get(node_name)
                     if status:
+                        logger.info("  [%s] %s", application_id[:8], node_name)
                         yield f"data: {json.dumps({'step': status})}\n\n"
 
             ats = final_state.get("ats_result") or {}
@@ -462,6 +464,7 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
                 "cover_letter": cover_letter,
                 "errors": final_state.get("errors", []),
             }
+            logger.info("Analysis pipeline done — application_id=%s, ats_score=%s", application_id, ats.get("score"))
             yield f"data: {json.dumps({'done': True, 'result': result})}\n\n"
 
         except Exception as exc:
