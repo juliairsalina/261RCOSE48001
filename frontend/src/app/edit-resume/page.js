@@ -850,9 +850,12 @@ export default function EditResumePage() {
       el.style.outline = "none";
       el.style.background = "transparent";
     });
-    // Remove rewrite banners / placeholder text
+    // Remove rewrite banners, placeholder text, print:hidden elements
     clone.querySelectorAll("[data-placeholder]").forEach((el) => {
       el.removeAttribute("data-placeholder");
+    });
+    clone.querySelectorAll(".print\\:hidden, .resume-rewrite-banner").forEach((el) => {
+      el.remove();
     });
 
     // Inject print frame into the SAME document so all styles/fonts are available
@@ -864,19 +867,20 @@ export default function EditResumePage() {
 
     const printStyle = document.createElement("style");
     printStyle.id = "__rfy_print_style__";
+    // Use display:none on all siblings instead of visibility:hidden+fixed —
+    // position:fixed in print CSS repeats the element on every page, causing overlaps.
     printStyle.textContent = `
       @media print {
         @page { size: A4; margin: 0; }
-        body { visibility: hidden !important; background: white !important; }
+        body > *:not(#__rfy_print_frame__) { display: none !important; }
+        body { margin: 0 !important; padding: 0 !important; background: white !important; }
         #__rfy_print_frame__ {
           display: block !important;
-          visibility: visible !important;
-          position: fixed !important;
-          top: 0 !important; left: 0 !important;
           width: 210mm !important;
+          margin: 0 !important;
+          padding: 0 !important;
           background: white !important;
         }
-        #__rfy_print_frame__ * { visibility: visible !important; }
       }
     `;
     document.head.appendChild(printStyle);
