@@ -2079,16 +2079,18 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              <Editable
-                value={proj.description || ""}
-                onSave={upd ? (v) => {
-                  const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
-                  upd({ projects: newProj });
-                } : null}
-                as="p"
-                placeholder="Describe this project..."
-                className="mt-1 text-gray-700"
-              />
+              <RewritableBullet text={proj.description || ""}>
+                <Editable
+                  value={proj.description || ""}
+                  onSave={upd ? (v) => {
+                    const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
+                    upd({ projects: newProj });
+                  } : null}
+                  as="p"
+                  placeholder="Describe this project..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
               {proj.contributions?.length > 0 && (
                 <ul className="mt-1 list-disc pl-5">
                   {proj.contributions.map((c, ci) => <li key={ci}>{c}</li>)}
