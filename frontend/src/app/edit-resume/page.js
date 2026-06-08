@@ -164,6 +164,7 @@ export default function EditResumePage() {
     structure: "",
     impact: "",
   });
+  const [missingSkills, setMissingSkills] = useState([]);
 
   function saveSnapshot() {
     setPreviousState({
@@ -450,6 +451,7 @@ export default function EditResumePage() {
       impact: impactVal,
     });
 
+    setMissingSkills(ats.missing_skills || []);
     const missingList = (ats.missing_skills || []).slice(0, 3);
     const matchedList = (ats.matched_skills || []).slice(0, 3);
     const topWeakness = (ats.weaknesses || [])[0] || "";
@@ -519,11 +521,12 @@ export default function EditResumePage() {
       // Auto-generate career profile if not yet available
       await ensureCandidateProfile(uid, rid);
 
-      const hasLink = vacancyLink.trim().length > 0;
+      const vl = vacancyLink.trim() || localStorage.getItem("reeracifyVacancyLink") || "";
+      const hasLink = vl.length > 0;
       setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing analysis...");
       const jobPost = await callBackend("/job-posts/create", {
         method: "POST",
-        body: JSON.stringify({ job_url: vacancyLink.trim(), user_id: uid }),
+        body: JSON.stringify({ job_url: vl, user_id: uid }),
       });
 
       setLoadingState("Creating application...");
@@ -1217,74 +1220,28 @@ export default function EditResumePage() {
                     </div>
                   </section>
                   
-                  <section className={`border-b ${UI.lineStrong} py-5`}>
+                  <section className="py-5">
                     <p className="text-xl font-black text-[#243026]">Job Link Summary</p>
                     <p className={`mt-3 ${UI.bodyStrong}`}>{jobSummary}</p>
-                  </section>
 
-                  <section className="flex min-h-0 flex-1 flex-col py-5">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-xl font-black text-[#243026]">AI Suggestions</p>
-                      </div>
-                      <div className="rounded-2xl bg-yellow-300/80 p-3 text-black">
-                        <Wand2 size={21} />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 overflow-auto pr-1">
-                      {suggestions.map((item) => (
-                        <button
-                          key={item.id}
-                          onClick={() => setActiveSuggestion(item.id)}
-                          className={`w-full rounded-[1.1rem] border px-4 py-3 text-left transition ${
-                            activeSuggestion === item.id
-                              ? "border-yellow-300 bg-yellow-100/85 shadow-[0_12px_30px_rgba(234,179,8,0.15)]"
-                              : "border-white/35 bg-white/25 hover:bg-white/50"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-black text-[#243026]">{item.title}</p>
-                              <p className="mt-1 text-[11px] font-bold text-[#243026]/45">
-                                {item.type} · {item.label}
-                              </p>
-                            </div>
-                            {activeSuggestion === item.id ? (
-                              <AlertTriangle size={16} className="shrink-0 text-yellow-700" />
-                            ) : (
-                              <ChevronRight size={16} className="shrink-0 text-[#243026]/40" />
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                      {suggestions.length === 0 && (
-                        <p className={`${UI.body} rounded-2xl px-4 py-4 font-bold text-[#243026]/50`}>
-                          Run Evaluate to see AI suggestions.
+                    {missingSkills.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-white/55 mb-2">
+                          Missing Keywords
                         </p>
-                      )}
-                    </div>
-                  </section>
-
-                  {currentSuggestion && (
-                    <section className="border-t border-[#243026]/10 pt-10">
-                      <div className="flex items-center gap-2">
-                        <Sparkles size={17} />
-                        <h3 className={`${UI.subheading} text-white`}>
-                          {currentSuggestion.title}
-                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                          {missingSkills.map((skill, i) => (
+                            <span
+                              key={i}
+                              className="rounded-full border border-red-300/50 bg-red-100/20 px-3 py-1 text-[11px] font-bold text-white/90"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                      <p className={`mt-3 ${UI.body} text-white/`}>
-                        {currentSuggestion.text}
-                      </p>
-                      <button
-                        onClick={openSuggestionRewrite}
-                        className="mt-4 w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-xs font-bold text-white shadow-lg transition hover:scale-[1.01]"
-                      >
-                        Show Rewrite Suggestion
-                      </button>
-                    </section>
-                  )}
+                    )}
+                  </section>
                 </>
               )}
 
