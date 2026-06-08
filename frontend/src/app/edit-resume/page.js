@@ -952,79 +952,6 @@ ${styleLinks}
     }
   }
 
-  //Re-evaluate button in ATS score section
-  function localReevaluateChanges() {
-    saveSnapshot();
-
-    const skills = flattenSkills(resumeData.skills || []);
-    const experience = resumeData.experience || [];
-    const projects = resumeData.projects || [];
-    const education = resumeData.education || [];
-
-    const summaryText = resumeData.summary || "";
-    const bulletTexts = [
-      ...experience.flatMap((e) => e.bullets || e.responsibilities || []),
-      ...projects.flatMap((p) => p.bullets || []),
-    ];
-
-    const totalBullets = bulletTexts.length;
-    const strongBullets = bulletTexts.filter((b) =>
-      /\d+|%|improved|increased|reduced|built|developed|designed|implemented|optimized|created|managed|led/i.test(b)
-    ).length;
-
-    const hasBasicInfo =
-      resumeData.name && resumeData.email && resumeData.phone;
-
-    const structureScore = Math.round(
-      [
-        resumeData.summary ? 20 : 0,
-        skills.length > 0 ? 20 : 0,
-        experience.length > 0 ? 25 : 0,
-        education.length > 0 ? 20 : 0,
-        projects.length > 0 ? 15 : 0,
-      ].reduce((a, b) => a + b, 0)
-    );
-
-    const clarityScore = Math.min(
-      100,
-      Math.round(
-        (summaryText.length > 40 ? 35 : 15) +
-        (hasBasicInfo ? 25 : 10) +
-        (totalBullets > 0 ? 25 : 10) +
-        (skills.length >= 5 ? 15 : skills.length * 3)
-      )
-    );
-
-    const impactScore =
-      totalBullets === 0
-        ? 0
-        : Math.round((strongBullets / totalBullets) * 100);
-
-    const keywordScore = Math.min(100, skills.length * 10);
-
-    const newScore = Math.round(
-      clarityScore * 0.25 +
-      keywordScore * 0.25 +
-      structureScore * 0.25 +
-      impactScore * 0.25
-    );
-
-    setMetrics({
-      clarity: clarityScore,
-      keywordFit: keywordScore,
-      structure: structureScore,
-      impact: impactScore,
-    });
-
-    setAtsScoreValue(newScore);
-
-    if (newScore >= 80) setResumeLevel("Advanced");
-    else if (newScore >= 55) setResumeLevel("Intermediate");
-    else setResumeLevel("Beginner");
-
-    setStatusMessage("Re-evaluated based on your latest resume edits.");
-    setErrorMessage("");
-  }
 
   return (
 
@@ -1052,7 +979,7 @@ ${styleLinks}
         </div>
 
         {/* Right: settings + profile close to right */}
-          <div className="relative flex items-center gap-2">
+          <div className="flex items-center gap-2">
               <input
                 type="url"
                 value={vacancyLink}
@@ -1070,48 +997,6 @@ ${styleLinks}
                 className="h-full w-full object-cover"
               />
             </button>
-
-            {profileOpen && (
-              <div className="absolute right-0 top-12 z-[2000] w-72 rounded-[1.4rem] border border-white/20 bg-[#243026] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
-                <div className="flex items-center justify-between">
-                  <p className="text-lg font-semibold text-white">Profile</p>
-
-                  <button
-                    onClick={() => setProfileOpen(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-lg text-white/88 transition hover:bg-white/10 hover:text-white"
-                  >
-                    ×
-                  </button>
-                </div>
-
-                <div className="mt-4 flex items-center gap-3">
-                  <img
-                    src="/profile icon.jpg"
-                    alt="Profile"
-                    className="h-11 w-11 rounded-full object-cover"
-                  />
-
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-white/88">User ID</p>
-                    <p className="truncate text-base font-semibold text-white">
-                      {userId || "No user ID"}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    localStorage.removeItem("reeracifyUserId");
-                    localStorage.removeItem("reeracifyResumeId");
-                    localStorage.removeItem("reeracifyApplicationId");
-                    router.push("/");
-                  }}
-                  className="mt-5 w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#1f2420] shadow-sm transition hover:bg-white/90"
-                >
-                  Log Out
-                </button>
-              </div>
-            )}
           </div>
         </header>
 
@@ -1717,6 +1602,54 @@ ${styleLinks}
           </aside>
         </section>
       </div>
+
+      {/* Profile dropdown — at root level to escape overflow-hidden clipping */}
+      {profileOpen && (
+        <>
+          <div className="fixed inset-0 z-[1999]" onClick={() => setProfileOpen(false)} />
+          <div className="fixed right-4 top-14 z-[2000] w-72 rounded-[1.4rem] border border-white/20 bg-[#243026] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
+            <div className="flex items-center justify-between">
+              <p className="text-lg font-semibold text-white">Profile</p>
+              <button
+                onClick={() => setProfileOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-lg text-white/88 transition hover:bg-white/10 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+              <img
+                src="/profile icon.jpg"
+                alt="Profile"
+                className="h-11 w-11 rounded-full object-cover"
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-white/88">User ID</p>
+                <p className="truncate text-base font-semibold text-white">
+                  {userId || "No user ID"}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                localStorage.removeItem("reeracifyUserId");
+                localStorage.removeItem("reeracifyResumeId");
+                localStorage.removeItem("reeracifyApplicationId");
+                localStorage.removeItem("reeracifyVacancyLink");
+                localStorage.removeItem("reeracifyParsedResume");
+                localStorage.removeItem("reeracifyCandidateProfile");
+                setProfileOpen(false);
+                router.push("/");
+              }}
+              className="mt-5 w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#1f2420] shadow-sm transition hover:bg-white/90 active:scale-[0.98]"
+            >
+              Log Out
+            </button>
+          </div>
+        </>
+      )}
 
     </main>
   );
