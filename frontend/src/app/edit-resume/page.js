@@ -1858,7 +1858,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       </div>
 
       {pendingCount > 0 && (
-        <p className="mt-3 rounded-lg bg-yellow-50 px-3 py-1.5 text-[10px] font-bold text-yellow-700">
+        <p className="mt-3 rounded-lg bg-yellow-50 px-3 py-1.5 text-[10px] font-bold text-yellow-700 print:hidden">
           ✦ {pendingCount} rewrite suggestion{pendingCount > 1 ? "s" : ""} highlighted — click to review
         </p>
       )}
