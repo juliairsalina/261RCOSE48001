@@ -12,6 +12,15 @@
   --font-mono: var(--font-geist-mono);
 }
 
+@keyframes scan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -39,18 +48,10 @@ body {
   display: block;
 }
 
-@media print {
-  @page { size: A4; margin: 10mm; }
+:root {
+  --github-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+}
 
-  body.printing > *:not(#resume-a4) { display: none !important; }
-
-  body.printing > #resume-a4 {
-    display: block !important;
-    transform: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    width: 100% !important;
-    margin: 0 !important;
-  }
-
+body {
+  font-family: var(--github-mono);
 }
