@@ -115,6 +115,7 @@ export default function EditResumePage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
+  const [analyzedWithJobLink, setAnalyzedWithJobLink] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -455,14 +456,14 @@ export default function EditResumePage() {
     });
 
     const atsSuggestions = [
+      ...(ats.weaknesses || []).map((w, i) => ({
+        id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
+        text: w, suggestion: w,
+      })),
       ...(ats.missing_skills || []).map((s, i) => ({
         id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
         text: `"${s}" is required but not found in your resume.`,
         suggestion: `Add "${s}" to your skills or experience section.`,
-      })),
-      ...(ats.weaknesses || []).map((w, i) => ({
-        id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
-        text: w, suggestion: w,
       })),
       ...(ats.improvement_priority || []).map((p, i) => ({
         id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
@@ -495,6 +496,7 @@ export default function EditResumePage() {
       await ensureCandidateProfile(uid, rid);
 
       const hasLink = vacancyLink.trim().length > 0;
+      setAnalyzedWithJobLink(hasLink);
       setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing analysis...");
       const jobPost = await callBackend("/job-posts/create", {
         method: "POST",
@@ -1229,7 +1231,7 @@ export default function EditResumePage() {
                     </section>
                   )}
 
-                  <section className="flex min-h-0 flex-1 flex-col py-5">
+                  {analyzedWithJobLink && <section className="flex min-h-0 flex-1 flex-col py-5">
                     <div className="mb-4 flex items-center justify-between">
                       <div>
                         <p className="text-xl font-black text-[#243026]">AI Suggestions</p>
@@ -1271,9 +1273,9 @@ export default function EditResumePage() {
                         </p>
                       )}
                     </div>
-                  </section>
+                  </section>}
 
-                  {currentSuggestion && (
+                  {analyzedWithJobLink && currentSuggestion && (
                     <section className="border-t border-[#243026]/10 pt-10">
                       <div className="flex items-center gap-2">
                         <Sparkles size={17} />
