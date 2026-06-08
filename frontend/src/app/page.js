@@ -117,10 +117,21 @@ useEffect(() => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-
+    localStorage.removeItem("reeracifyUserId");
+    localStorage.removeItem("reeracifyResumeId");
+    localStorage.removeItem("reeracifyApplicationId");
+    localStorage.removeItem("reeracifyVacancyLink");
+    localStorage.removeItem("reeracifyParsedResume");
+    localStorage.removeItem("reeracifyCandidateProfile");
     setUser(null);
     setIsLoggedIn(false);
-    setShowLogin(false);
+    setShowProfile(false);
+    setResumeFile(null);
+    setParsedName("");
+    setParsedResumeData(null);
+    setAuthMode("login");
+    setLoginMessage("");
+    setShowLogin(true);
   };
 
   const handleResumeUpload = async (e) => {
@@ -282,7 +293,7 @@ useEffect(() => {
                   </div>
 
                   <button
-                    onClick={() => { setShowProfile(false); handleLogout(); }}
+                    onClick={handleLogout}
                     className="mt-4 w-full rounded-[1rem] bg-white px-4 py-2.5 text-sm font-black text-[#1e2e23] shadow-sm transition hover:bg-white/92"
                   >
                     Log Out
