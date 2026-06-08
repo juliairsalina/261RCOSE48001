@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -1811,24 +1811,33 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
     const isActive = rw.id === activeRewriteId;
 
+    const highlightClass =
+      isActive
+        ? "bg-yellow-200 outline outline-2 outline-yellow-400 rounded cursor-pointer"
+        : rw.status === "approved"
+        ? "bg-green-100 rounded"
+        : rw.status === "rejected"
+        ? "opacity-50 line-through"
+        : "bg-yellow-50 hover:bg-yellow-100 rounded cursor-pointer";
+
+    const handleClick = (e) => {
+      e.stopPropagation();
+      onRewriteClick?.(rw);
+    };
+
+    // Inject highlight directly onto the child element to avoid block-in-inline HTML
+    if (children) {
+      const child = React.Children.only(children);
+      return React.cloneElement(child, {
+        className: `${child.props.className ?? ""} ${highlightClass}`,
+        onClick: handleClick,
+        title: "Click to view rewrite suggestion",
+      });
+    }
+
     return (
-      <span
-        onClick={(e) => {
-          e.stopPropagation();
-          onRewriteClick?.(rw);
-        }}
-        title="Click to view rewrite suggestion"
-        className={`cursor-pointer rounded px-0.5 transition ${
-          isActive
-            ? "bg-yellow-300 shadow-[0_0_0_2px_rgba(250,204,21,0.7)]"
-            : rw.status === "approved"
-            ? "bg-green-200"
-            : rw.status === "rejected"
-            ? "line-through opacity-50"
-            : "bg-yellow-100 hover:bg-yellow-200"
-        }`}
-      >
-        {children || text}
+      <span onClick={handleClick} title="Click to view rewrite suggestion" className={highlightClass}>
+        {text}
       </span>
     );
   }
