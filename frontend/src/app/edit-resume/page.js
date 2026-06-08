@@ -31,6 +31,9 @@ export default function EditResumePage() {
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [zoom, setZoom] = useState(0.82);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const scrollContainerRef = useRef(null);
 
   const UI = {
   heading: "text-[2rem] font-black tracking-tight text-white",
@@ -342,6 +345,39 @@ export default function EditResumePage() {
       el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }, [activeRewriteId, activeTab]);
+
+  // Recalculate page count and current page whenever zoom or content changes
+  useEffect(() => {
+    const PAGE_H = 1123; // A4 height in px at 100% zoom
+
+    function update() {
+      const resumeEl = document.getElementById("resume-a4");
+      const scrollEl = scrollContainerRef.current;
+      if (!resumeEl || !scrollEl) return;
+
+      const scaledH = resumeEl.scrollHeight * zoom;
+      const pages = Math.max(1, Math.ceil(scaledH / (PAGE_H * zoom)));
+      setTotalPages(pages);
+
+      const scrollTop = scrollEl.scrollTop;
+      const page = Math.min(pages, Math.floor(scrollTop / (PAGE_H * zoom)) + 1);
+      setCurrentPage(page);
+    }
+
+    update();
+
+    const scrollEl = scrollContainerRef.current;
+    scrollEl?.addEventListener("scroll", update, { passive: true });
+
+    const ro = new ResizeObserver(update);
+    const resumeEl = document.getElementById("resume-a4");
+    if (resumeEl) ro.observe(resumeEl);
+
+    return () => {
+      scrollEl?.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [zoom, resumeData]);
 
   const zoomIn = () => {
     setZoom((prev) => Math.min(prev + 0.08, 1.05));
@@ -1082,7 +1118,7 @@ ${styleLinks}
             
 
             {/* One resume section only */}
-            <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto bg-transparent">
+            <div ref={scrollContainerRef} className="flex min-h-0 flex-1 items-start justify-center overflow-auto bg-transparent">
               <div
               id = "resume-a4"
                 style={{
@@ -1112,7 +1148,7 @@ ${styleLinks}
             <div className="fixed bottom-6 left-[30%] z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/15 bg-[#243026]/75 px-4 py-0.2 text-white shadow-xl backdrop-blur-xl">
               <span className="text-xs font-bold">Page</span>
 
-              <span className="text-sm font-black">1 / 1</span>
+              <span className="text-sm font-black">{currentPage} / {totalPages}</span>
 
               <div className="mx-1 h-5 w-px bg-white/25" />
 
