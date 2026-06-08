@@ -255,52 +255,15 @@ useEffect(() => {
         </button>
 
         {/* Right Buttons */}
-        <div className="relative flex items-center gap-3">
+        <div className="flex items-center gap-3">
           {isLoggedIn ? (
-            <>
-              <button
-                onClick={() => setShowProfile((p) => !p)}
-                className="flex items-center gap-2 rounded-full border border-white/25 bg-white/18 px-5 py-2 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:bg-white/28"
-              >
-                <UserCircle size={18} />
-                Profile
-              </button>
-
-              {showProfile && (
-                <div
-                  className="fixed right-4 top-14 z-[2000] w-72 rounded-[1.4rem] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
-                  style={{
-                    background: "linear-gradient(160deg,rgba(80,100,88,0.92) 0%,rgba(40,58,46,0.96) 100%)",
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    backdropFilter: "blur(32px)",
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-base font-black text-white">My Account</p>
-                    <button
-                      onClick={() => setShowProfile(false)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-
-                  <div className="mt-4 rounded-[1rem] border border-white/15 bg-white/10 px-4 py-3">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">Signed in as</p>
-                    <p className="mt-0.5 truncate text-sm font-semibold text-white">
-                      {user?.email || "—"}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={handleLogout}
-                    className="mt-4 w-full rounded-[1rem] bg-white px-4 py-2.5 text-sm font-black text-[#1e2e23] shadow-sm transition hover:bg-white/92"
-                  >
-                    Log Out
-                  </button>
-                </div>
-              )}
-            </>
+            <button
+              onClick={() => setShowProfile((p) => !p)}
+              className="flex items-center gap-2 rounded-full border border-white/25 bg-white/18 px-5 py-2 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:bg-white/28"
+            >
+              <UserCircle size={18} />
+              Profile
+            </button>
           ) : (
             <button
               onClick={() => { setAuthMode("login"); setLoginMessage(""); setShowLogin(true); }}
@@ -341,13 +304,22 @@ useEffect(() => {
         {/* Upload + link */}
         <div className="mt-10 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
           {/* Upload Resume Box */}
-          <label className={`flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-full border px-5 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:scale-[1.01] ${
-            parsedName
-              ? "border-green-300/60 bg-[#243026]"
-              : uploading
-              ? "border-white/25 bg-[#243026] cursor-wait"
-              : "border-white/25 bg-[#243026]"
-          }`}>
+          <label
+            onClick={(e) => {
+              if (!isLoggedIn) {
+                e.preventDefault();
+                setAuthMode("login");
+                setLoginMessage("");
+                setShowLogin(true);
+              }
+            }}
+            className={`flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-full border px-5 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:scale-[1.01] ${
+              parsedName
+                ? "border-green-300/60 bg-[#243026]"
+                : uploading
+                ? "border-white/25 bg-[#243026] cursor-wait"
+                : "border-white/25 bg-[#243026]"
+            }`}>
             {uploading ? (
               <>
                 <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -460,6 +432,49 @@ useEffect(() => {
           </div>
         </div>
       </section>
+
+      {/* Profile dropdown — rendered at root level to escape overflow-hidden */}
+      {showProfile && (
+        <>
+          {/* invisible backdrop to close on outside click */}
+          <div
+            className="fixed inset-0 z-[1999]"
+            onClick={() => setShowProfile(false)}
+          />
+          <div
+            className="fixed right-4 top-14 z-[2000] w-72 rounded-[1.4rem] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+            style={{
+              background: "linear-gradient(160deg,rgba(80,100,88,0.95) 0%,rgba(40,58,46,0.98) 100%)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              backdropFilter: "blur(32px)",
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-base font-black text-white">My Account</p>
+              <button
+                onClick={() => setShowProfile(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/28"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-[1rem] border border-white/15 bg-white/10 px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">Signed in as</p>
+              <p className="mt-0.5 truncate text-sm font-semibold text-white">
+                {user?.email || "—"}
+              </p>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="mt-4 w-full rounded-[1rem] bg-white px-4 py-3 text-sm font-black text-[#1e2e23] shadow-sm transition hover:bg-white/92 active:scale-[0.98]"
+            >
+              Log Out
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Login / Register modal */}
       {showLogin && (
