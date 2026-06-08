@@ -150,6 +150,7 @@ export default function EditResumePage() {
   const [redoState, setRedoState] = useState(null);
 
   const [vacancyLink, setVacancyLink] = useState("");
+  const vacancyLinkRef = useRef("");
   const [atsScoreValue, setAtsScoreValue] = useState(0);
   const [resumeLevel, setResumeLevel] = useState("Waiting for evaluation");
   const [jobSummary, setJobSummary] = useState(
@@ -230,6 +231,7 @@ export default function EditResumePage() {
   useEffect(() => {
     const savedVacancyLink = localStorage.getItem("reeracifyVacancyLink");
     if (savedVacancyLink) {
+      vacancyLinkRef.current = savedVacancyLink;
       setVacancyLink(savedVacancyLink);
       setJobSummary("Vacancy link loaded. Click Evaluate to analyze it.");
     }
@@ -548,7 +550,9 @@ export default function EditResumePage() {
       // Auto-generate career profile if not yet available
       await ensureCandidateProfile(uid, rid);
 
-      const vl = vacancyLink.trim() || localStorage.getItem("reeracifyVacancyLink") || "";
+      // Use ref to guarantee latest value regardless of closure age
+      const vl = (vacancyLinkRef.current || vacancyLink || localStorage.getItem("reeracifyVacancyLink") || "").trim();
+      if (vl) localStorage.setItem("reeracifyVacancyLink", vl);
       const hasLink = vl.length > 0;
       setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing analysis...");
       const jobPost = await callBackend("/job-posts/create", {
@@ -568,9 +572,18 @@ export default function EditResumePage() {
       // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
       const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
 
-      const jobSummaryText = hasLink
-        ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
-        : "General resume evaluation — no job posting provided.";
+      let jobSummaryText;
+      if (!hasLink) {
+        jobSummaryText = "General resume evaluation — no job posting provided.";
+      } else if (jobPost.role_title || jobPost.company_name) {
+        jobSummaryText = `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`;
+      } else {
+        try {
+          jobSummaryText = `Job posting (${new URL(vl).hostname.replace(/^www\./, "")})`;
+        } catch {
+          jobSummaryText = "Job posting provided";
+        }
+      }
       applyAnalysisResult(result, jobSummaryText);
 
     } catch (error) {
@@ -1019,7 +1032,7 @@ export default function EditResumePage() {
               <input
                 type="url"
                 value={vacancyLink}
-                onChange={(e) => setVacancyLink(e.target.value)}
+                onChange={(e) => { vacancyLinkRef.current = e.target.value; setVacancyLink(e.target.value); }}
                 placeholder=" → Paste job vacancy URL here"
                 className="h-8 w-[200px] rounded-xl border border-white/25 bg-white/12 px-5 text-xs font-semibold text-white outline-none backdrop-blur-xl placeholder:text-white/45 transition focus:border-white/45 focus:bg-white/18"
               />
