@@ -70,4 +70,17 @@ body {
     margin: 0 !important;
   }
 
+  /* Strip all highlight colors from resume content when printing */
+  #resume-a4 * {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  /* Hide suggestion banners and UI-only elements */
+  #resume-a4 .print\:hidden,
+  #resume-a4 [class*="suggestion"],
+  #resume-a4 [class*="rewrite"] {
+    display: none !important;
+  }
 }
