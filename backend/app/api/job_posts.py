@@ -121,4 +121,5 @@ async def create_job_post(request: JobPostCreateRequest) -> dict:
         "company_name": row.get("company_name", ""),
         "role_title": row.get("role_title", ""),
         "location": row.get("location", ""),
+        "job_description": row.get("job_description", ""),
     }

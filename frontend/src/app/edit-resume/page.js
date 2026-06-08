@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  RefreshCcw,
 
   Sparkles,
   AlertTriangle,
@@ -30,8 +31,24 @@ export default function EditResumePage() {
   const router = useRouter();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [zoom, setZoom] = useState(0.72);
+  const [zoom, setZoom] = useState(0.82);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const scrollContainerRef = useRef(null);
 
+  const UI = {
+  heading: "text-[2rem] font-black tracking-tight text-white",
+  subheading: "text-xl font-black uppercase tracking-[0.24em] text-white/88",
+  body: "text-sm font-medium leading-7 text-white/75",
+  bodyStrong: "text-sm font-bold text-white",
+  tab: "text-sm font-black",
+  line: "border-white/22",
+  lineStrong: "border-white/30",
+  glass: "border border-white/18 bg-white/10 backdrop-blur-xl",
+  glassSoft: "border border-white/16 bg-white/12 backdrop-blur-xl",
+};
+
+//Dummy data
   const [resumeData, setResumeData] = useState({
         name: "John Doe",
         email: "john@email.com",
@@ -64,6 +81,7 @@ export default function EditResumePage() {
             company: "ABC Tech",
             start_date: "Jun 2025",
             end_date: "Aug 2025",
+            
 
             bullets: [
               "Developed REST APIs using FastAPI.",
@@ -87,25 +105,13 @@ export default function EditResumePage() {
           }
         ]
       });
-  const [vacancyLink, setVacancyLink] = useState("");
 
-  const [atsScoreValue, setAtsScoreValue] = useState(0);
-  const [resumeLevel, setResumeLevel] = useState("Waiting for evaluation");
-  const [jobSummary, setJobSummary] = useState(
-    "Paste a vacancy link and upload a resume to generate job-based evaluation."
-  );
-
-  const [metrics, setMetrics] = useState({
-    clarity: 0,
-    keywordFit: 0,
-    structure: 0,
-    impact: 0,
-  });
-
+  
   const [backendSuggestions, setBackendSuggestions] = useState([]);
   const [activeSuggestion, setActiveSuggestion] = useState("summary");
 
   const [isLoading, setIsLoading] = useState(false);
+  const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -116,6 +122,7 @@ export default function EditResumePage() {
 
   // Right panel tab
   const [activeTab, setActiveTab] = useState("analysis");
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Rewrites tab
   const [rewriteList, setRewriteList] = useState([]);
@@ -140,6 +147,28 @@ export default function EditResumePage() {
 
   // One-level undo — saved before any content/score/rewrite change
   const [previousState, setPreviousState] = useState(null);
+  const [redoState, setRedoState] = useState(null);
+
+  const [vacancyLink, setVacancyLink] = useState("");
+  const vacancyLinkRef = useRef("");
+  const [atsScoreValue, setAtsScoreValue] = useState(0);
+  const [resumeLevel, setResumeLevel] = useState("Waiting for evaluation");
+  const [jobSummary, setJobSummary] = useState(
+  "Paste a vacancy link and upload a resume to generate job-based evaluation."
+);
+  const [metrics, setMetrics] = useState({
+    clarity: 0,
+    keywordFit: 0,
+    structure: 0,
+    impact: 0,
+  });
+  const [metricComments, setMetricComments] = useState({
+    clarity: "",
+    keywordFit: "",
+    structure: "",
+    impact: "",
+  });
+  const [missingSkills, setMissingSkills] = useState([]);
 
   function saveSnapshot() {
     setPreviousState({
@@ -154,6 +183,16 @@ export default function EditResumePage() {
 
   function undoChanges() {
     if (!previousState) return;
+
+    setRedoState({
+      resumeData: JSON.parse(JSON.stringify(resumeData)),
+      atsScoreValue,
+      resumeLevel,
+      metrics: { ...metrics },
+      backendSuggestions: [...backendSuggestions],
+      rewriteList: [...rewriteList],
+    });
+
     setResumeData(previousState.resumeData);
     setAtsScoreValue(previousState.atsScoreValue);
     setResumeLevel(previousState.resumeLevel);
@@ -163,6 +202,27 @@ export default function EditResumePage() {
     setPreviousState(null);
   }
 
+  function redoChanges() {
+  if (!redoState) return;
+
+  setPreviousState({
+    resumeData: JSON.parse(JSON.stringify(resumeData)),
+    atsScoreValue,
+    resumeLevel,
+    metrics: { ...metrics },
+    backendSuggestions: [...backendSuggestions],
+    rewriteList: [...rewriteList],
+  });
+
+  setResumeData(redoState.resumeData);
+  setAtsScoreValue(redoState.atsScoreValue);
+  setResumeLevel(redoState.resumeLevel);
+  setMetrics(redoState.metrics);
+  setBackendSuggestions(redoState.backendSuggestions);
+  setRewriteList(redoState.rewriteList);
+  setRedoState(null);
+}
+
   const suggestions = backendSuggestions || [];
 
   const currentSuggestion =
@@ -171,6 +231,7 @@ export default function EditResumePage() {
   useEffect(() => {
     const savedVacancyLink = localStorage.getItem("reeracifyVacancyLink");
     if (savedVacancyLink) {
+      vacancyLinkRef.current = savedVacancyLink;
       setVacancyLink(savedVacancyLink);
       setJobSummary("Vacancy link loaded. Click Evaluate to analyze it.");
     }
@@ -288,6 +349,39 @@ export default function EditResumePage() {
     }
   }, [activeRewriteId, activeTab]);
 
+  // Recalculate page count and current page whenever zoom or content changes
+  useEffect(() => {
+    const PAGE_H = 1123; // A4 height in px at 100% zoom
+
+    function update() {
+      const resumeEl = document.getElementById("resume-a4");
+      const scrollEl = scrollContainerRef.current;
+      if (!resumeEl || !scrollEl) return;
+
+      const scaledH = resumeEl.scrollHeight * zoom;
+      const pages = Math.max(1, Math.ceil(scaledH / (PAGE_H * zoom)));
+      setTotalPages(pages);
+
+      const scrollTop = scrollEl.scrollTop;
+      const page = Math.min(pages, Math.floor(scrollTop / (PAGE_H * zoom)) + 1);
+      setCurrentPage(page);
+    }
+
+    update();
+
+    const scrollEl = scrollContainerRef.current;
+    scrollEl?.addEventListener("scroll", update, { passive: true });
+
+    const ro = new ResizeObserver(update);
+    const resumeEl = document.getElementById("resume-a4");
+    if (resumeEl) ro.observe(resumeEl);
+
+    return () => {
+      scrollEl?.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [zoom, resumeData]);
+
   const zoomIn = () => {
     setZoom((prev) => Math.min(prev + 0.08, 1.05));
   };
@@ -385,26 +479,50 @@ export default function EditResumePage() {
     const matched = ats.matched_skills?.length || 0;
     const missing = ats.missing_skills?.length || 0;
     const total = matched + missing || 1;
+    const clarityVal = Math.max(0, 100 - (ats.weaknesses?.length || 0) * 15);
+    const keywordVal = Math.round((matched / total) * 100);
+    const impactVal = Math.min(100, (ats.strengths?.length || 0) * 20);
     setMetrics({
-      clarity: Math.max(0, 100 - (ats.weaknesses?.length || 0) * 15),
-      keywordFit: Math.round((matched / total) * 100),
+      clarity: clarityVal,
+      keywordFit: keywordVal,
       structure: score,
-      impact: Math.min(100, (ats.strengths?.length || 0) * 20),
+      impact: impactVal,
+    });
+
+    setMissingSkills(ats.missing_skills || []);
+    const missingList = (ats.missing_skills || []).slice(0, 3);
+    const matchedList = (ats.matched_skills || []).slice(0, 3);
+    const topWeakness = (ats.weaknesses || [])[0] || "";
+    const topStrength = (ats.strengths || [])[0] || "";
+    const topPriority = (ats.improvement_priority || [])[0] || "";
+
+    setMetricComments({
+      clarity: clarityVal >= 85
+        ? "Your resume is clear and well-structured with minimal gaps."
+        : topWeakness
+        ? `Area to improve: ${topWeakness}`
+        : "Reduce vague language and add more specific, measurable details.",
+      keywordFit: missingList.length > 0
+        ? `Missing keywords: ${missingList.join(", ")}. Add these to your skills or experience.`
+        : matchedList.length > 0
+        ? `Strong keyword match — found: ${matchedList.join(", ")}.`
+        : "Paste a job vacancy URL to get a precise keyword match score.",
+      structure: topPriority
+        ? `Top priority: ${topPriority}`
+        : score >= 80
+        ? "Resume structure aligns well with the job requirements."
+        : "Ensure all key sections (summary, skills, experience) are present and complete.",
+      impact: impactVal >= 80
+        ? topStrength
+          ? `Key strength: ${topStrength}`
+          : "Your resume demonstrates strong measurable impact."
+        : "Add bullet points with quantifiable results (numbers, %, improvements) to raise impact.",
     });
 
     const atsSuggestions = [
-      ...(ats.missing_skills || []).map((s, i) => ({
-        id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
-        text: `"${s}" is required but not found in your resume.`,
-        suggestion: `Add "${s}" to your skills or experience section.`,
-      })),
       ...(ats.weaknesses || []).map((w, i) => ({
-        id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
-        text: w, suggestion: w,
-      })),
-      ...(ats.improvement_priority || []).map((p, i) => ({
-        id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
-        text: p, suggestion: p,
+        id: `weak-${i}`, type: "Weakness",
+        text: w,
       })),
     ];
     setBackendSuggestions(atsSuggestions);
@@ -414,6 +532,7 @@ export default function EditResumePage() {
     if (result.cover_letter) setCoverLetterText(result.cover_letter);
 
     setIsLoading(false);
+    setHasAnalyzed(true);
     setStatusMessage(`Analysis complete — ATS score: ${score}/100`);
     setActiveTab("rewrites");
   }
@@ -431,11 +550,14 @@ export default function EditResumePage() {
       // Auto-generate career profile if not yet available
       await ensureCandidateProfile(uid, rid);
 
-      const hasLink = vacancyLink.trim().length > 0;
+      // Use ref to guarantee latest value regardless of closure age
+      const vl = (vacancyLinkRef.current || vacancyLink || localStorage.getItem("reeracifyVacancyLink") || "").trim();
+      if (vl) localStorage.setItem("reeracifyVacancyLink", vl);
+      const hasLink = vl.length > 0;
       setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing analysis...");
       const jobPost = await callBackend("/job-posts/create", {
         method: "POST",
-        body: JSON.stringify({ job_url: vacancyLink.trim(), user_id: uid }),
+        body: JSON.stringify({ job_url: vl, user_id: uid }),
       });
 
       setLoadingState("Creating application...");
@@ -450,9 +572,18 @@ export default function EditResumePage() {
       // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
       const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
 
-      const jobSummaryText = hasLink
-        ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
-        : "General resume evaluation — no job posting provided.";
+      let jobSummaryText;
+      if (!hasLink) {
+        jobSummaryText = "General resume evaluation — no job posting provided.";
+      } else if (jobPost.role_title || jobPost.company_name) {
+        jobSummaryText = `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`;
+      } else {
+        try {
+          jobSummaryText = `Job posting (${new URL(vl).hostname.replace(/^www\./, "")})`;
+        } catch {
+          jobSummaryText = "Job posting provided";
+        }
+      }
       applyAnalysisResult(result, jobSummaryText);
 
     } catch (error) {
@@ -698,6 +829,143 @@ export default function EditResumePage() {
     };
   }
 
+  function downloadResumePDF() {
+    const resumeEl = document.getElementById("resume-a4");
+    if (!resumeEl) return;
+
+    // Clone and strip interactive/highlight artifacts
+    const clone = resumeEl.cloneNode(true);
+    clone.style.cssText =
+      "transform:none !important;box-shadow:none !important;border-radius:0 !important;" +
+      "background-image:none !important;width:100% !important;min-height:0 !important;" +
+      "position:static !important;margin:0 !important;padding:0 !important;" +
+      'font-family:Calibri,"Segoe UI",Arial,sans-serif !important;';
+
+    clone.querySelectorAll("span").forEach((el) => {
+      el.style.backgroundColor = "transparent";
+      el.style.boxShadow = "none";
+      el.style.outline = "none";
+    });
+    clone.querySelectorAll("[contenteditable]").forEach((el) => {
+      el.removeAttribute("contenteditable");
+      el.style.outline = "none";
+      el.style.background = "transparent";
+    });
+    // Remove rewrite banners, placeholder text, print:hidden elements
+    clone.querySelectorAll("[data-placeholder]").forEach((el) => {
+      el.removeAttribute("data-placeholder");
+    });
+    clone.querySelectorAll(".print\\:hidden, .resume-rewrite-banner").forEach((el) => {
+      el.remove();
+    });
+
+    // Inject print frame into the SAME document so all styles/fonts are available
+    const frame = document.createElement("div");
+    frame.id = "__rfy_print_frame__";
+    frame.style.cssText = "display:none;";
+    frame.appendChild(clone);
+    document.body.appendChild(frame);
+
+    const printStyle = document.createElement("style");
+    printStyle.id = "__rfy_print_style__";
+    // Use display:none on all siblings instead of visibility:hidden+fixed —
+    // position:fixed in print CSS repeats the element on every page, causing overlaps.
+    printStyle.textContent = `
+      @media print {
+        @page { size: A4; margin: 16mm 20mm; }
+        body > *:not(#__rfy_print_frame__) { display: none !important; }
+        body { margin: 0 !important; padding: 0 !important; background: white !important; }
+        #__rfy_print_frame__ {
+          display: block !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: white !important;
+        }
+      }
+    `;
+    document.head.appendChild(printStyle);
+
+    const cleanup = () => {
+      document.getElementById("__rfy_print_frame__")?.remove();
+      document.getElementById("__rfy_print_style__")?.remove();
+    };
+
+    window.addEventListener("afterprint", cleanup, { once: true });
+    setTimeout(cleanup, 5000); // fallback in case afterprint doesn't fire
+
+    window.print();
+  }
+
+  function downloadCoverLetterPDF() {
+    if (!coverLetterText) return;
+
+    // Header info from current resumeData
+    const name = resumeData?.name || "";
+    const phone = resumeData?.phone || "";
+    const email = resumeData?.email || "";
+    const contactParts = [phone, email].filter(Boolean);
+    const contactLine = contactParts.join("  •  ");
+
+    // Split body into double-newline paragraphs; single newlines become <br>
+    const paragraphs = coverLetterText
+      .split(/\n\n+/)
+      .filter((p) => p.trim())
+      .map(
+        (p) =>
+          `<p>${p.trim().replace(/\n/g, "<br/>")}</p>`
+      )
+      .join("\n");
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+
+    w.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @page { size: A4; margin: 20mm 22mm; }
+  html, body {
+    margin: 0; padding: 0; background: white;
+    font-family: Calibri, "Segoe UI", Arial, sans-serif;
+    font-size: 11pt;
+    color: #111;
+  }
+  .cl-name {
+    font-size: 15pt;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    margin: 0 0 3pt 0;
+  }
+  .cl-contact {
+    font-size: 10pt;
+    color: #333;
+    margin: 0 0 8pt 0;
+  }
+  .cl-rule {
+    border: none;
+    border-top: 1px solid #bbb;
+    margin: 0 0 16pt 0;
+  }
+  .cl-body p {
+    margin: 0 0 11pt 0;
+    line-height: 1.55;
+    text-align: justify;
+  }
+</style>
+</head>
+<body>
+  ${name ? `<div class="cl-name">${name}</div>` : ""}
+  ${contactLine ? `<div class="cl-contact">${contactLine}</div>` : ""}
+  <hr class="cl-rule" />
+  <div class="cl-body">${paragraphs}</div>
+</body>
+</html>`);
+    w.document.close();
+    setTimeout(() => { w.print(); w.close(); }, 700);
+  }
+
   async function downloadResume() {
     if (!applicationId) {
       setErrorMessage("Run Evaluate first to generate an application before downloading.");
@@ -733,209 +1001,148 @@ export default function EditResumePage() {
     }
   }
 
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#dfe7da] text-[#243026]">
-      {/* Background */}
-      <div className="absolute inset-0 bg-[url('/nature-bg.jpg')] bg-cover bg-center" />
-      <div className="absolute inset-0 bg-[#e8ece4]/68" />
-      <div className="absolute inset-0 bg-gradient-to-b from-white/55 via-white/25 to-[#e3e8df]/85" />
 
-      {/* Soft light */}
-      <div className="absolute left-[8%] top-[8%] h-72 w-72 rounded-full bg-white/35 blur-3xl" />
-      <div className="absolute right-[12%] top-[18%] h-80 w-80 rounded-full bg-[#b9d1c0]/35 blur-3xl" />
-      <div className="absolute bottom-[8%] left-[30%] h-96 w-96 rounded-full bg-[#f4e8b5]/25 blur-3xl" />
+  <main
+  style={{
+    fontFamily:
+      'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+  }}
+  className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_15%_8%,rgba(144,171,188,0.95)_0%,rgba(95,126,137,0.72)_22%,transparent_42%),radial-gradient(circle_at_72%_22%,rgba(184,190,137,0.72)_0%,rgba(118,137,92,0.58)_30%,transparent_56%),radial-gradient(circle_at_35%_88%,rgba(38,82,61,0.95)_0%,rgba(43,74,55,0.88)_35%,transparent_62%),linear-gradient(135deg,#425f6f_0%,#536f66_28%,#69794e_55%,#263f33_100%)] font-mono text-white"
+>
+  <div className="relative z-10 flex min-h-screen flex-col">
 
-      <div className="relative z-10 flex min-h-screen">
-
-      {/* Sidebar */}
-      <aside
-        className={`flex h-screen shrink-0 flex-col rounded-r-[0.5rem] border-r border-white/45 bg-white/35 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.14)] backdrop-blur-2xl transition-all duration-300 ${
-          sidebarOpen ? "w-[230px]" : "w-[70px]"
-        }`}
-      >
-
-        {/* Sidebar Top / Brand + Toggle */}
-        <div className = "mb-6 flex items-center gap-3 px-1 pt-4"> 
-          
-          {/* Toggle button */}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#243026] text-lg font-black leading-none text-white shadow-lg transition duration-300 hover:scale-105"
-          >
-            <Menu size={18} strokeWidth={3.5} />
-          </button>
-
-            {/* Brand text */}
-          <div
-            className={`min-w-[130px] transition-all duration-500 ease-in-out ${
-              sidebarOpen
-                ? "translate-x-0 opacity-100"
-                : "-translate-x-3 opacity-0"
-            }`}
-          >
-              <p className="whitespace-nowrap text-[20px] font-black tracking-tight text-[#243026]">
-                   Reeracify
-              </p>
-            </div>
+      {/* Top Navbar */}
+      <header className="relative z-[999] flex h-[48px] shrink-0 items-center justify-between border-b border-white/60 bg-white/10 px-4 text-white backdrop-blur-xl">
+        {/* Left: mascot close to left */}
+        <div className="flex items-center">
+          <img
+            src="/mascot.png"
+            alt="Reeracify mascot"
+            className="h-12 w-12 object-contain"
+          />
+          <p className="py-2 text-[14px] font-bold text-white/88">
+            Reeracify
+          </p>
         </div>
 
-          <nav className="space-y-1">
-            <SidebarItem
-              icon={<Home size={18} />}
-              label="Home"
-              open={sidebarOpen}
-            />
-            <SidebarItem
-              icon={<FileText size={18} />}
-              label="Resume Editor"
-              active
-              open={sidebarOpen}
-            />
-          </nav>
-
-          <nav className="space-y-1">
-            <SidebarItem
-              icon={<MessageCircle size={18} />}
-              label="Newsletter"
-              open={sidebarOpen}
-            />
-          </nav>
-
-          <div className="flex-1" />
-
-          <nav className="space-y-1">
-            <SidebarItem
-              icon={<Settings size={18} />}
-              label="Settings"
-              open={sidebarOpen}
-            />
-            <SidebarItem
-              icon={<HelpCircle size={18} />}
-              label="Help & Support"
-              open={sidebarOpen}
-            />
-          </nav>
-
-          <button
-            onClick={() => router.push("/")}
-            className={`mt-5 flex items-center justify-center gap-2 rounded-2xl border border-white/50 bg-white/35 py-3 text-xs font-bold text-[#243026] shadow-sm transition hover:bg-white/60 ${
-              sidebarOpen ? "px-4" : "px-0"
-            }`}
-          >
-            <ArrowLeft size={16} />
-            {sidebarOpen && "Back Home"}
-          </button>
-        </aside>
+        {/* Right: settings + profile close to right */}
+          <div className="flex items-center gap-2">
+              <input
+                type="url"
+                value={vacancyLink}
+                onChange={(e) => { vacancyLinkRef.current = e.target.value; setVacancyLink(e.target.value); }}
+                placeholder=" → Paste job vacancy URL here"
+                className="h-8 w-[200px] rounded-xl border border-white/25 bg-white/12 px-5 text-xs font-semibold text-white outline-none backdrop-blur-xl placeholder:text-white/45 transition focus:border-white/45 focus:bg-white/18"
+              />
+            <button
+              onClick={() => setProfileOpen((prev) => !prev)}
+              className="h-9 w-9 overflow-hidden rounded-full border border-white/60 bg-white shadow-sm transition hover:scale-105 hover:bg-white/70"
+            >
+              <img
+                src="/profile icon.jpg"
+                alt="Profile"
+                className="h-full w-full object-cover"
+              />
+            </button>
+          </div>
+        </header>
 
         {/* Main content */}
-        <section className="grid min-w-0 flex-1 grid-cols-[1fr_340px] gap-5 py-0 pl-5 pr-0">
+        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] gap-0 divide-x divide-white/70 px-0 py-0">
           
           {/* Resume workspace */}
-          <div className="flex h-screen min-w-0 flex-col rounded-[0.5rem] border-y-0 border-white/35 bg-white/28 p-5 shadow-[0_25px_90px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
+          <div className="relative flex h-full min-w-0 flex-col">
             
-            {/* Header + toolbar */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between gap-4 rounded-full border border-white/50 bg-white/45 px-5 py-3 shadow-sm backdrop-blur-xl">
-                
-                {/* Left tools */}
-                <div className="flex items-center gap-2">
-                  <ToolButton
-                    icon={<RotateCcw size={17} />}
-                    label="Re-evaluate"
-                    onClick={reevaluateResume}
-                  />
-
-                  {previousState && (
-                    <ToolButton
-                      icon={<ArrowLeft size={17} />}
-                      label="Undo Changes"
-                      onClick={undoChanges}
-                    />
-                  )}
-
-                  <div className="mx-3 h-6 w-px bg-[#243026]/15" />
-
-                  <ToolButton
-                    icon={<ZoomOut size={17} />}
-                    label="Zoom out"
-                    onClick={zoomOut}
-                  />
-
-                  <span className="min-w-12 text-center text-xs font-black text-[#243026]/65">
-                    {Math.round(zoom * 100)}%
-                  </span>
-
-                  <ToolButton
-                    icon={<ZoomIn size={17} />}
-                    label="Zoom in"
-                    onClick={zoomIn}
-                  />
-                </div>
-
-                {/* Right actions */}
-                <div className="flex items-center gap-3">
-                  <input
-                    type="url"
-                    value={vacancyLink}
-                    onChange={(e) => setVacancyLink(e.target.value)}
-                    placeholder="Paste vacancy link (optional)"
-                    className="hidden w-56 rounded-full border border-[#243026]/20 bg-white/55 px-4 py-2 text-xs font-semibold text-[#243026] outline-none placeholder:text-[#243026]/35 focus:border-[#243026]/40 focus:bg-white/80 sm:block"
-                  />
-
+           {/* Top action row */}
+            <div className="mb-4 mt-4 flex items-center justify-center px-2">
+              <div className="flex items-center gap-2">
+                {!hasAnalyzed && !isLoading && (
                   <button
                     onClick={evaluateResume}
                     disabled={isLoading}
-                    className="rounded-full bg-[#243026] px-7 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.02] disabled:opacity-50"
+                    className="rounded-[1.2rem] bg-[#243026] px-12 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.01] disabled:opacity-50"
                   >
-                    {isLoading ? "Analyzing..." : "Analyze"}
+                    Click here to evaluate your resume
                   </button>
+                )}
 
+                {isLoading && (
                   <button
-                    onClick={downloadResume}
-                    className="flex items-center gap-2 rounded-full px-4 py-3 text-sm font-black text-[#243026] transition hover:bg-white/70"
+                    disabled
+                    className="relative overflow-hidden rounded-[1.2rem] bg-[#243026] px-30 py-3 text-sm text-sm font-black tracking-wide text-white shadow-lg transition hover:scale-[1.01] hover:border-white/60 disabled:opacity-50"
                   >
-                    Download
-                    <Download size={18} strokeWidth={2.4} />
+                    <span className="relative z-10 animate-pulse">
+                      Agent is analyzing your resume
+                    </span>
+                    <span className="absolute inset-0 -translate-x-full animate-[scan_1.4s_infinite] bg-gradient-to-r from-transparent via-white/35 to-transparent" />
                   </button>
-                </div>
+                )}
+
+                {hasAnalyzed && !isLoading && (
+                  <>
+                    <button
+                      onClick={undoChanges}
+                      disabled={!previousState}
+                      title="Undo"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40 disabled:opacity-30"
+                    >
+                      <ArrowLeft size={18} />
+                    </button>
+
+                    <button
+                      onClick={redoChanges}
+                      disabled={!redoState}
+                      title="Redo"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40 disabled:opacity-30"
+                    >
+                      <ArrowLeft size={18} className="rotate-180" />
+                    </button>
+
+                    <button
+                      onClick={downloadResumePDF}
+                      title="Download PDF"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40"
+                    >
+                      <Download size={18} />
+                    </button>
+                  </>
+                )}
               </div>
-
-              {/* Ready-to-evaluate prompt */}
-              {!isLoading && !atsScoreValue && resumeId && !errorMessage && (
-                <div className="mt-3 flex items-center gap-3 rounded-2xl border border-[#243026]/15 bg-white/55 px-4 py-2.5">
-                  <span className="flex h-2 w-2 shrink-0 rounded-full bg-green-500" />
-                  <p className="text-xs font-bold text-[#243026]/70">
-                    Resume loaded{resumeData?.name ? ` — ${resumeData.name}` : ""}. Click <span className="text-[#243026]">Analyze</span> to run the full AI pipeline and get rewrite suggestions.
-                  </p>
-                </div>
-              )}
-
-              {(statusMessage || errorMessage) && (
-                <div className="mt-3 space-y-2">
-                  {statusMessage && (
-                    <p className="rounded-2xl bg-white/55 px-4 py-2 text-xs font-bold text-[#243026]/65">
-                      {statusMessage}
-                    </p>
-                  )}
-
-                  {errorMessage && (
-                    <p className="rounded-2xl bg-red-100 px-4 py-2 text-xs font-bold text-red-700">
-                      {errorMessage}
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
 
+            {(statusMessage || errorMessage) && (
+              <div className="mb-4 px-2">
+                {statusMessage && (
+                  <p className="text-xs font-bold text-[#243026]/60">
+                    {statusMessage}
+                  </p>
+                )}
+
+                {errorMessage && (
+                  <p className="mt-2 text-xs font-bold text-red-600">
+                    {errorMessage}
+                  </p>
+                )}
+              </div>
+            )}
+
+            
+
             {/* One resume section only */}
-            <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto rounded-[1.4rem] bg-white/18 px-8 py-8 backdrop-blur-xl">
+            <div ref={scrollContainerRef} className="flex min-h-0 flex-1 items-start justify-center overflow-auto bg-transparent">
               <div
               id = "resume-a4"
                 style={{
                   transform: `scale(${zoom})`,
                   transformOrigin: "top center",
+                  fontFamily: 'Calibri, "Segoe UI", Arial, sans-serif',
+                  backgroundImage:
+                    "repeating-linear-gradient(transparent 0px, transparent calc(1123px - 3px), #d1d5db calc(1123px - 3px), #d1d5db calc(1123px - 1px), #f3f4f6 calc(1123px - 1px), #f3f4f6 1123px)",
+                  backgroundSize: "100% 1123px",
                 }}
-                className="min-h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)] print:shadow-none"
+                className="min-h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)]"
               >
                 <ResumeDocument
                   resumeData={resumeData}
@@ -949,21 +1156,50 @@ export default function EditResumePage() {
                 />
               </div>
             </div>
+
+            {/* Floating document controls */}
+            <div className="fixed bottom-6 left-[30%] z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/15 bg-[#243026]/75 px-4 py-0.2 text-white shadow-xl backdrop-blur-xl">
+              <span className="text-xs font-bold">Page</span>
+
+              <span className="text-sm font-black">{currentPage} / {totalPages}</span>
+
+              <div className="mx-1 h-5 w-px bg-white/25" />
+
+              <button
+                onClick={zoomOut}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 transition hover:bg-white/20"
+                title="Zoom out"
+              >
+                <ZoomOut size={15} />
+              </button>
+
+              <span className="min-w-10 text-center text-xs font-black">
+                {Math.round(zoom * 100)}%
+              </span>
+
+              <button
+                onClick={zoomIn}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 transition hover:bg-white/20"
+                title="Zoom in"
+              >
+                <ZoomIn size={15} />
+              </button>
+            </div>
           </div>
 
           {/* Right evaluation panel */}
-          <aside className="flex h-screen min-h-0 flex-col rounded-l-[0.5rem] border-y-0 border-r-0 border-white/45 bg-white/35 shadow-[0_24px_80px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
+          <aside className="flex h-full min-h-0 flex-col">
 
             {/* Tab bar */}
-            <div className="flex shrink-0 gap-1 border-b border-[#243026]/10 px-4 pt-4">
+            <div className="flex shrink-0 gap-1 px-4 pt-4">
               {["analysis", "rewrites", "cover-letter", "profile", "find-jobs"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`rounded-t-xl px-3 py-2 text-xs font-black transition ${
+                  className={`rounded-xl px-3 py-2 text-xs font-black transition ${
                     activeTab === tab
                       ? "bg-white/70 text-[#243026] shadow-sm"
-                      : "text-[#243026]/45 hover:text-[#243026]"
+                      : "text-white/88 hover:text-[#243026]"
                   }`}
                 >
                   {tab === "analysis" ? "Analysis"
@@ -981,122 +1217,116 @@ export default function EditResumePage() {
               {/* ── Analysis tab ── */}
               {activeTab === "analysis" && (
                 <>
-                  <section className="border-b border-[#243026]/10 pb-5">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                          Resume Level
+                  <section className={`border-b ${UI.lineStrong} pb-5`}>
+                    <div className="rounded-[1.6rem] border border-white/16 bg-white/08 px-4 py-4 backdrop-blur-xl">
+                      {/* Top row */}
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-xl font-black text-[#243026]">
+                            Resume Level
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={evaluateResume}
+                          disabled={isLoading}
+                          title="Re-evaluate — runs full pipeline again"
+                          className="rounded-2xl bg-white/18 p-3 text-white transition hover:scale-105 hover:bg-white/28 disabled:opacity-50"
+                        >
+                          <RefreshCcw size={22} />
+                        </button>
+                      </div>
+
+                      {/* Middle row */}
+                      <div className="mt-4 grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-4">
+                        <div className="rounded-[1.2rem] bg-white/06 px-4 py-4">
+                          <p className={UI.subheading}>ATS Score</p>
+                          <p className="mt-2 text-[3rem] font-black leading-none text-white">
+                            {atsScoreValue}%
+                          </p>
+                        </div>
+
+                        <div className="flex items-end justify-end rounded-[1.2rem] bg-white/04 px-4 py-4">
+                          <p className="text-right text-[2.2rem] font-black uppercase leading-none text-white">
+                            {resumeLevel}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Progress bar */}
+                      <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/28">
+                        <div
+                          className="h-full rounded-full bg-white/88"
+                          style={{ width: `${Math.max(0, Math.min(atsScoreValue, 100))}%` }}
+                        />
+                      </div>
+
+                      {/* Pills */}
+                      <div className="mt-5 grid grid-cols-3 gap-3">
+                        <LevelPill label="Beginner" active={resumeLevel === "Beginner"} />
+                        <LevelPill label="Intermediate" active={resumeLevel === "Intermediate"} />
+                        <LevelPill label="Advanced" active={resumeLevel === "Advanced"} />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-2 gap-3">
+                      <MetricBox title="Clarity" value={metrics.clarity} comment={metricComments.clarity} />
+                      <MetricBox title="Keyword" value={metrics.keywordFit} comment={metricComments.keywordFit} />
+                      <MetricBox title="Structure" value={metrics.structure} comment={metricComments.structure} />
+                      <MetricBox title="Impact" value={metrics.impact} comment={metricComments.impact} />
+                    </div>
+                  </section>
+                  
+                  <section className="py-5">
+                    <p className="text-xl font-black text-[#243026]">Job Link Summary</p>
+                    <p className={`mt-3 ${UI.bodyStrong}`}>{jobSummary}</p>
+
+                    {missingSkills.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-white/55 mb-2">
+                          Missing Keywords
                         </p>
-                        <h2 className="mt-2 text-3xl font-black text-[#243026]">
-                          {resumeLevel}
-                        </h2>
+                        <div className="flex flex-wrap gap-2">
+                          {missingSkills.map((skill, i) => (
+                            <span
+                              key={i}
+                              className="rounded-full border border-red-300/50 bg-red-100/20 px-3 py-1 text-[11px] font-bold text-white/90"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                      <div className="rounded-2xl bg-[#dfe9ff]/80 p-3 text-[#2f5fa8]">
-                        <Target size={22} />
-                      </div>
-                    </div>
-                    <div className="mt-5 grid grid-cols-3 gap-2">
-                      <LevelPill label="Beginner" active={resumeLevel === "Beginner"} />
-                      <LevelPill label="Intermediate" active={resumeLevel === "Intermediate"} />
-                      <LevelPill label="Advanced" active={resumeLevel === "Advanced"} />
-                    </div>
+                    )}
                   </section>
 
-                  <section className="border-b border-[#243026]/10 py-5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                          ATS Score
-                        </p>
-                        <h2 className="mt-2 text-4xl font-black">{atsScoreValue}%</h2>
-                      </div>
-                      <div className="rounded-2xl bg-white/50 p-3">
-                        <BarChart3 size={23} />
-                      </div>
-                    </div>
-                    <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/60">
-                      <div
-                        className="h-full rounded-full bg-[#243026]"
-                        style={{ width: `${Math.max(0, Math.min(atsScoreValue, 100))}%` }}
-                      />
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                      <MetricBox title="Clarity" value={metrics.clarity} />
-                      <MetricBox title="Keyword" value={metrics.keywordFit} />
-                      <MetricBox title="Structure" value={metrics.structure} />
-                      <MetricBox title="Impact" value={metrics.impact} />
-                    </div>
-                  </section>
-
-                  <section className="border-b border-[#243026]/10 py-5">
-                    <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
-                      Job Link Summary
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-[#243026]/65">{jobSummary}</p>
-                  </section>
-
-                  <section className="flex min-h-0 flex-1 flex-col py-5">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
+                  {backendSuggestions.filter(s => s.type === "Weakness").length > 0 && (
+                    <section className="border-t border-white/22 py-5">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/45">
                           AI Comments
                         </p>
-                        <h2 className="mt-1 text-xl font-black">Suggestions</h2>
                       </div>
-                      <div className="rounded-2xl bg-yellow-300/80 p-3 text-black">
-                        <Wand2 size={21} />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 overflow-auto pr-1">
-                      {suggestions.map((item) => (
-                        <button
-                          key={item.id}
-                          onClick={() => setActiveSuggestion(item.id)}
-                          className={`w-full rounded-[1.1rem] border px-4 py-3 text-left transition ${
-                            activeSuggestion === item.id
-                              ? "border-yellow-300 bg-yellow-100/85 shadow-[0_12px_30px_rgba(234,179,8,0.15)]"
-                              : "border-white/35 bg-white/25 hover:bg-white/50"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-black text-[#243026]">{item.title}</p>
-                              <p className="mt-1 text-[11px] font-bold text-[#243026]/45">
-                                {item.type} · {item.label}
-                              </p>
-                            </div>
-                            {activeSuggestion === item.id ? (
-                              <AlertTriangle size={16} className="shrink-0 text-yellow-700" />
-                            ) : (
-                              <ChevronRight size={16} className="shrink-0 text-[#243026]/40" />
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                      {suggestions.length === 0 && (
-                        <p className="rounded-2xl bg-white/35 px-4 py-4 text-sm text-[#243026]/50">
-                          Run Evaluate to see AI suggestions.
-                        </p>
-                      )}
-                    </div>
-                  </section>
-
-                  {currentSuggestion && (
-                    <section className="border-t border-[#243026]/10 pt-5">
-                      <div className="flex items-center gap-2">
-                        <Sparkles size={17} />
-                        <h3 className="text-sm font-black">{currentSuggestion.title}</h3>
-                      </div>
-                      <p className="mt-3 text-sm leading-6 text-[#243026]/65">
-                        {currentSuggestion.text}
+                      <p className="text-[11px] text-white/50 mb-4 leading-5">
+                        Based on: <span className="font-bold text-white/70">{jobSummary}</span>
                       </p>
-                      <button
-                        onClick={openSuggestionRewrite}
-                        className="mt-4 w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-xs font-bold text-white shadow-lg transition hover:scale-[1.01]"
-                      >
-                        Show Rewrite Suggestion
-                      </button>
+
+                      <div className="rounded-[1.4rem] border border-white/30 bg-white/28 px-4 py-4 backdrop-blur-sm">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Sparkles size={13} className="text-[#243026]/55" />
+                          <p className="text-sm font-black text-[#243026]">Weaknesses</p>
+                        </div>
+                        <ul className="flex flex-col gap-2">
+                          {backendSuggestions
+                            .filter(s => s.type === "Weakness")
+                            .map(s => (
+                              <li key={s.id} className="flex items-start gap-2 text-sm leading-[1.65] text-[#243026]/75">
+                                <span className="mt-1.5 shrink-0 h-1.5 w-1.5 rounded-full bg-[#243026]/40" />
+                                {s.text}
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
                     </section>
                   )}
                 </>
@@ -1167,7 +1397,7 @@ export default function EditResumePage() {
 
                         {s.status !== "pending" && (
                           <p className={`mt-2 text-xs font-black uppercase tracking-wide ${
-                            s.status === "approved" ? "text-green-600" : "text-red-500"
+                            s.status === "approved" ? "text-green-600" : "text-red-700"
                           }`}>
                             {s.status}
                           </p>
@@ -1197,7 +1427,7 @@ export default function EditResumePage() {
                   </button>
 
                   {!applicationId && (
-                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                    <p className="rounded-2xl px-4 py-3 text-center text-xs font-bold text-red-700">
                       Run Evaluate first to enable cover letter generation.
                     </p>
                   )}
@@ -1211,20 +1441,10 @@ export default function EditResumePage() {
                         className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 p-4 text-sm leading-6 text-[#243026] outline-none focus:border-[#243026]/30 focus:bg-white/70"
                       />
                       <button
-                        onClick={() => {
-                          const blob = new Blob([coverLetterText], { type: "text/plain" });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = "cover-letter.txt";
-                          document.body.appendChild(a);
-                          a.click();
-                          a.remove();
-                          URL.revokeObjectURL(url);
-                        }}
+                        onClick={downloadCoverLetterPDF}
                         className="w-full rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80"
                       >
-                        Download as .txt
+                        Download as PDF
                       </button>
                     </>
                   )}
@@ -1241,7 +1461,7 @@ export default function EditResumePage() {
                     </div>
                   </div>
 
-                  <p className="text-xs text-[#243026]/55 leading-5">
+                  <p className="text-xs text-white/50 leading-5">
                     AI analyzes your full resume and builds a career intelligence profile — target roles, seniority, skills, and ready-to-use job search queries.
                   </p>
 
@@ -1360,7 +1580,7 @@ export default function EditResumePage() {
                     </div>
                   </div>
 
-                  <p className="text-xs text-[#243026]/55 leading-5">
+                  <p className="text-xs text-white/50 leading-5">
                     AI searches the web for real job postings that match your resume. Click any result to evaluate your fit.
                   </p>
 
@@ -1399,7 +1619,7 @@ export default function EditResumePage() {
                   </button>
 
                   {!resumeId && (
-                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-[#243026]/50">
+                    <p className="rounded-2xl bg-white/35 px-4 py-3 text-center text-xs text-red-700">
                       Upload your resume on the home page first.
                     </p>
                   )}
@@ -1462,6 +1682,54 @@ export default function EditResumePage() {
         </section>
       </div>
 
+      {/* Profile dropdown — at root level to escape overflow-hidden clipping */}
+      {profileOpen && (
+        <>
+          <div className="fixed inset-0 z-[1999]" onClick={() => setProfileOpen(false)} />
+          <div className="fixed right-4 top-14 z-[2000] w-72 rounded-[1.4rem] border border-white/20 bg-[#243026] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
+            <div className="flex items-center justify-between">
+              <p className="text-lg font-semibold text-white">Profile</p>
+              <button
+                onClick={() => setProfileOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-lg text-white/88 transition hover:bg-white/10 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+              <img
+                src="/profile icon.jpg"
+                alt="Profile"
+                className="h-11 w-11 rounded-full object-cover"
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-white/88">User ID</p>
+                <p className="truncate text-base font-semibold text-white">
+                  {userId || "No user ID"}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                localStorage.removeItem("reeracifyUserId");
+                localStorage.removeItem("reeracifyResumeId");
+                localStorage.removeItem("reeracifyApplicationId");
+                localStorage.removeItem("reeracifyVacancyLink");
+                localStorage.removeItem("reeracifyParsedResume");
+                localStorage.removeItem("reeracifyCandidateProfile");
+                setProfileOpen(false);
+                router.push("/");
+              }}
+              className="mt-5 w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#1f2420] shadow-sm transition hover:bg-white/90 active:scale-[0.98]"
+            >
+              Log Out
+            </button>
+          </div>
+        </>
+      )}
+
     </main>
   );
 }
@@ -1502,10 +1770,10 @@ function ToolButton({ icon, label, onClick }) {
 function LevelPill({ label, active }) {
   return (
     <div
-      className={`rounded-full px-3 py-2 text-center text-[11px] font-black ${
+      className={`rounded-full px-3 py-2 text-center text-xs font-black ${
         active
-          ? "bg-[#243026] text-white shadow-lg"
-          : "bg-white/45 text-[#243026]/55"
+          ? "bg-white text-[#1f2420] shadow-lg"
+          : "bg-white/25 text-white/88"
       }`}
     >
       {label}
@@ -1513,11 +1781,14 @@ function LevelPill({ label, active }) {
   );
 }
 
-function MetricBox({ title, value }) {
+function MetricBox({ title, value, comment }) {
   return (
-    <div className="rounded-[1.1rem] border border-white/45 bg-white/35 p-3">
-      <p className="text-[11px] font-bold text-[#243026]/50">{title}</p>
-      <p className="mt-1 text-lg font-black text-[#243026]">{value}</p>
+    <div className="rounded-[1.1rem] border border-white/35 bg-white/20 p-3 backdrop-blur-xl flex flex-col gap-1">
+      <p className="text-sm font-black text-white/88">{title}</p>
+      <p className="text-3xl font-black text-white">{value}</p>
+      {comment && (
+        <p className="mt-1 text-[11px] leading-[1.5] text-white/65">{comment}</p>
+      )}
     </div>
   );
 }
@@ -1540,6 +1811,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     const t = text.trim();
     for (const [orig, rw] of rewriteMap) {
       if (t === orig || t.includes(orig) || orig.includes(t)) return rw;
+      // After approval the resume text becomes suggested_text — match that too
+      if (rw.status === "approved") {
+        const sug = (rw.suggested_text || "").trim();
+        if (sug && (t === sug || t.includes(sug) || sug.includes(t))) return rw;
+      }
     }
     return null;
   }
@@ -1553,24 +1829,33 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
     const isActive = rw.id === activeRewriteId;
 
+    const highlightClass =
+      isActive
+        ? "bg-yellow-200 outline outline-2 outline-yellow-400 rounded cursor-pointer"
+        : rw.status === "approved"
+        ? "bg-green-100 rounded"
+        : rw.status === "rejected"
+        ? "opacity-50 line-through"
+        : "bg-yellow-50 hover:bg-yellow-100 rounded cursor-pointer";
+
+    const handleClick = (e) => {
+      e.stopPropagation();
+      onRewriteClick?.(rw);
+    };
+
+    // Inject highlight directly onto the child element to avoid block-in-inline HTML
+    if (children) {
+      const child = React.Children.only(children);
+      return React.cloneElement(child, {
+        className: `${child.props.className ?? ""} ${highlightClass}`,
+        onClick: handleClick,
+        title: "Click to view rewrite suggestion",
+      });
+    }
+
     return (
-      <span
-        onClick={(e) => {
-          e.stopPropagation();
-          onRewriteClick?.(rw);
-        }}
-        title="Click to view rewrite suggestion"
-        className={`cursor-pointer rounded px-0.5 transition ${
-          isActive
-            ? "bg-yellow-300 shadow-[0_0_0_2px_rgba(250,204,21,0.7)]"
-            : rw.status === "approved"
-            ? "bg-green-200"
-            : rw.status === "rejected"
-            ? "line-through opacity-50"
-            : "bg-yellow-100 hover:bg-yellow-200"
-        }`}
-      >
-        {children || text}
+      <span onClick={handleClick} title="Click to view rewrite suggestion" className={highlightClass}>
+        {text}
       </span>
     );
   }
@@ -1636,7 +1921,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       </div>
 
       {pendingCount > 0 && (
-        <p className="mt-3 rounded-lg bg-yellow-50 px-3 py-1.5 text-[10px] font-bold text-yellow-700">
+        <p className="resume-rewrite-banner mt-3 rounded-lg bg-yellow-50 px-3 py-1.5 text-[10px] font-bold text-yellow-700 print:hidden">
           ✦ {pendingCount} rewrite suggestion{pendingCount > 1 ? "s" : ""} highlighted — click to review
         </p>
       )}
@@ -1712,7 +1997,23 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              {/* Description always shown as editable so user can add one even if empty */}
+              {/* Description paragraph — shown when present, rewritable */}
+              {(exp.description) && (
+                <RewritableBullet text={exp.description}>
+                  <Editable
+                    value={exp.description}
+                    onSave={upd ? (v) => {
+                      const newExp = experience.map((e, ei) =>
+                        ei === i ? { ...e, description: v } : e
+                      );
+                      upd({ experience: newExp });
+                    } : null}
+                    as="p"
+                    placeholder="Describe your role..."
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
               {(exp.bullets?.length
                 ? exp.bullets
                 : exp.responsibilities || []).length > 0 && (
@@ -1796,16 +2097,18 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              <Editable
-                value={proj.description || ""}
-                onSave={upd ? (v) => {
-                  const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
-                  upd({ projects: newProj });
-                } : null}
-                as="p"
-                placeholder="Describe this project..."
-                className="mt-1 text-gray-700"
-              />
+              <RewritableBullet text={proj.description || ""}>
+                <Editable
+                  value={proj.description || ""}
+                  onSave={upd ? (v) => {
+                    const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
+                    upd({ projects: newProj });
+                  } : null}
+                  as="p"
+                  placeholder="Describe this project..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
               {proj.contributions?.length > 0 && (
                 <ul className="mt-1 list-disc pl-5">
                   {proj.contributions.map((c, ci) => <li key={ci}>{c}</li>)}
@@ -1949,6 +2252,22 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                 </div>
 
               </div>
+
+              {item.description && (
+                <RewritableBullet text={item.description}>
+                  <Editable
+                    value={item.description}
+                    onSave={upd ? (v) => {
+                      const newLeadership = leadership.map((l, li) =>
+                        li === i ? { ...l, description: v } : l
+                      );
+                      upd({ leadership: newLeadership });
+                    } : null}
+                    as="p"
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
 
               {(item.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc pl-5">
@@ -2148,20 +2467,22 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       className="text-gray-600"
                     />
                   )}
-                  <RewritableBullet text={edu.field_of_study || ""}>
-                    <Editable
-                      value={edu.field_of_study || ""}
-                      onSave={upd ? (v) => {
-                        const newEdu = education.map((e, ei) =>
-                          ei === i ? { ...e, field_of_study: v } : e
-                        );
-                        upd({ education: newEdu });
-                      } : null}
-                      as="p"
-                      placeholder="Field of Study"
-                      className="text-gray-600"
-                    />
-                  </RewritableBullet>
+                  {(edu.field || edu.field_of_study) && (
+                    <RewritableBullet text={edu.field || edu.field_of_study || ""}>
+                      <Editable
+                        value={edu.field || edu.field_of_study || ""}
+                        onSave={upd ? (v) => {
+                          const newEdu = education.map((e, ei) =>
+                            ei === i ? { ...e, field: v } : e
+                          );
+                          upd({ education: newEdu });
+                        } : null}
+                        as="p"
+                        placeholder="Field of Study"
+                        className="text-gray-600"
+                      />
+                    </RewritableBullet>
+                  )}
                   {edu.focus && (
                     <p className="mt-1 text-gray-700">
                       {Array.isArray(edu.focus) ? edu.focus.join(", ") : edu.focus}
@@ -2222,59 +2543,67 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              <p className="text-gray-600">
-                GPA:
-                <Editable
-                  value={edu.gpa || ""}
-                  onSave={upd ? (v) => {
-                    const newEdu = education.map((e, ei) =>
-                      ei === i ? { ...e, gpa: v } : e
-                    );
-                    upd({ education: newEdu });
-                  } : null}
-                  placeholder="3.86/4.00"
-                />
-              </p>
-              <RewritableBullet text={(edu.coursework || []).join(", ")}>
-                <Editable
-                  value={(edu.coursework || []).join(", ")}
-                  onSave={upd ? (v) => {
-                    const newEdu = education.map((e, ei) =>
-                      ei === i
-                        ? {
-                            ...e,
-                            coursework: v
-                              .split(",")
-                              .map((x) => x.trim())
-                              .filter(Boolean)
-                          }
-                        : e
-                    );
+              {edu.gpa && (
+                <p className="text-gray-600">
+                  GPA:&nbsp;
+                  <Editable
+                    value={edu.gpa || ""}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i ? { ...e, gpa: v } : e
+                      );
+                      upd({ education: newEdu });
+                    } : null}
+                    as="span"
+                    placeholder="3.86/4.00"
+                    className="text-gray-600"
+                  />
+                </p>
+              )}
+              {(edu.coursework?.length > 0) && (
+                <RewritableBullet text={(edu.coursework || []).join(", ")}>
+                  <Editable
+                    value={(edu.coursework || []).join(", ")}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i
+                          ? {
+                              ...e,
+                              coursework: v
+                                .split(",")
+                                .map((x) => x.trim())
+                                .filter(Boolean)
+                            }
+                          : e
+                      );
 
-                    upd({ education: newEdu });
-                  } : null}
-                  as="p"
-                  placeholder="Relevant Coursework (AI, Machine Learning, Databases)"
-                  className="mt-1 text-gray-700"
-                />
-              </RewritableBullet>
-              <RewritableBullet text={edu.description || ""}>
-                <Editable
-                  value={edu.description || ""}
-                  onSave={upd ? (v) => {
-                    const newEdu = education.map((e, ei) =>
-                      ei === i
-                        ? { ...e, description: v }
-                        : e
-                    );
+                      upd({ education: newEdu });
+                    } : null}
+                    as="p"
+                    placeholder="Relevant Coursework (AI, Machine Learning, Databases)"
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
+              {edu.description && (
+                <RewritableBullet text={edu.description || ""}>
+                  <Editable
+                    value={edu.description || ""}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i
+                          ? { ...e, description: v }
+                          : e
+                      );
 
-                    upd({ education: newEdu });
-                  } : null}
-                  as="p"
-                  placeholder="Education Description"
-                  className="mt-1 text-gray-700"
-                />
-              </RewritableBullet>
+                      upd({ education: newEdu });
+                    } : null}
+                    as="p"
+                    placeholder="Education Description"
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
             </div>
           ))}
         </section>
