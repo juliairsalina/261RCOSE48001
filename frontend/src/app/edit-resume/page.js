@@ -1122,9 +1122,10 @@ export default function EditResumePage() {
                         </div>
 
                         <button
-                          onClick={localReevaluateChanges}
-                          title="Re-evaluate edited resume"
-                          className="rounded-2xl bg-white/18 p-3 text-white transition hover:scale-105 hover:bg-white/28"
+                          onClick={evaluateResume}
+                          disabled={isLoading}
+                          title="Re-evaluate — runs full pipeline again"
+                          className="rounded-2xl bg-white/18 p-3 text-white transition hover:scale-105 hover:bg-white/28 disabled:opacity-50"
                         >
                           <RefreshCcw size={22} />
                         </button>
