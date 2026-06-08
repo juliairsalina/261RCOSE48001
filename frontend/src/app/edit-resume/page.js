@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  Download,
   ZoomIn,
   ZoomOut,
   RotateCcw,
@@ -789,6 +788,102 @@ export default function EditResumePage() {
     };
   }
 
+  function downloadResumePDF() {
+    const resumeEl = document.getElementById("resume-a4");
+    if (!resumeEl) return;
+
+    // Clone the resume element and strip interactive/highlight artifacts
+    const clone = resumeEl.cloneNode(true);
+    clone.style.transform = "none";
+    clone.style.boxShadow = "none";
+    clone.style.borderRadius = "0";
+    clone.style.padding = "0";
+    clone.style.margin = "0";
+    clone.style.width = "210mm";
+    clone.style.minHeight = "0";
+    clone.style.position = "static";
+
+    // Strip highlight spans (yellow/green/red rewrite backgrounds)
+    clone.querySelectorAll("span").forEach((el) => {
+      el.style.backgroundColor = "transparent";
+      el.style.boxShadow = "none";
+      el.style.outline = "none";
+    });
+
+    // Remove any pending-rewrite banners
+    clone.querySelectorAll("[class*='yellow']").forEach((el) => el.remove());
+
+    // Make contenteditable fields look like plain text
+    clone.querySelectorAll("[contenteditable]").forEach((el) => {
+      el.removeAttribute("contenteditable");
+      el.style.outline = "none";
+      el.style.background = "transparent";
+    });
+
+    // Collect page stylesheets
+    const styleLinks = Array.from(
+      document.querySelectorAll('link[rel="stylesheet"]')
+    )
+      .map((l) => `<link rel="stylesheet" href="${l.href}" />`)
+      .join("\n");
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+
+    w.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+${styleLinks}
+<style>
+  @page { size: A4; margin: 12mm 16mm; }
+  html, body { margin: 0; padding: 0; background: white; }
+  body { font-family: Calibri, "Segoe UI", Arial, sans-serif !important; }
+</style>
+</head>
+<body>${clone.outerHTML}</body>
+</html>`);
+    w.document.close();
+    setTimeout(() => { w.print(); w.close(); }, 800);
+  }
+
+  function downloadCoverLetterPDF() {
+    if (!coverLetterText) return;
+
+    // Format plain text into paragraphs
+    const paragraphs = coverLetterText
+      .split(/\n\n+/)
+      .map((p) =>
+        `<p style="margin:0 0 14pt 0;line-height:1.6;">${p.replace(/\n/g, "<br/>")}</p>`
+      )
+      .join("\n");
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+
+    w.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @page { size: A4; margin: 25mm 22mm; }
+  html, body {
+    margin: 0; padding: 0; background: white;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 11.5pt;
+    color: #1a1a1a;
+  }
+  .cover-letter { max-width: 170mm; }
+</style>
+</head>
+<body>
+<div class="cover-letter">${paragraphs}</div>
+</body>
+</html>`);
+    w.document.close();
+    setTimeout(() => { w.print(); w.close(); }, 600);
+  }
+
   async function downloadResume() {
     if (!applicationId) {
       setErrorMessage("Run Evaluate first to generate an application before downloading.");
@@ -1039,15 +1134,7 @@ export default function EditResumePage() {
                     </button>
 
                     <button
-                      onClick={downloadResume}
-                      title="Download DOCX"
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40"
-                    >
-                      <Download size={18} />
-                    </button>
-
-                    <button
-                      onClick={() => window.print()}
+                      onClick={downloadResumePDF}
                       title="Download PDF"
                       className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40"
                     >
@@ -1354,20 +1441,10 @@ export default function EditResumePage() {
                         className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 p-4 text-sm leading-6 text-[#243026] outline-none focus:border-[#243026]/30 focus:bg-white/70"
                       />
                       <button
-                        onClick={() => {
-                          const blob = new Blob([coverLetterText], { type: "text/plain" });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = "cover-letter.txt";
-                          document.body.appendChild(a);
-                          a.click();
-                          a.remove();
-                          URL.revokeObjectURL(url);
-                        }}
+                        onClick={downloadCoverLetterPDF}
                         className="w-full rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80"
                       >
-                        Download as .txt
+                        Download as PDF
                       </button>
                     </>
                   )}
