@@ -1198,12 +1198,6 @@ export default function EditResumePage() {
                       </div>
                     </div>
 
-                    <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/60">
-                      <div
-                        className="h-full rounded-full bg-[#243026]"
-                        style={{ width: `${Math.max(0, Math.min(atsScoreValue, 100))}%` }}
-                      />
-                    </div>
                     <div className="mt-4 grid grid-cols-2 gap-2">
                       <MetricBox title="Clarity" value={metrics.clarity} hint={metricHints.clarity} />
                       <MetricBox title="Keyword" value={metrics.keywordFit} hint={metricHints.keywordFit} />
