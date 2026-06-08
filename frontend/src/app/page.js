@@ -39,6 +39,7 @@ export default function HomePage() {
   const [user, setUser] = useState(null);
   const [authMode, setAuthMode] = useState("login");
 
+  const [showProfile, setShowProfile] = useState(false);
   const [resumeFile, setResumeFile] = useState(null);
   const [vacancyLink, setVacancyLink] = useState("");
   const [loginMessage, setLoginMessage] = useState("");
@@ -56,6 +57,7 @@ useEffect(() => {
 
     setUser(user);
     setIsLoggedIn(!!user);
+    if (!user) setShowLogin(true);
     setMounted(true);
   };
 
@@ -242,22 +244,59 @@ useEffect(() => {
         </button>
 
         {/* Right Buttons */}
-        <div className="flex items-center gap-3">
+        <div className="relative flex items-center gap-3">
           {isLoggedIn ? (
-            <button className="flex items-center gap-2 rounded-full border border-white/25 bg-white/18 px-5 py-2 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:bg-white/28">
-              <UserCircle size={18} />
-              Profile
-            </button>
+            <>
+              <button
+                onClick={() => setShowProfile((p) => !p)}
+                className="flex items-center gap-2 rounded-full border border-white/25 bg-white/18 px-5 py-2 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:bg-white/28"
+              >
+                <UserCircle size={18} />
+                Profile
+              </button>
+
+              {showProfile && (
+                <div
+                  className="absolute right-0 top-12 z-[2000] w-72 rounded-[1.4rem] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
+                  style={{
+                    background: "linear-gradient(160deg,rgba(80,100,88,0.92) 0%,rgba(40,58,46,0.96) 100%)",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    backdropFilter: "blur(32px)",
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-base font-black text-white">My Account</p>
+                    <button
+                      onClick={() => setShowProfile(false)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded-[1rem] border border-white/15 bg-white/10 px-4 py-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">Signed in as</p>
+                    <p className="mt-0.5 truncate text-sm font-semibold text-white">
+                      {user?.email || "—"}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => { setShowProfile(false); handleLogout(); }}
+                    className="mt-4 w-full rounded-[1rem] bg-white px-4 py-2.5 text-sm font-black text-[#1e2e23] shadow-sm transition hover:bg-white/92"
+                  >
+                    Log Out
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <button
-              onClick={() => {
-                setAuthMode("login");
-                setLoginMessage("");
-                setShowLogin(true);
-              }}
-                className="px-2 py-2 text-sm font-bold text-white underline decoration-white/45 underline-offset-8 transition hover:text-white/80 hover:decoration-white"
+              onClick={() => { setAuthMode("login"); setLoginMessage(""); setShowLogin(true); }}
+              className="flex items-center gap-2 rounded-full border border-white/25 bg-white/18 px-5 py-2 text-sm font-semibold text-white shadow-xl backdrop-blur-2xl transition hover:bg-white/28"
             >
-              ➜] Sign In 
+              <UserCircle size={18} />
+              Sign In
             </button>
           )}
 
@@ -341,7 +380,10 @@ useEffect(() => {
             />
 
             <button
-              onClick={handleContinue}
+              onClick={() => {
+                if (!isLoggedIn) { setAuthMode("login"); setLoginMessage(""); setShowLogin(true); return; }
+                handleContinue();
+              }}
               disabled={uploading || !resumeFile}
               className="flex h-9 w-11 shrink-0 items-center justify-center rounded-full bg-[#243026] text-white transition hover:scale-105 disabled:cursor-not-allowed"
             >
@@ -413,7 +455,7 @@ useEffect(() => {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-md"
           style={{ backgroundColor: "rgba(20,30,25,0.60)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowLogin(false); }}
+          onClick={(e) => { if (e.target === e.currentTarget && isLoggedIn) setShowLogin(false); }}
         >
           <div
             className="relative w-full max-w-[420px] rounded-[2rem] p-8 text-white shadow-[0_32px_80px_rgba(0,0,0,0.45)]"
@@ -424,13 +466,15 @@ useEffect(() => {
               backdropFilter: "blur(32px)",
             }}
           >
-            {/* Close */}
-            <button
-              onClick={() => setShowLogin(false)}
-              className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full bg-white/18 text-white transition hover:bg-white/28"
-            >
-              <X size={17} />
-            </button>
+            {/* Close — only shown when user is already logged in (manually opened) */}
+            {isLoggedIn && (
+              <button
+                onClick={() => setShowLogin(false)}
+                className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full bg-white/18 text-white transition hover:bg-white/28"
+              >
+                <X size={17} />
+              </button>
+            )}
 
             <h2 className="text-[2rem] font-black leading-tight tracking-tight">
               {authMode === "login" ? "Log In" : "Sign Up"}
