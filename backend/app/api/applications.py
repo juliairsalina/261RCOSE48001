@@ -27,6 +27,11 @@ class GenericUserRequest(BaseModel):
     user_id: str
 
 
+class ReevaluateRequest(BaseModel):
+    user_id: str
+    resume_json: dict | None = None  # current live resume from frontend; overrides DB version
+
+
 class ExportResumeRequest(BaseModel):
     user_id: str
     resume_json: dict | None = None  # current live resume from frontend; overrides DB version
@@ -469,6 +474,108 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
 
         except Exception as exc:
             logger.exception("Analysis pipeline failed: %s", exc)
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/{application_id}/reevaluate")
+async def reevaluate_application(application_id: str, request: ReevaluateRequest) -> StreamingResponse:
+    """Re-evaluate ATS score only, using the current resume state sent from the frontend.
+
+    Reuses the cached job JSON and RAG context from the original analysis run —
+    only the ATS evaluator node is executed.  Rewrites are NOT regenerated.
+
+    Streams SSE identical in shape to /analyze:
+      {"step": "..."}         — progress
+      {"done": true, "result": {...}}  — final payload (contains only "ats" key)
+      {"error": "..."}        — on failure
+    """
+    db = supabase_client.get_client()
+
+    try:
+        app_result = (
+            db.table("applications")
+            .select("id, user_id, resume_id, job_post_id")
+            .eq("id", application_id)
+            .single()
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Application not found: {exc}")
+
+    if not app_result.data:
+        raise HTTPException(status_code=404, detail="Application not found.")
+
+    app_row = app_result.data
+    resume_id = app_row["resume_id"]
+    job_post_id = app_row["job_post_id"]
+
+    # Use resume JSON from frontend (reflects approved rewrites + manual edits).
+    # Fall back to DB parsed_json only when the frontend sends nothing.
+    resume_json: dict = request.resume_json or {}
+    if not resume_json:
+        resume_json = _load_resume_json(db, resume_id)
+    if not resume_json:
+        raw = db.table("resumes").select("raw_text").eq("id", resume_id).single().execute()
+        raw_text = (raw.data or {}).get("raw_text", "") or ""
+        resume_json = {"raw_text": raw_text, "name": "", "skills": [], "work_experience": [], "projects": []}
+
+    job_json = _load_job_json(db, job_post_id)
+
+    # Reuse the RAG context stored from the original analysis — no need to re-embed.
+    ctx_result = (
+        db.table("retrieved_contexts")
+        .select("retrieved_text")
+        .eq("application_id", application_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    retrieved_context: list = []
+    if ctx_result.data:
+        retrieved_context = ctx_result.data[0].get("retrieved_text") or []
+
+    state = _build_initial_state(request.user_id, resume_id, job_post_id, application_id)
+    state["resume_json"] = resume_json
+    state["job_json"] = job_json
+    state["retrieved_context"] = retrieved_context
+
+    async def event_stream():
+        try:
+            logger.info("Re-evaluation started — application_id=%s", application_id)
+            yield f"data: {json.dumps({'step': '[STATUS] Re-evaluating resume against the job...'})}\n\n"
+
+            updated_state = await evaluate_ats_node(state)
+
+            ats = updated_state.get("ats_result") or {}
+            score = ats.get("score", 0)
+
+            result = {
+                "application_id": application_id,
+                "ats": {
+                    "score": score,
+                    "rank": ats.get("rank", ""),
+                    "matched_skills": ats.get("matched_skills", []),
+                    "missing_skills": ats.get("missing_skills", []),
+                    "strengths": ats.get("strengths", []),
+                    "weaknesses": ats.get("weaknesses", []),
+                    "improvement_priority": ats.get("improvement_priority", []),
+                    "evidence": [
+                        {"claim": e.get("claim", ""), "resume_evidence": e.get("resume_evidence", "")}
+                        for e in ats.get("evidence", [])
+                    ],
+                },
+            }
+            logger.info("Re-evaluation done — application_id=%s, ats_score=%s", application_id, score)
+            yield f"data: {json.dumps({'done': True, 'result': result})}\n\n"
+
+        except Exception as exc:
+            logger.exception("Re-evaluation failed: %s", exc)
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
     return StreamingResponse(

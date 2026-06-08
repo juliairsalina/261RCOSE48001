@@ -524,10 +524,6 @@ export default function EditResumePage() {
     }
   }
 
-  async function reevaluateResume() {
-    await evaluateResume();
-  }
-
   async function approveRewrite(suggestionId) {
     saveSnapshot();
     const rewrite = rewriteList.find((s) => s.id === suggestionId);
@@ -822,78 +818,115 @@ export default function EditResumePage() {
     setTimeout(() => window.print(), 50);
   }
 
-  //Re-evaluate button in ATS score section
-  function localReevaluateChanges() {
-    saveSnapshot();
+  // Apply ATS-only result from the /reevaluate endpoint.
+  // Does NOT touch rewriteList — existing suggestions are preserved.
+  function applyReEvaluationResult(ats) {
+    const score = ats.score || 0;
+    setAtsScoreValue(score);
+    setResumeLevel(getRankLabel(ats.rank));
 
-    const skills = flattenSkills(resumeData.skills || []);
-    const experience = resumeData.experience || [];
-    const projects = resumeData.projects || [];
-    const education = resumeData.education || [];
-
-    const summaryText = resumeData.summary || "";
-    const bulletTexts = [
-      ...experience.flatMap((e) => e.bullets || e.responsibilities || []),
-      ...projects.flatMap((p) => p.bullets || []),
-    ];
-
-    const totalBullets = bulletTexts.length;
-    const strongBullets = bulletTexts.filter((b) =>
-      /\d+|%|improved|increased|reduced|built|developed|designed|implemented|optimized|created|managed|led/i.test(b)
-    ).length;
-
-    const hasBasicInfo =
-      resumeData.name && resumeData.email && resumeData.phone;
-
-    const structureScore = Math.round(
-      [
-        resumeData.summary ? 20 : 0,
-        skills.length > 0 ? 20 : 0,
-        experience.length > 0 ? 25 : 0,
-        education.length > 0 ? 20 : 0,
-        projects.length > 0 ? 15 : 0,
-      ].reduce((a, b) => a + b, 0)
-    );
-
-    const clarityScore = Math.min(
-      100,
-      Math.round(
-        (summaryText.length > 40 ? 35 : 15) +
-        (hasBasicInfo ? 25 : 10) +
-        (totalBullets > 0 ? 25 : 10) +
-        (skills.length >= 5 ? 15 : skills.length * 3)
-      )
-    );
-
-    const impactScore =
-      totalBullets === 0
-        ? 0
-        : Math.round((strongBullets / totalBullets) * 100);
-
-    const keywordScore = Math.min(100, skills.length * 10);
-
-    const newScore = Math.round(
-      clarityScore * 0.25 +
-      keywordScore * 0.25 +
-      structureScore * 0.25 +
-      impactScore * 0.25
-    );
+    const matched = ats.matched_skills?.length || 0;
+    const missing = ats.missing_skills?.length || 0;
+    const total = matched + missing || 1;
 
     setMetrics({
-      clarity: clarityScore,
-      keywordFit: keywordScore,
-      structure: structureScore,
-      impact: impactScore,
+      clarity: Math.max(0, 100 - (ats.weaknesses?.length || 0) * 15),
+      keywordFit: Math.round((matched / total) * 100),
+      structure: score,
+      impact: Math.min(100, (ats.strengths?.length || 0) * 20),
     });
 
-    setAtsScoreValue(newScore);
+    setMetricHints({
+      clarity: ats.weaknesses?.[0] || (ats.weaknesses?.length === 0 ? "No major clarity issues detected." : ""),
+      keywordFit: missing > 0
+        ? `Missing: ${(ats.missing_skills || []).slice(0, 3).join(", ")}${missing > 3 ? ` +${missing - 3} more` : ""}.`
+        : matched > 0 ? `All key skills matched (${matched} found).` : "",
+      structure: ats.improvement_priority?.[0] || (score >= 80 ? "Strong overall structure." : ""),
+      impact: ats.strengths?.[0] || (ats.strengths?.length === 0 ? "Add more measurable outcomes to bullet points." : ""),
+    });
 
-    if (newScore >= 80) setResumeLevel("Advanced");
-    else if (newScore >= 55) setResumeLevel("Intermediate");
-    else setResumeLevel("Beginner");
+    const atsSuggestions = [
+      ...(ats.weaknesses || []).map((w, i) => ({
+        id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
+        text: w, suggestion: w,
+      })),
+      ...(ats.missing_skills || []).map((s, i) => ({
+        id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
+        text: `"${s}" is required but not found in your resume.`,
+        suggestion: `Add "${s}" to your skills or experience section.`,
+      })),
+      ...(ats.improvement_priority || []).map((p, i) => ({
+        id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
+        text: p, suggestion: p,
+      })),
+    ];
+    setBackendSuggestions(atsSuggestions);
+    if (atsSuggestions.length > 0) setActiveSuggestion(atsSuggestions[0].id);
 
-    setStatusMessage("Re-evaluated based on your latest resume edits.");
+    setIsLoading(false);
+    setStatusMessage(`Re-evaluated — ATS score: ${score}/100`);
     setErrorMessage("");
+  }
+
+  // ↻ Re-evaluate: calls the backend ATS evaluator with the current resume state.
+  // Reuses cached job JSON and RAG context — only the scoring step is re-run.
+  // Existing rewrite suggestions are preserved.
+  async function reevaluateResume() {
+    if (!applicationId) {
+      // No prior analysis session — run full evaluate instead.
+      await evaluateResume();
+      return;
+    }
+
+    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+
+    saveSnapshot();
+    setIsLoading(true);
+    setStatusMessage("Re-evaluating with latest resume...");
+    setErrorMessage("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/applications/${applicationId}/reevaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: uid,
+          resume_json: toResumeJson(resumeData),
+        }),
+      });
+
+      if (!response.ok) {
+        let detail = "";
+        try { detail = (await response.json()).detail || ""; } catch {}
+        throw new Error(`Re-evaluation failed ${response.status}${detail ? `: ${detail}` : ""}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary;
+        while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+          const msg = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          if (!msg.startsWith("data: ")) continue;
+          const data = JSON.parse(msg.slice(6));
+          if (data.step) setStatusMessage(data.step);
+          if (data.error) throw new Error(data.error);
+          if (data.done) {
+            applyReEvaluationResult(data.result.ats);
+            return;
+          }
+        }
+      }
+      throw new Error("Re-evaluation stream ended without a result.");
+    } catch (error) {
+      setIsLoading(false);
+      setErrorMessage(error.message);
+    }
   }
 
   return (
@@ -1156,7 +1189,7 @@ export default function EditResumePage() {
                         </div>
 
                         <button
-                          onClick={localReevaluateChanges}
+                          onClick={reevaluateResume}
                           title="Re-evaluate edited resume"
                           className="rounded-2xl bg-white/18 p-3 text-white transition hover:scale-105 hover:bg-white/28"
                         >
