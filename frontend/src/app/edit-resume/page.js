@@ -166,58 +166,51 @@ export default function EditResumePage() {
     impact: 0,
   });
 
-  function saveSnapshot() {
-    setPreviousState({
+  function captureSnapshot() {
+    return {
       resumeData: JSON.parse(JSON.stringify(resumeData)),
       atsScoreValue,
       resumeLevel,
       metrics: { ...metrics },
+      metricHints: { ...metricHints },
       backendSuggestions: [...backendSuggestions],
-      rewriteList: [...rewriteList],
-    });
+      rewriteList: rewriteList.map((r) => ({ ...r })),
+      analyzedWithJobLink,
+    };
+  }
+
+  function saveSnapshot() {
+    setPreviousState(captureSnapshot());
+    setRedoState(null);
+  }
+
+  function restoreSnapshot(snap) {
+    setResumeData(snap.resumeData);
+    setAtsScoreValue(snap.atsScoreValue);
+    setResumeLevel(snap.resumeLevel);
+    setMetrics(snap.metrics);
+    setMetricHints(snap.metricHints);
+    setBackendSuggestions(snap.backendSuggestions);
+    setRewriteList(snap.rewriteList);
+    setAnalyzedWithJobLink(snap.analyzedWithJobLink);
+    setActiveRewriteId(null);
   }
 
   function undoChanges() {
     if (!previousState) return;
-
-    setRedoState({
-      resumeData: JSON.parse(JSON.stringify(resumeData)),
-      atsScoreValue,
-      resumeLevel,
-      metrics: { ...metrics },
-      backendSuggestions: [...backendSuggestions],
-      rewriteList: [...rewriteList],
-    });
-
-    setResumeData(previousState.resumeData);
-    setAtsScoreValue(previousState.atsScoreValue);
-    setResumeLevel(previousState.resumeLevel);
-    setMetrics(previousState.metrics);
-    setBackendSuggestions(previousState.backendSuggestions);
-    setRewriteList(previousState.rewriteList);
+    setRedoState(captureSnapshot());
+    restoreSnapshot(previousState);
     setPreviousState(null);
+    setStatusMessage("Changes undone.");
   }
 
   function redoChanges() {
-  if (!redoState) return;
-
-  setPreviousState({
-    resumeData: JSON.parse(JSON.stringify(resumeData)),
-    atsScoreValue,
-    resumeLevel,
-    metrics: { ...metrics },
-    backendSuggestions: [...backendSuggestions],
-    rewriteList: [...rewriteList],
-  });
-
-  setResumeData(redoState.resumeData);
-  setAtsScoreValue(redoState.atsScoreValue);
-  setResumeLevel(redoState.resumeLevel);
-  setMetrics(redoState.metrics);
-  setBackendSuggestions(redoState.backendSuggestions);
-  setRewriteList(redoState.rewriteList);
-  setRedoState(null);
-}
+    if (!redoState) return;
+    setPreviousState(captureSnapshot());
+    restoreSnapshot(redoState);
+    setRedoState(null);
+    setStatusMessage("Changes reapplied.");
+  }
 
   const suggestions = backendSuggestions || [];
 
