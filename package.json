@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "@playwright/mcp": "^0.0.75"
+    "@playwright/mcp": "^0.0.75",
+    "@supabase/supabase-js": "^2.107.0"
   }
 }

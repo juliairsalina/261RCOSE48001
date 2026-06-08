@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+console.log("API_BASE_URL =", API_BASE_URL);
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
