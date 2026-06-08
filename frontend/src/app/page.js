@@ -20,10 +20,10 @@ import {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabase =
+  process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    : null;
 
 export default function HomePage() {
   const router = useRouter();
@@ -50,6 +50,12 @@ export default function HomePage() {
   const [showReviewModal, setShowReviewModal] = useState(false);
 
 useEffect(() => {
+  if (!supabase) {
+    setShowLogin(true);
+    setMounted(true);
+    return;
+  }
+
   const checkUser = async () => {
     const {
       data: { user },
