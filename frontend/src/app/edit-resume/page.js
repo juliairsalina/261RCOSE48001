@@ -1037,10 +1037,18 @@ export default function EditResumePage() {
 
                     <button
                       onClick={downloadResume}
-                      title="Download"
+                      title="Download DOCX"
                       className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40"
                     >
                       <Download size={18} />
+                    </button>
+
+                    <button
+                      onClick={() => window.print()}
+                      title="Download PDF"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40"
+                    >
+                      <FileText size={18} />
                     </button>
                   </>
                 )}
@@ -1817,7 +1825,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       </div>
 
       {pendingCount > 0 && (
-        <p className="mt-3 rounded-lg bg-yellow-50 px-3 py-1.5 text-[10px] font-bold text-yellow-700">
+        <p className="resume-rewrite-banner mt-3 rounded-lg bg-yellow-50 px-3 py-1.5 text-[10px] font-bold text-yellow-700 print:hidden">
           ✦ {pendingCount} rewrite suggestion{pendingCount > 1 ? "s" : ""} highlighted — click to review
         </p>
       )}
