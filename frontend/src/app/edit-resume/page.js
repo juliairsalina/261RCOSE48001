@@ -1893,7 +1893,23 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              {/* Description always shown as editable so user can add one even if empty */}
+              {/* Description paragraph — shown when present, rewritable */}
+              {(exp.description) && (
+                <RewritableBullet text={exp.description}>
+                  <Editable
+                    value={exp.description}
+                    onSave={upd ? (v) => {
+                      const newExp = experience.map((e, ei) =>
+                        ei === i ? { ...e, description: v } : e
+                      );
+                      upd({ experience: newExp });
+                    } : null}
+                    as="p"
+                    placeholder="Describe your role..."
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
               {(exp.bullets?.length
                 ? exp.bullets
                 : exp.responsibilities || []).length > 0 && (
