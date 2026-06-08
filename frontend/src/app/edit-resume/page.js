@@ -1798,6 +1798,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     const t = text.trim();
     for (const [orig, rw] of rewriteMap) {
       if (t === orig || t.includes(orig) || orig.includes(t)) return rw;
+      // After approval the resume text becomes suggested_text — match that too
+      if (rw.status === "approved") {
+        const sug = (rw.suggested_text || "").trim();
+        if (sug && (t === sug || t.includes(sug) || sug.includes(t))) return rw;
+      }
     }
     return null;
   }
