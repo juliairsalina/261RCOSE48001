@@ -518,21 +518,9 @@ export default function EditResumePage() {
     });
 
     const atsSuggestions = [
-      ...(ats.strengths || []).map((s, i) => ({
-        id: `strength-${i}`, type: "Strength",
-        text: s,
-      })),
       ...(ats.weaknesses || []).map((w, i) => ({
         id: `weak-${i}`, type: "Weakness",
         text: w,
-      })),
-      ...(ats.improvement_priority || []).map((p, i) => ({
-        id: `priority-${i}`, type: "Priority",
-        text: p,
-      })),
-      ...(ats.missing_skills || []).map((s, i) => ({
-        id: `missing-${i}`, type: "Missing Keyword",
-        text: `"${s}" is listed as required but not found in your resume.`,
       })),
     ];
     setBackendSuggestions(atsSuggestions);
@@ -1299,71 +1287,32 @@ export default function EditResumePage() {
                     )}
                   </section>
 
-                  {backendSuggestions.length > 0 && (
+                  {backendSuggestions.filter(s => s.type === "Weakness").length > 0 && (
                     <section className="border-t border-white/22 py-5">
                       <div className="flex items-center justify-between mb-1">
                         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/45">
                           AI Comments
                         </p>
                       </div>
-                      {/* Context: what this analysis was for */}
                       <p className="text-[11px] text-white/50 mb-4 leading-5">
                         Based on: <span className="font-bold text-white/70">{jobSummary}</span>
                       </p>
 
-                      <div className="flex flex-col gap-3">
-                        {backendSuggestions.map((s) => {
-                          const isStrength = s.type === "Strength";
-                          const isPriority = s.type === "Priority";
-                          const isMissing = s.type === "Missing Keyword";
-                          return (
-                            <div
-                              key={s.id}
-                              className={`rounded-[1.4rem] border px-4 py-4 backdrop-blur-sm ${
-                                isStrength
-                                  ? "border-green-300/40 bg-green-100/15"
-                                  : isPriority
-                                  ? "border-yellow-300/40 bg-yellow-100/15"
-                                  : isMissing
-                                  ? "border-red-300/40 bg-red-100/12"
-                                  : "border-white/30 bg-white/28"
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-2 mb-2">
-                                <div>
-                                  <p className="text-base font-black text-[#243026]">
-                                    {isStrength ? "Strength" : "Suggestions"}
-                                  </p>
-                                  <div className="flex items-center gap-1 mt-0.5">
-                                    <Sparkles size={12} className={
-                                      isStrength ? "text-green-700/70"
-                                      : isPriority ? "text-yellow-700/70"
-                                      : isMissing ? "text-red-700/70"
-                                      : "text-[#243026]/55"
-                                    } />
-                                    <p className={`text-xs font-black ${
-                                      isStrength ? "text-green-700/80"
-                                      : isPriority ? "text-yellow-700/80"
-                                      : isMissing ? "text-red-700/80"
-                                      : "text-[#243026]/55"
-                                    }`}>
-                                      {s.type}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className={`shrink-0 rounded-2xl p-2 ${
-                                  isStrength ? "bg-green-300/80"
-                                  : isPriority ? "bg-yellow-300/90"
-                                  : isMissing ? "bg-red-300/70"
-                                  : "bg-yellow-300/90"
-                                }`}>
-                                  <Wand2 size={15} className="text-[#243026]" />
-                                </div>
-                              </div>
-                              <p className="text-sm leading-[1.65] text-[#243026]/75">{s.text}</p>
-                            </div>
-                          );
-                        })}
+                      <div className="rounded-[1.4rem] border border-white/30 bg-white/28 px-4 py-4 backdrop-blur-sm">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Sparkles size={13} className="text-[#243026]/55" />
+                          <p className="text-sm font-black text-[#243026]">Weaknesses</p>
+                        </div>
+                        <ul className="flex flex-col gap-2">
+                          {backendSuggestions
+                            .filter(s => s.type === "Weakness")
+                            .map(s => (
+                              <li key={s.id} className="flex items-start gap-2 text-sm leading-[1.65] text-[#243026]/75">
+                                <span className="mt-1.5 shrink-0 h-1.5 w-1.5 rounded-full bg-[#243026]/40" />
+                                {s.text}
+                              </li>
+                            ))}
+                        </ul>
                       </div>
                     </section>
                   )}
