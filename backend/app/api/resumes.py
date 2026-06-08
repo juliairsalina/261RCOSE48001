@@ -15,6 +15,7 @@ from app.services.document_parser import extract_text
 from app.services.embedding_service import generate_embeddings_batch
 from app.services.vector_store import store_resume_chunks
 from app.agents.resume_parser_agent import RESUME_PARSER_SYSTEM_PROMPT
+from app.agents.candidate_profile_agent import create_candidate_profile_node
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -24,19 +25,6 @@ ALLOWED_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 ALLOWED_EXTENSIONS = {"pdf", "docx"}
-
-CANDIDATE_PROFILE_SYSTEM_PROMPT = """You are a career advisor. Analyze the candidate's parsed resume JSON and generate a structured candidate profile.
-
-Return a valid JSON object with exactly these keys:
-- target_roles: list of 3-5 job titles the candidate is most suited for
-- seniority_level: one of "junior", "mid-level", "senior", "lead", "principal", "executive"
-- core_skills: list of top 10-15 technical and soft skills
-- domain_interests: list of 3-5 industry domains or interest areas inferred from experience
-- strongest_experiences: list of 3-5 strongest experience highlights (short phrases)
-- preferred_job_keywords: list of 10-15 keywords for job searching
-- search_queries: list of 5-8 optimised job search query strings (e.g. "Machine Learning Engineer Python PyTorch", "NLP Research Intern deep learning")
-
-Return only valid JSON. Do not add markdown or extra text."""
 
 
 def _get_file_extension(filename: str) -> str:
@@ -236,43 +224,25 @@ async def create_candidate_profile(
             detail="Resume has not been parsed yet. Upload the resume first.",
         )
 
-    # Call GPT to generate profile
-    try:
-        messages = [
-            {"role": "system", "content": CANDIDATE_PROFILE_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": f"Generate a candidate profile from this resume:\n\n{json.dumps(parsed_json, ensure_ascii=False)}",
-            },
-        ]
-        raw_response = await openai_client.chat_completion(
-            messages=messages,
-            temperature=0.2,
-            response_format={"type": "json_object"},
-        )
-        profile: dict = json.loads(raw_response)
-    except Exception as exc:
-        logger.exception("Failed to generate candidate profile: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Profile generation failed: {exc}")
+    state = {
+        "user_id": user_id,
+        "resume_id": resume_id,
+        "resume_json": parsed_json,
+    }
+    updated_state = await create_candidate_profile_node(state)
 
-    # Save to candidate_profiles
+    if updated_state.get("errors"):
+        raise HTTPException(status_code=500, detail=updated_state["errors"][0])
+
+    profile: dict = updated_state.get("candidate_profile") or {}
+    profile_id: str = updated_state.get("candidate_profile_id") or ""
+
+    # Fetch created_at from DB
     try:
-        insert_result = (
-            db.table("candidate_profiles")
-            .insert(
-                {
-                    "user_id": user_id,
-                    "resume_id": resume_id,
-                    "profile_json": profile,
-                }
-            )
-            .execute()
-        )
-        profile_id: str = insert_result.data[0]["id"] if insert_result.data else ""
-        created_at = insert_result.data[0].get("created_at") if insert_result.data else None
-    except Exception as exc:
-        logger.exception("Failed to save candidate profile: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Database insert failed: {exc}")
+        row = db.table("candidate_profiles").select("created_at").eq("id", profile_id).single().execute()
+        created_at = (row.data or {}).get("created_at")
+    except Exception:
+        created_at = None
 
     from app.schemas.candidate import CandidateProfile
     return CandidateProfileResponse(

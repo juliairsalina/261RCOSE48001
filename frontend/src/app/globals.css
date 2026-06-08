@@ -55,3 +55,19 @@ body {
 body {
   font-family: var(--github-mono);
 }
+
+@media print {
+  @page { size: A4; margin: 10mm; }
+
+  body.printing > *:not(#resume-a4) { display: none !important; }
+
+  body.printing > #resume-a4 {
+    display: block !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+}

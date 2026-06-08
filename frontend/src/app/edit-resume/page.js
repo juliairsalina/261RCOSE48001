@@ -102,6 +102,12 @@ export default function EditResumePage() {
           }
         ]
       });
+  const [metricHints, setMetricHints] = useState({
+    clarity: "",
+    keywordFit: "",
+    structure: "",
+    impact: "",
+  });
 
   
   const [backendSuggestions, setBackendSuggestions] = useState([]);
@@ -218,12 +224,6 @@ export default function EditResumePage() {
     suggestions.find((item) => item.id === activeSuggestion) || suggestions[0];
 
   useEffect(() => {
-    const savedVacancyLink = localStorage.getItem("reeracifyVacancyLink");
-    if (savedVacancyLink) {
-      setVacancyLink(savedVacancyLink);
-      setJobSummary("Vacancy link loaded. Click Evaluate to analyze it.");
-    }
-
     const savedUserId = localStorage.getItem("reeracifyUserId");
     if (savedUserId) setUserId(savedUserId);
 
@@ -231,7 +231,16 @@ export default function EditResumePage() {
     if (savedResumeId) setResumeId(savedResumeId);
 
     const savedAppId = localStorage.getItem("reeracifyApplicationId");
-    if (savedAppId) setApplicationId(savedAppId);
+    const savedAppResumeId = localStorage.getItem("reeracifyApplicationResumeId");
+    // Only restore applicationId if it was created for the same resume
+    if (savedAppId && savedAppResumeId === savedResumeId) {
+      setApplicationId(savedAppId);
+    } else {
+      localStorage.removeItem("reeracifyApplicationId");
+      localStorage.removeItem("reeracifyApplicationResumeId");
+      // Don't carry over a cover letter that belongs to a different resume
+      setCoverLetterText("");
+    }
 
     const savedProfile = localStorage.getItem("reeracifyCandidateProfile");
     if (savedProfile) {
@@ -314,11 +323,6 @@ export default function EditResumePage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (vacancyLink) {
-      localStorage.setItem("reeracifyVacancyLink", vacancyLink);
-    }
-  }, [vacancyLink]);
 
   useEffect(() => {
     if (!applicationId || coverLetterText) return;
@@ -423,13 +427,13 @@ export default function EditResumePage() {
     throw new Error("Analysis stream ended without a result.");
   }
 
-  function applyAnalysisResult(result, jobSummaryText) {
+  function applyAnalysisResult(result, jobPost) {
     saveSnapshot();
     const ats = result.ats || {};
     const score = ats.score || 0;
     setAtsScoreValue(score);
     setResumeLevel(getRankLabel(ats.rank));
-    setJobSummary(jobSummaryText);
+    setJobSummary(jobPost);
 
     const matched = ats.matched_skills?.length || 0;
     const missing = ats.missing_skills?.length || 0;
@@ -439,6 +443,15 @@ export default function EditResumePage() {
       keywordFit: Math.round((matched / total) * 100),
       structure: score,
       impact: Math.min(100, (ats.strengths?.length || 0) * 20),
+    });
+
+    setMetricHints({
+      clarity: ats.weaknesses?.[0] || (ats.weaknesses?.length === 0 ? "No major clarity issues detected." : ""),
+      keywordFit: missing > 0
+        ? `Missing: ${(ats.missing_skills || []).slice(0, 3).join(", ")}${missing > 3 ? ` +${missing - 3} more` : ""}.`
+        : matched > 0 ? `All key skills matched (${matched} found).` : "",
+      structure: ats.improvement_priority?.[0] || (score >= 80 ? "Strong overall structure." : ""),
+      impact: ats.strengths?.[0] || (ats.strengths?.length === 0 ? "Add more measurable outcomes to bullet points." : ""),
     });
 
     const atsSuggestions = [
@@ -496,14 +509,12 @@ export default function EditResumePage() {
       const appId = app.id;
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
+      localStorage.setItem("reeracifyApplicationResumeId", rid);
 
       // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
       const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
 
-      const jobSummaryText = hasLink
-        ? `${jobPost.role_title || "Role"} at ${jobPost.company_name || "Company"}`
-        : "General resume evaluation — no job posting provided.";
-      applyAnalysisResult(result, jobSummaryText);
+      applyAnalysisResult(result, jobPost);
 
     } catch (error) {
       setIsLoading(false);
@@ -570,6 +581,34 @@ export default function EditResumePage() {
     }
   }
 
+  function downloadCoverLetterPDF() {
+    const name = resumeData.name || "";
+    const phone = resumeData.phone || "";
+    const email = resumeData.email || "";
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const contact = [phone, email].filter(Boolean).join("   |   ");
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 20mm 18mm; }
+  body { font-family: Arial, sans-serif; margin: 0; color: #111; }
+  .name { font-size: 17px; font-weight: bold; margin-bottom: 4px; }
+  .contact { font-size: 11px; color: #444; margin-bottom: 14px; }
+  hr { border: none; border-top: 1px solid #ccc; margin-bottom: 18px; }
+  .body { font-size: 11px; line-height: 1.75; white-space: pre-wrap; }
+</style></head><body>
+<div class="name">${esc(name)}</div>
+<div class="contact">${esc(contact)}</div>
+<hr>
+<div class="body">${esc(coverLetterText)}</div>
+</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 250);
+  }
+
   function openSuggestionRewrite() {
     // Switch to Rewrites tab and highlight the first matching rewrite for this suggestion
     if (!currentSuggestion) return;
@@ -616,7 +655,6 @@ export default function EditResumePage() {
 
       setLoadingState(`Analyzing fit for ${job.role_title} at ${job.company_name}…`);
       setVacancyLink(job.job_url);
-      localStorage.setItem("reeracifyVacancyLink", job.job_url);
 
       const app = await callBackend("/applications/create", {
         method: "POST",
@@ -625,10 +663,11 @@ export default function EditResumePage() {
       const appId = app.id;
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
+      localStorage.setItem("reeracifyApplicationResumeId", rid);
 
       // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
       const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
-      applyAnalysisResult(result, `${job.role_title} at ${job.company_name}`);
+      applyAnalysisResult(result, job);
 
     } catch (error) {
       setIsLoading(false);
@@ -748,39 +787,37 @@ export default function EditResumePage() {
     };
   }
 
-  async function downloadResume() {
-    if (!applicationId) {
-      setErrorMessage("Run Evaluate first to generate an application before downloading.");
+  function downloadResume() {
+    if (!resumeData) {
+      setErrorMessage("No resume loaded.");
       return;
     }
-    const uid = userId || localStorage.getItem("reeracifyUserId") || "";
-    try {
-      setLoadingState("Preparing download...");
-      const res = await fetch(`${API_BASE_URL}/applications/${applicationId}/export-resume`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // Send current live resumeData so DOCX matches exactly what's displayed
-        body: JSON.stringify({ user_id: uid, resume_json: toResumeJson(resumeData) }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || `Export failed (${res.status})`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "resume.docx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      setIsLoading(false);
-      setStatusMessage("Resume downloaded.");
-    } catch (error) {
-      setIsLoading(false);
-      setErrorMessage(error.message);
-    }
+
+    const resume = document.getElementById("resume-a4");
+    if (!resume) return;
+
+    const parent = resume.parentNode;
+    const placeholder = document.createComment("resume-print-placeholder");
+    const originalTransform = resume.style.transform;
+
+    // Move resume to body root and mark body so print CSS targets it cleanly
+    parent.insertBefore(placeholder, resume);
+    resume.style.transform = "none";
+    document.body.appendChild(resume);
+    document.body.classList.add("printing");
+
+    const restore = () => {
+      document.body.classList.remove("printing");
+      resume.style.transform = originalTransform;
+      parent.insertBefore(resume, placeholder);
+      placeholder.remove();
+    };
+
+    // afterprint fires when the print dialog closes (save or cancel)
+    window.addEventListener("afterprint", restore, { once: true });
+
+    // Small delay so browser applies CSS before opening print dialog
+    setTimeout(() => window.print(), 50);
   }
 
   //Re-evaluate button in ATS score section
@@ -1161,18 +1198,42 @@ export default function EditResumePage() {
                       </div>
                     </div>
 
-                    <div className="mt-5 grid grid-cols-2 gap-3">
-                      <MetricBox title="Clarity" value={metrics.clarity} />
-                      <MetricBox title="Keyword" value={metrics.keywordFit} />
-                      <MetricBox title="Structure" value={metrics.structure} />
-                      <MetricBox title="Impact" value={metrics.impact} />
+                    <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/60">
+                      <div
+                        className="h-full rounded-full bg-[#243026]"
+                        style={{ width: `${Math.max(0, Math.min(atsScoreValue, 100))}%` }}
+                      />
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <MetricBox title="Clarity" value={metrics.clarity} hint={metricHints.clarity} />
+                      <MetricBox title="Keyword" value={metrics.keywordFit} hint={metricHints.keywordFit} />
+                      <MetricBox title="Structure" value={metrics.structure} hint={metricHints.structure} />
+                      <MetricBox title="Impact" value={metrics.impact} hint={metricHints.impact} />
                     </div>
                   </section>
-                  
-                  <section className={`border-b ${UI.lineStrong} py-5`}>
-                    <p className="text-xl font-black text-[#243026]">Job Link Summary</p>
-                    <p className={`mt-3 ${UI.bodyStrong}`}>{jobSummary}</p>
-                  </section>
+
+                  {jobSummary && (
+                    <section className="border-b border-[#243026]/10 py-5">
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-[#243026]/40">
+                        Job Summary
+                      </p>
+                      <div className="mt-3 space-y-1">
+                        <p className="text-sm font-black text-[#243026]">
+                          {jobSummary.role_title || "Role"}
+                          {jobSummary.company_name ? ` · ${jobSummary.company_name}` : ""}
+                        </p>
+                        {jobSummary.location && (
+                          <p className="text-xs text-[#243026]/50">{jobSummary.location}</p>
+                        )}
+                        {jobSummary.job_description && (
+                          <p className="mt-2 text-xs leading-5 text-[#243026]/65">
+                            {jobSummary.job_description.replace(/\s+/g, " ").slice(0, 220).trim()}
+                            {jobSummary.job_description.length > 220 ? "…" : ""}
+                          </p>
+                        )}
+                      </div>
+                    </section>
+                  )}
 
                   <section className="flex min-h-0 flex-1 flex-col py-5">
                     <div className="mb-4 flex items-center justify-between">
@@ -1255,7 +1316,12 @@ export default function EditResumePage() {
                       Run Evaluate to generate rewrite suggestions.
                     </p>
                   ) : (
-                    rewriteList.map((s) => (
+                    [...rewriteList].sort((a, b) => {
+                      const order = ["work_experience", "projects", "leadership", "achievements", "certifications"];
+                      const ai = order.indexOf(a.section);
+                      const bi = order.indexOf(b.section);
+                      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+                    }).map((s) => (
                       <div
                         key={s.id}
                         id={`rewrite-${s.id}`}
@@ -1348,6 +1414,13 @@ export default function EditResumePage() {
                         rows={18}
                         className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 p-4 text-sm leading-6 text-[#243026] outline-none focus:border-[#243026]/30 focus:bg-white/70"
                       />
+                      <div className="flex gap-2">
+                      <button
+                        onClick={downloadCoverLetterPDF}
+                        className="flex-1 rounded-[1.2rem] border border-[#243026]/20 bg-[#243026] py-3 text-xs font-black text-white transition hover:opacity-90"
+                      >
+                        Download as PDF
+                      </button>
                       <button
                         onClick={() => {
                           const blob = new Blob([coverLetterText], { type: "text/plain" });
@@ -1360,10 +1433,11 @@ export default function EditResumePage() {
                           a.remove();
                           URL.revokeObjectURL(url);
                         }}
-                        className="w-full rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80"
+                        className="flex-1 rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80"
                       >
                         Download as .txt
                       </button>
+                      </div>
                     </>
                   )}
                 </section>
@@ -1651,11 +1725,14 @@ function LevelPill({ label, active }) {
   );
 }
 
-function MetricBox({ title, value }) {
+function MetricBox({ title, value, hint }) {
   return (
-    <div className="rounded-[1.1rem] border border-white/35 bg-white/20 p-3 backdrop-blur-xl">
-      <p className="text-sm font-black text-white/88">{title}</p>
-      <p className="mt-1 text-3xl font-black text-white">{value}</p>
+    <div className="rounded-[1.1rem] border border-white/45 bg-white/35 p-3">
+      <p className="text-[11px] font-bold text-[#243026]/50">{title}</p>
+      <p className="mt-1 text-lg font-black text-[#243026]">{value}</p>
+      {hint && (
+        <p className="mt-1.5 text-[10px] leading-[1.4] text-[#243026]/50">{hint}</p>
+      )}
     </div>
   );
 }
@@ -1668,14 +1745,21 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
   const rewriteMap = useMemo(() => {
     const m = new Map();
     for (const rw of rewriteList) {
-      if (rw.original_text) m.set(rw.original_text.trim(), rw);
+      if (rw.original_text) {
+        // Index by cleaned original so pre-approval bullets match
+        m.set(cleanBullet(rw.original_text), rw);
+      }
+      // Also index by suggested_text so the bullet stays highlighted (green) after approval
+      if (rw.status === "approved" && rw.suggested_text) {
+        m.set(cleanBullet(rw.suggested_text), rw);
+      }
     }
     return m;
-  }, [rewriteList]);
+  }, [rewriteList]); // cleanBullet is a stable inline const — not a reactive dep
 
   function matchRewrite(text) {
     if (!text) return null;
-    const t = text.trim();
+    const t = cleanBullet(text);
     for (const [orig, rw] of rewriteMap) {
       if (t === orig || t.includes(orig) || orig.includes(t)) return rw;
     }
@@ -1799,6 +1883,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       {experience.length > 0 && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Experience</h2>
+          {upd && (
+            <button
+              onClick={() => upd({ experience: [...experience, { role: "", company: "", start_date: "", end_date: "", bullets: [""] }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add experience</button>
+          )}
           {experience.map((exp, i) => (
             <div key={i} className="mt-3">
               <div className="flex justify-between">
@@ -1895,6 +1985,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       {projects.length > 0 && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Projects</h2>
+          {upd && (
+            <button
+              onClick={() => upd({ projects: [...projects, { name: "", start_date: "", end_date: "", bullets: [""] }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add project</button>
+          )}
           {projects.map((proj, i) => (
             <div key={i} className="mt-3">
               <div className="flex justify-between">
@@ -1902,6 +1998,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   value={proj.name || proj.title || ""}
                   onSave={upd ? (v) => {
                     const newProj = projects.map((p, pi) => pi === i ? { ...p, name: v } : p);
+                    upd({ projects: newProj });
+                  } : null}
+                  onAdd={upd ? (currentVal) => {
+                    const newProj = projects.map((p, pi) =>
+                      pi === i ? { ...p, name: currentVal, description: "" } : p
+                    );
                     upd({ projects: newProj });
                   } : null}
                   as="h3"
@@ -1934,16 +2036,22 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              <Editable
-                value={proj.description || ""}
-                onSave={upd ? (v) => {
-                  const newProj = projects.map((p, pi) => pi === i ? { ...p, description: v } : p);
-                  upd({ projects: newProj });
-                } : null}
-                as="p"
-                placeholder="Describe this project..."
-                className="mt-1 text-gray-700"
-              />
+              {"description" in proj && (
+                <DescriptionBullets
+                  description={proj.description}
+                  onChange={upd ? (v) => {
+                    upd({ projects: projects.map((p, pi) => pi === i ? { ...p, description: v } : p) });
+                  } : null}
+                  onRemoveAll={upd ? () => {
+                    upd({ projects: projects.map((p, pi) => {
+                      if (pi !== i) return p;
+                      const { description: _, ...rest } = p;
+                      return rest;
+                    }) });
+                  } : null}
+                  placeholder="Describe this project..."
+                />
+              )}
               {proj.contributions?.length > 0 && (
                 <ul className="mt-1 list-disc pl-5">
                   {proj.contributions.map((c, ci) => <li key={ci}>{c}</li>)}
@@ -2020,6 +2128,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
             Leadership
           </h2>
+          {upd && (
+            <button
+              onClick={() => upd({ leadership: [...leadership, { title: "", organization: "", start_date: "", end_date: "", bullets: [] }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add leadership</button>
+          )}
 
           {leadership.map((item, i) => (
             <div key={i} className="mt-2">
@@ -2092,9 +2206,9 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                 <ul className="mt-1.5 list-disc pl-5">
                   {item.bullets.map((b, j) => (
                     <li key={j}>
-                      <RewritableBullet text={b}>
+                      <RewritableBullet text={cleanBullet(b)}>
                         <Editable
-                          value={b}
+                          value={cleanBullet(b)}
                           onSave={upd ? (v) => {
                             const newLeadership = leadership.map((l, li) => {
                               if (li !== i) return l;
@@ -2129,6 +2243,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
             Achievements
           </h2>
 
+          {upd && (
+            <button
+              onClick={() => upd({ achievements: [...achievements, { title: "", date: "" }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add achievement</button>
+          )}
           {achievements.map((a, i) => (
             <div key={i} className="mt-2">
 
@@ -2139,6 +2259,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   onSave={upd ? (v) => {
                     const newAchievements = achievements.map((a2, ai) =>
                       ai === i ? { ...a2, title: v } : a2
+                    );
+                    upd({ achievements: newAchievements });
+                  } : null}
+                  onAdd={upd ? (currentVal) => {
+                    const newAchievements = achievements.map((a2, ai) =>
+                      ai === i ? { ...a2, title: currentVal, description: "" } : a2
                     );
                     upd({ achievements: newAchievements });
                   } : null}
@@ -2161,20 +2287,22 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              <RewritableBullet text={a.description || ""}>
-                <Editable
-                  value={a.description || ""}
-                  onSave={upd ? (v) => {
-                    const newAchievements = achievements.map((a2, ai) =>
-                      ai === i ? { ...a2, description: v } : a2
-                    );
-                    upd({ achievements: newAchievements });
+              {"description" in a && (
+                <DescriptionBullets
+                  description={a.description}
+                  onChange={upd ? (v) => {
+                    upd({ achievements: achievements.map((a2, ai) => ai === i ? { ...a2, description: v } : a2) });
                   } : null}
-                  as="p"
+                  onRemoveAll={upd ? () => {
+                    upd({ achievements: achievements.map((a2, ai) => {
+                      if (ai !== i) return a2;
+                      const { description: _, ...rest } = a2;
+                      return rest;
+                    }) });
+                  } : null}
                   placeholder="Describe this achievement..."
-                  className="mt-1 text-gray-700"
                 />
-              </RewritableBullet>
+              )}
 
             </div>
           ))}
@@ -2187,6 +2315,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">
             Certifications
           </h2>
+          {upd && (
+            <button
+              onClick={() => upd({ certifications: [...certifications, { name: "", issuer: "", date: "" }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add certification</button>
+          )}
 
           {certifications.map((c, i) => (
             <div key={i} className="mt-2">
@@ -2200,6 +2334,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                     onSave={upd ? (v) => {
                       const newCerts = certifications.map((c2, ci) =>
                         ci === i ? { ...c2, name: v } : c2
+                      );
+                      upd({ certifications: newCerts });
+                    } : null}
+                    onAdd={upd ? (currentVal) => {
+                      const newCerts = certifications.map((c2, ci) =>
+                        ci === i ? { ...c2, name: currentVal, description: "" } : c2
                       );
                       upd({ certifications: newCerts });
                     } : null}
@@ -2236,20 +2376,22 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              <RewritableBullet text={c.description || ""}>
-                <Editable
-                  value={c.description || ""}
-                  onSave={upd ? (v) => {
-                    const newCerts = certifications.map((c2, ci) =>
-                      ci === i ? { ...c2, description: v } : c2
-                    );
-                    upd({ certifications: newCerts });
+              {"description" in c && (
+                <DescriptionBullets
+                  description={c.description}
+                  onChange={upd ? (v) => {
+                    upd({ certifications: certifications.map((c2, ci) => ci === i ? { ...c2, description: v } : c2) });
                   } : null}
-                  as="p"
+                  onRemoveAll={upd ? () => {
+                    upd({ certifications: certifications.map((c2, ci) => {
+                      if (ci !== i) return c2;
+                      const { description: _, ...rest } = c2;
+                      return rest;
+                    }) });
+                  } : null}
                   placeholder="Describe this certification..."
-                  className="mt-1 text-gray-700"
                 />
-              </RewritableBullet>
+              )}
 
             </div>
           ))}
@@ -2260,6 +2402,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
       {education.length > 0 && (
         <section className="mt-4">
           <h2 className="border-b border-black pb-[2px] text-[11px] font-black uppercase">Education</h2>
+          {upd && (
+            <button
+              onClick={() => upd({ education: [...education, { school: "", degree: "", start_date: "", end_date: "" }] })}
+              className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 print:hidden"
+            >+ Add education</button>
+          )}
           {education.map((edu, i) => (
             <div key={i} className="mt-2">
               <div className="flex justify-between">
@@ -2286,20 +2434,28 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       className="text-gray-600"
                     />
                   )}
-                  <RewritableBullet text={edu.field_of_study || ""}>
-                    <Editable
-                      value={edu.field_of_study || ""}
-                      onSave={upd ? (v) => {
-                        const newEdu = education.map((e, ei) =>
-                          ei === i ? { ...e, field_of_study: v } : e
-                        );
-                        upd({ education: newEdu });
-                      } : null}
-                      as="p"
-                      placeholder="Field of Study"
-                      className="text-gray-600"
-                    />
-                  </RewritableBullet>
+                  {edu.field_of_study && (
+                    <RewritableBullet text={edu.field_of_study || ""}>
+                      <Editable
+                        value={edu.field_of_study || ""}
+                        onSave={upd ? (v) => {
+                          const newEdu = education.map((e, ei) =>
+                            ei === i ? { ...e, field_of_study: v } : e
+                          );
+                          upd({ education: newEdu });
+                        } : null}
+                        onDelete={upd ? () => {
+                          const newEdu = education.map((e, ei) =>
+                            ei === i ? { ...e, field_of_study: "" } : e
+                          );
+                          upd({ education: newEdu });
+                        } : null}
+                        as="p"
+                        placeholder="Field of Study"
+                        className="text-gray-600"
+                      />
+                    </RewritableBullet>
+                  )}
                   {edu.focus && (
                     <p className="mt-1 text-gray-700">
                       {Array.isArray(edu.focus) ? edu.focus.join(", ") : edu.focus}
@@ -2360,59 +2516,81 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              <p className="text-gray-600">
-                GPA:
-                <Editable
-                  value={edu.gpa || ""}
-                  onSave={upd ? (v) => {
-                    const newEdu = education.map((e, ei) =>
-                      ei === i ? { ...e, gpa: v } : e
-                    );
-                    upd({ education: newEdu });
-                  } : null}
-                  placeholder="3.86/4.00"
-                />
-              </p>
-              <RewritableBullet text={(edu.coursework || []).join(", ")}>
-                <Editable
-                  value={(edu.coursework || []).join(", ")}
-                  onSave={upd ? (v) => {
-                    const newEdu = education.map((e, ei) =>
-                      ei === i
-                        ? {
-                            ...e,
-                            coursework: v
-                              .split(",")
-                              .map((x) => x.trim())
-                              .filter(Boolean)
-                          }
-                        : e
-                    );
-
-                    upd({ education: newEdu });
-                  } : null}
-                  as="p"
-                  placeholder="Relevant Coursework (AI, Machine Learning, Databases)"
-                  className="mt-1 text-gray-700"
-                />
-              </RewritableBullet>
-              <RewritableBullet text={edu.description || ""}>
-                <Editable
-                  value={edu.description || ""}
-                  onSave={upd ? (v) => {
-                    const newEdu = education.map((e, ei) =>
-                      ei === i
-                        ? { ...e, description: v }
-                        : e
-                    );
-
-                    upd({ education: newEdu });
-                  } : null}
-                  as="p"
-                  placeholder="Education Description"
-                  className="mt-1 text-gray-700"
-                />
-              </RewritableBullet>
+              {edu.gpa && (
+                <p className="text-gray-600">
+                  GPA:
+                  <Editable
+                    value={edu.gpa || ""}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i ? { ...e, gpa: v } : e
+                      );
+                      upd({ education: newEdu });
+                    } : null}
+                    onDelete={upd ? () => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i ? { ...e, gpa: "" } : e
+                      );
+                      upd({ education: newEdu });
+                    } : null}
+                    placeholder="3.86/4.00"
+                  />
+                </p>
+              )}
+              {(edu.coursework || []).length > 0 && (
+                <RewritableBullet text={(edu.coursework || []).join(", ")}>
+                  <Editable
+                    value={(edu.coursework || []).join(", ")}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i
+                          ? {
+                              ...e,
+                              coursework: v
+                                .split(",")
+                                .map((x) => x.trim())
+                                .filter(Boolean)
+                            }
+                          : e
+                      );
+                      upd({ education: newEdu });
+                    } : null}
+                    onDelete={upd ? () => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i ? { ...e, coursework: [] } : e
+                      );
+                      upd({ education: newEdu });
+                    } : null}
+                    as="p"
+                    placeholder="Relevant Coursework (AI, Machine Learning, Databases)"
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
+              {"description" in edu && (
+                <RewritableBullet text={edu.description || ""}>
+                  <Editable
+                    value={edu.description || ""}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i ? { ...e, description: v } : e
+                      );
+                      upd({ education: newEdu });
+                    } : null}
+                    onDelete={upd ? () => {
+                      const newEdu = education.map((e, ei) => {
+                        if (ei !== i) return e;
+                        const { description: _, ...rest } = e;
+                        return rest;
+                      });
+                      upd({ education: newEdu });
+                    } : null}
+                    as="p"
+                    placeholder="Education Description"
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
             </div>
           ))}
         </section>
@@ -2456,11 +2634,67 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
   );
 }
 
+// Multi-line bullet description for achievements, certifications, projects.
+// Stores content as a "\n"-joined string; each line renders as a <li> bullet.
+function DescriptionBullets({ description, onChange, onRemoveAll, placeholder }) {
+  const lines = (description ?? "").split("\n");
+  const display = lines.length > 0 ? lines : [""];
+  // Track which bullet index should auto-focus after a state update.
+  // Use a ref so it survives re-renders without causing extra renders itself.
+  const focusIdxRef = useRef(description === "" ? 0 : null);
+
+  if (!onChange) {
+    const filled = lines.filter(l => l.trim());
+    return filled.length > 0 ? (
+      <ul className="mt-1 list-disc pl-5 text-gray-700">
+        {filled.map((l, i) => <li key={i}>{l}</li>)}
+      </ul>
+    ) : null;
+  }
+
+  return (
+    <ul className="mt-1 list-disc pl-5 text-gray-700">
+      {display.map((line, idx) => (
+        <li key={idx}>
+          <Editable
+            value={line}
+            shouldFocus={idx === focusIdxRef.current}
+            onFocused={() => { focusIdxRef.current = null; }}
+            onSave={(v) => {
+              const next = [...display];
+              next[idx] = v;
+              onChange(next.join("\n"));
+            }}
+            onAdd={(currentVal) => {
+              focusIdxRef.current = idx + 1;
+              const next = [...display];
+              next[idx] = currentVal;
+              next.splice(idx + 1, 0, "");
+              onChange(next.join("\n"));
+            }}
+            onDelete={() => {
+              if (display.length === 1) {
+                onRemoveAll?.();
+              } else {
+                focusIdxRef.current = Math.max(0, idx - 1);
+                onChange(display.filter((_, li) => li !== idx).join("\n"));
+              }
+            }}
+            placeholder={idx === 0 ? placeholder : ""}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // Inline-editable text element for the resume preview.
 // Uses useRef so React re-renders never clobber what the user is typing.
-function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
+function Editable({ value, onSave, onDelete, onAdd, shouldFocus, onFocused, as: Tag = "span", className, placeholder }) {
   const ref = useRef(null);
   const committed = useRef(value ?? "");
+  const onFocusedRef = useRef(onFocused);
+  onFocusedRef.current = onFocused;
 
   useEffect(() => {
     if (ref.current && committed.current !== (value ?? "")) {
@@ -2468,6 +2702,21 @@ function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
       committed.current = value ?? "";
     }
   }, [value]);
+
+  useEffect(() => {
+    if (shouldFocus && ref.current) {
+      ref.current.focus();
+      // Place cursor at end of content
+      const el = ref.current;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+      onFocusedRef.current?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldFocus]);
 
   if (!onSave) {
     return <Tag className={className}>{value}</Tag>;
@@ -2479,6 +2728,20 @@ function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
       contentEditable
       suppressContentEditableWarning
       data-placeholder={placeholder}
+      onKeyDown={(e) => {
+        if (e.key === "Backspace" && !e.currentTarget.innerText.trim() && onDelete) {
+          e.preventDefault();
+          onDelete();
+        }
+        if (e.key === "Enter" && onAdd) {
+          e.preventDefault();
+          const v = (e.currentTarget.innerText ?? "").trim();
+          committed.current = v;
+          onAdd(v);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+        }
+      }}
       onBlur={(e) => {
         const v = (e.currentTarget.innerText ?? "").trim();
         committed.current = v;
