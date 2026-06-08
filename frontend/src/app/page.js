@@ -268,7 +268,7 @@ useEffect(() => {
 
               {showProfile && (
                 <div
-                  className="absolute right-0 top-12 z-[2000] w-72 rounded-[1.4rem] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
+                  className="fixed right-4 top-14 z-[2000] w-72 rounded-[1.4rem] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
                   style={{
                     background: "linear-gradient(160deg,rgba(80,100,88,0.92) 0%,rgba(40,58,46,0.96) 100%)",
                     border: "1px solid rgba(255,255,255,0.18)",
