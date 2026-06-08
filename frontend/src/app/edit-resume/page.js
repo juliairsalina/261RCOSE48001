@@ -824,8 +824,8 @@ export default function EditResumePage() {
     const clone = resumeEl.cloneNode(true);
     clone.style.cssText =
       "transform:none !important;box-shadow:none !important;border-radius:0 !important;" +
-      "background-image:none !important;width:210mm !important;min-height:0 !important;" +
-      "position:static !important;margin:0 !important;padding:16mm 20mm !important;" +
+      "background-image:none !important;width:100% !important;min-height:0 !important;" +
+      "position:static !important;margin:0 !important;padding:0 !important;" +
       'font-family:Calibri,"Segoe UI",Arial,sans-serif !important;';
 
     clone.querySelectorAll("span").forEach((el) => {
@@ -859,12 +859,12 @@ export default function EditResumePage() {
     // position:fixed in print CSS repeats the element on every page, causing overlaps.
     printStyle.textContent = `
       @media print {
-        @page { size: A4; margin: 0; }
+        @page { size: A4; margin: 16mm 20mm; }
         body > *:not(#__rfy_print_frame__) { display: none !important; }
         body { margin: 0 !important; padding: 0 !important; background: white !important; }
         #__rfy_print_frame__ {
           display: block !important;
-          width: 210mm !important;
+          width: 100% !important;
           margin: 0 !important;
           padding: 0 !important;
           background: white !important;
