@@ -41,7 +41,7 @@ async def research_company_node(state: AgentState) -> AgentState:
     job_url = job_json.get("job_url", "")
 
     if not company_name and not job_url:
-        return {"errors": new_errors}
+        return {"company_background": None, "errors": new_errors}
 
     from app.services.browser_mcp_client import browser_mcp_session
 

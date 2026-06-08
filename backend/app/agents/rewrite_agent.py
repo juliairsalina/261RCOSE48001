@@ -119,9 +119,11 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
         allowed_sections = {"work_experience", "projects", "leadership", "achievements", "certifications", }
         suggestions = [s for s in raw_suggestions if s.get("section", "") in allowed_sections]
 
-        # Save each suggestion to rewrite_suggestions table
-        if application_id and suggestions:
+        # Save suggestions to rewrite_suggestions table.
+        # Delete existing rows first so re-analysis doesn't accumulate duplicates.
+        if application_id:
             db = supabase_client.get_client()
+            db.table("rewrite_suggestions").delete().eq("application_id", application_id).execute()
             for suggestion in suggestions:
                 db.table("rewrite_suggestions").insert(
                     {

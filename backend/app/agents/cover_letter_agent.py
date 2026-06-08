@@ -86,14 +86,15 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
             temperature=0.4,
         )
 
-        # 4. Save to cover_letters table
+        # 4. Save to cover_letters table (upsert so re-analysis doesn't duplicate rows)
         if application_id:
             db = supabase_client.get_client()
-            db.table("cover_letters").insert(
+            db.table("cover_letters").upsert(
                 {
                     "application_id": application_id,
                     "content": cover_letter_text,
-                }
+                },
+                on_conflict="application_id",
             ).execute()
 
         return {"cover_letter": cover_letter_text, "errors": new_errors}

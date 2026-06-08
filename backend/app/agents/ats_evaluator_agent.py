@@ -262,10 +262,10 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
             "evidence": gpt_result.get("evidence", []),
         }
 
-        # 4. Save to ats_evaluations
+        # 4. Save to ats_evaluations (upsert so re-analysis doesn't duplicate rows)
         if application_id:
             db = supabase_client.get_client()
-            db.table("ats_evaluations").insert(
+            db.table("ats_evaluations").upsert(
                 {
                     "application_id": application_id,
                     "score": score,
@@ -275,7 +275,8 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
                     "strengths": ats_result["strengths"],
                     "weaknesses": ats_result["weaknesses"],
                     "evidence": ats_result["evidence"],
-                }
+                },
+                on_conflict="application_id",
             ).execute()
 
         return {"ats_result": ats_result, "errors": new_errors}
