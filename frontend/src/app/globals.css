@@ -42,10 +42,13 @@ body {
   pointer-events: none;
 }
 
-/* Ensure empty editable fields have a minimum clickable height */
-.resume-editable:empty {
+/* Ensure empty block-level editable fields have a minimum clickable height */
+p.resume-editable:empty,
+div.resume-editable:empty,
+h1.resume-editable:empty,
+h2.resume-editable:empty,
+h3.resume-editable:empty {
   min-height: 1.2em;
-  display: block;
 }
 
 :root {

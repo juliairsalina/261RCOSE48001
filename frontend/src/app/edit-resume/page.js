@@ -2469,20 +2469,22 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       className="text-gray-600"
                     />
                   )}
-                  <RewritableBullet text={edu.field || edu.field_of_study || ""}>
-                    <Editable
-                      value={edu.field || edu.field_of_study || ""}
-                      onSave={upd ? (v) => {
-                        const newEdu = education.map((e, ei) =>
-                          ei === i ? { ...e, field: v } : e
-                        );
-                        upd({ education: newEdu });
-                      } : null}
-                      as="p"
-                      placeholder="Field of Study"
-                      className="text-gray-600"
-                    />
-                  </RewritableBullet>
+                  {(edu.field || edu.field_of_study) && (
+                    <RewritableBullet text={edu.field || edu.field_of_study || ""}>
+                      <Editable
+                        value={edu.field || edu.field_of_study || ""}
+                        onSave={upd ? (v) => {
+                          const newEdu = education.map((e, ei) =>
+                            ei === i ? { ...e, field: v } : e
+                          );
+                          upd({ education: newEdu });
+                        } : null}
+                        as="p"
+                        placeholder="Field of Study"
+                        className="text-gray-600"
+                      />
+                    </RewritableBullet>
+                  )}
                   {edu.focus && (
                     <p className="mt-1 text-gray-700">
                       {Array.isArray(edu.focus) ? edu.focus.join(", ") : edu.focus}
@@ -2543,59 +2545,67 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              <p className="text-gray-600">
-                GPA:
-                <Editable
-                  value={edu.gpa || ""}
-                  onSave={upd ? (v) => {
-                    const newEdu = education.map((e, ei) =>
-                      ei === i ? { ...e, gpa: v } : e
-                    );
-                    upd({ education: newEdu });
-                  } : null}
-                  placeholder="3.86/4.00"
-                />
-              </p>
-              <RewritableBullet text={(edu.coursework || []).join(", ")}>
-                <Editable
-                  value={(edu.coursework || []).join(", ")}
-                  onSave={upd ? (v) => {
-                    const newEdu = education.map((e, ei) =>
-                      ei === i
-                        ? {
-                            ...e,
-                            coursework: v
-                              .split(",")
-                              .map((x) => x.trim())
-                              .filter(Boolean)
-                          }
-                        : e
-                    );
+              {edu.gpa && (
+                <p className="text-gray-600">
+                  GPA:&nbsp;
+                  <Editable
+                    value={edu.gpa || ""}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i ? { ...e, gpa: v } : e
+                      );
+                      upd({ education: newEdu });
+                    } : null}
+                    as="span"
+                    placeholder="3.86/4.00"
+                    className="text-gray-600"
+                  />
+                </p>
+              )}
+              {(edu.coursework?.length > 0) && (
+                <RewritableBullet text={(edu.coursework || []).join(", ")}>
+                  <Editable
+                    value={(edu.coursework || []).join(", ")}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i
+                          ? {
+                              ...e,
+                              coursework: v
+                                .split(",")
+                                .map((x) => x.trim())
+                                .filter(Boolean)
+                            }
+                          : e
+                      );
 
-                    upd({ education: newEdu });
-                  } : null}
-                  as="p"
-                  placeholder="Relevant Coursework (AI, Machine Learning, Databases)"
-                  className="mt-1 text-gray-700"
-                />
-              </RewritableBullet>
-              <RewritableBullet text={edu.description || ""}>
-                <Editable
-                  value={edu.description || ""}
-                  onSave={upd ? (v) => {
-                    const newEdu = education.map((e, ei) =>
-                      ei === i
-                        ? { ...e, description: v }
-                        : e
-                    );
+                      upd({ education: newEdu });
+                    } : null}
+                    as="p"
+                    placeholder="Relevant Coursework (AI, Machine Learning, Databases)"
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
+              {edu.description && (
+                <RewritableBullet text={edu.description || ""}>
+                  <Editable
+                    value={edu.description || ""}
+                    onSave={upd ? (v) => {
+                      const newEdu = education.map((e, ei) =>
+                        ei === i
+                          ? { ...e, description: v }
+                          : e
+                      );
 
-                    upd({ education: newEdu });
-                  } : null}
-                  as="p"
-                  placeholder="Education Description"
-                  className="mt-1 text-gray-700"
-                />
-              </RewritableBullet>
+                      upd({ education: newEdu });
+                    } : null}
+                    as="p"
+                    placeholder="Education Description"
+                    className="mt-1 text-gray-700"
+                  />
+                </RewritableBullet>
+              )}
             </div>
           ))}
         </section>
