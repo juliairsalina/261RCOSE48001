@@ -851,11 +851,20 @@ ${styleLinks}
   function downloadCoverLetterPDF() {
     if (!coverLetterText) return;
 
-    // Format plain text into paragraphs
+    // Header info from current resumeData
+    const name = resumeData?.name || "";
+    const phone = resumeData?.phone || "";
+    const email = resumeData?.email || "";
+    const contactParts = [phone, email].filter(Boolean);
+    const contactLine = contactParts.join("  •  ");
+
+    // Split body into double-newline paragraphs; single newlines become <br>
     const paragraphs = coverLetterText
       .split(/\n\n+/)
-      .map((p) =>
-        `<p style="margin:0 0 14pt 0;line-height:1.6;">${p.replace(/\n/g, "<br/>")}</p>`
+      .filter((p) => p.trim())
+      .map(
+        (p) =>
+          `<p>${p.trim().replace(/\n/g, "<br/>")}</p>`
       )
       .join("\n");
 
@@ -867,22 +876,45 @@ ${styleLinks}
 <head>
 <meta charset="utf-8" />
 <style>
-  @page { size: A4; margin: 25mm 22mm; }
+  @page { size: A4; margin: 20mm 22mm; }
   html, body {
     margin: 0; padding: 0; background: white;
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 11.5pt;
-    color: #1a1a1a;
+    font-family: Calibri, "Segoe UI", Arial, sans-serif;
+    font-size: 11pt;
+    color: #111;
   }
-  .cover-letter { max-width: 170mm; }
+  .cl-name {
+    font-size: 15pt;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    margin: 0 0 3pt 0;
+  }
+  .cl-contact {
+    font-size: 10pt;
+    color: #333;
+    margin: 0 0 8pt 0;
+  }
+  .cl-rule {
+    border: none;
+    border-top: 1px solid #bbb;
+    margin: 0 0 16pt 0;
+  }
+  .cl-body p {
+    margin: 0 0 11pt 0;
+    line-height: 1.55;
+    text-align: justify;
+  }
 </style>
 </head>
 <body>
-<div class="cover-letter">${paragraphs}</div>
+  ${name ? `<div class="cl-name">${name}</div>` : ""}
+  ${contactLine ? `<div class="cl-contact">${contactLine}</div>` : ""}
+  <hr class="cl-rule" />
+  <div class="cl-body">${paragraphs}</div>
 </body>
 </html>`);
     w.document.close();
-    setTimeout(() => { w.print(); w.close(); }, 600);
+    setTimeout(() => { w.print(); w.close(); }, 700);
   }
 
   async function downloadResume() {
