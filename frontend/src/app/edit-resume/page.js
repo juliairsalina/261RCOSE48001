@@ -1286,6 +1286,45 @@ ${styleLinks}
                       </div>
                     )}
                   </section>
+
+                  {backendSuggestions.length > 0 && (
+                    <section className="border-t border-white/22 py-5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Sparkles size={15} className="text-white/70" />
+                        <p className="text-xl font-black text-[#243026]">Suggestions</p>
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        {backendSuggestions.map((s) => (
+                          <div
+                            key={s.id}
+                            className="rounded-[1.2rem] border border-white/30 bg-white/25 px-4 py-4 backdrop-blur-sm"
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <AlertTriangle size={13} className="shrink-0 text-white/55" />
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/55">
+                                {s.label || s.type}
+                              </p>
+                            </div>
+                            <p className="text-sm leading-6 text-[#243026]/80">{s.text}</p>
+                            <button
+                              onClick={() => {
+                                setActiveTab("rewrites");
+                                const match = rewriteList.find((r) =>
+                                  r.original_text &&
+                                  (r.original_text.toLowerCase().includes(s.text.slice(0, 25).toLowerCase()) ||
+                                   s.text.toLowerCase().includes((r.original_text || "").slice(0, 25).toLowerCase()))
+                                );
+                                if (match) setActiveRewriteId(match.id);
+                              }}
+                              className="mt-3 w-full rounded-2xl bg-[#243026] py-2.5 text-xs font-black text-white transition hover:scale-[1.01]"
+                            >
+                              Show Rewrite Suggestion
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
                 </>
               )}
 
