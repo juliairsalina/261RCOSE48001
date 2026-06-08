@@ -802,6 +802,7 @@ export default function EditResumePage() {
     clone.style.width = "210mm";
     clone.style.minHeight = "0";
     clone.style.position = "static";
+    clone.style.backgroundImage = "none";
 
     // Strip highlight spans (yellow/green/red rewrite backgrounds)
     clone.querySelectorAll("span").forEach((el) => {
@@ -1171,8 +1172,11 @@ ${styleLinks}
                   transform: `scale(${zoom})`,
                   transformOrigin: "top center",
                   fontFamily: 'Calibri, "Segoe UI", Arial, sans-serif',
+                  backgroundImage:
+                    "repeating-linear-gradient(transparent 0px, transparent calc(1123px - 3px), #d1d5db calc(1123px - 3px), #d1d5db calc(1123px - 1px), #f3f4f6 calc(1123px - 1px), #f3f4f6 1123px)",
+                  backgroundSize: "100% 1123px",
                 }}
-                className="min-h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)] print:shadow-none"
+                className="min-h-[1123px] w-[794px] shrink-0 rounded-[3px] bg-white px-16 py-12 text-black shadow-[0_30px_90px_rgba(0,0,0,0.22)]"
               >
                 <ResumeDocument
                   resumeData={resumeData}
