@@ -410,33 +410,50 @@ useEffect(() => {
 
       {/* Login / Register modal */}
       {showLogin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-[380px] rounded-[1.7rem] border border-white/30 bg-white/20 p-6 text-white shadow-2xl backdrop-blur-2xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-md"
+          style={{ backgroundColor: "rgba(20,30,25,0.60)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowLogin(false); }}
+        >
+          <div
+            className="relative w-full max-w-[420px] rounded-[2rem] p-8 text-white shadow-[0_32px_80px_rgba(0,0,0,0.45)]"
+            style={{
+              background:
+                "linear-gradient(160deg,rgba(80,100,88,0.82) 0%,rgba(50,68,56,0.88) 100%)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              backdropFilter: "blur(32px)",
+            }}
+          >
+            {/* Close */}
             <button
               onClick={() => setShowLogin(false)}
-              className="absolute right-5 top-5 rounded-full bg-white/15 p-2 transition hover:bg-white/25"
+              className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full bg-white/18 text-white transition hover:bg-white/28"
             >
-              <X size={18} />
+              <X size={17} />
             </button>
 
-            <h2 className="text-3xl font-bold">
-              {authMode === "login" ? "Log In" : "Register"}
+            <h2 className="text-[2rem] font-black leading-tight tracking-tight">
+              {authMode === "login" ? "Log In" : "Sign Up"}
             </h2>
 
             {loginMessage && (
-              <p className="mt-3 text-xs font-bold leading-5 text-black">
+              <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold leading-5 ${
+                loginMessage.toLowerCase().includes("check your email")
+                  ? "bg-green-400/20 text-green-200"
+                  : "bg-red-400/20 text-red-200"
+              }`}>
                 {loginMessage}
               </p>
             )}
 
-            <form onSubmit={handleAuthSubmit} className="mt-4 space-y-3">
+            <form onSubmit={handleAuthSubmit} className="mt-5 space-y-3">
               <input
                 type="email"
                 placeholder="Email address"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-2xl  bg-white/20 px-4 py-2 text-white outline-none placeholder:text-white/60"
+                className="w-full rounded-2xl border border-white/18 bg-white/14 px-5 py-3.5 text-sm font-medium text-white outline-none placeholder:text-white/50 focus:border-white/40 focus:bg-white/20 transition"
               />
 
               <input
@@ -445,40 +462,34 @@ useEffect(() => {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-2xl  bg-white/20 px-4 py-2 text-white outline-none placeholder:text-white/60"
+                className="w-full rounded-2xl border border-white/18 bg-white/14 px-5 py-3.5 text-sm font-medium text-white outline-none placeholder:text-white/50 focus:border-white/40 focus:bg-white/20 transition"
               />
 
               <button
                 type="submit"
-                className="w-full rounded-2xl bg-white px-4 py-2 font-semibold text-slate-900 transition hover:scale-[1.01]"
+                className="w-full rounded-2xl bg-white px-5 py-3.5 text-[15px] font-black text-[#1e2e23] shadow-sm transition hover:scale-[1.01] hover:bg-white/92 active:scale-[0.99]"
               >
                 {authMode === "login" ? "Continue" : "Create Account"}
               </button>
             </form>
 
-            <div className="mt-3 text-center text-xs text-white/75">
-              <span>
-                {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
-              </span>
-
+            <p className="mt-4 text-center text-[13px] text-white/70">
+              {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
               <button
                 type="button"
-                onClick={() => {
-                  setLoginMessage("");
-                  setAuthMode(authMode === "login" ? "register" : "login");
-                }}
-                className="font-bold text-white underline decoration-white/45 underline-offset-4 transition hover:text-white/80 hover:decoration-white"
+                onClick={() => { setLoginMessage(""); setAuthMode(authMode === "login" ? "register" : "login"); }}
+                className="font-black text-white underline decoration-white/50 underline-offset-3 transition hover:decoration-white"
               >
                 {authMode === "login" ? "Register Now" : "Log In"}
               </button>
-            </div>
+            </p>
 
-            <p className="mt-6 text-center text-[10px] leading-5 text-white/55">
+            <p className="mt-6 text-center text-[11px] leading-[1.7] text-white/45">
               By signing up or logging in, you consent to Reeracify&apos;s{" "}
               <button
                 type="button"
                 onClick={() => router.push("/terms")}
-                className="underline decoration-white/35 underline-offset-2 hover:text-white"
+                className="underline decoration-white/30 underline-offset-2 hover:text-white/70"
               >
                 Terms of Use
               </button>{" "}
@@ -486,7 +497,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={() => router.push("/privacy")}
-                className="underline decoration-white/35 underline-offset-2 hover:text-white"
+                className="underline decoration-white/30 underline-offset-2 hover:text-white/70"
               >
                 Privacy Policy
               </button>
