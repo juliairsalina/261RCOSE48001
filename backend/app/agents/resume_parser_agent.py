@@ -48,6 +48,8 @@ CRITICAL RULES
 30. Store the generated summary in the "summary" field.
 31. Dates must be extracted exactly as written in the resume.
 32. Do not infer start dates or end dates from education dates, project dates, or nearby sections.
+33. Detect the primary language of the resume and preserve ALL content in that language. Do NOT translate any text to another language.
+34. The generated summary (rule 27) must also be written in the same language as the resume.
 33. If the exact start date or end date cannot be determined, leave it empty.
 
 Datathon, Hackathon or any competition Classification Rules
