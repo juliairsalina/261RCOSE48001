@@ -150,6 +150,13 @@ useEffect(() => {
     setUploadError("");
     setParsedName("");
 
+    // Clear stale data from any previous resume session
+    localStorage.removeItem("reeracifyVacancyLink");
+    localStorage.removeItem("reeracifyApplicationId");
+    localStorage.removeItem("reeracifyParsedResume");
+    localStorage.removeItem("reeracifyCandidateProfile");
+    setVacancyLink("");
+
     let userId = localStorage.getItem("reeracifyUserId");
     if (!userId) {
       userId = crypto.randomUUID();
