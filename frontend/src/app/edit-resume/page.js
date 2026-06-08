@@ -1231,6 +1231,26 @@ export default function EditResumePage() {
                     </section>
                   )}
 
+                  {currentSuggestion && (
+                    <section className="border-b border-[#243026]/10 py-5">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={17} />
+                        <h3 className={`${UI.subheading} text-white`}>
+                          {currentSuggestion.title}
+                        </h3>
+                      </div>
+                      <p className={`mt-3 ${UI.body} text-white/`}>
+                        {currentSuggestion.text}
+                      </p>
+                      <button
+                        onClick={openSuggestionRewrite}
+                        className="mt-4 w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-xs font-bold text-white shadow-lg transition hover:scale-[1.01]"
+                      >
+                        Show Rewrite Suggestion
+                      </button>
+                    </section>
+                  )}
+
                   {analyzedWithJobLink && <section className="flex min-h-0 flex-1 flex-col py-5">
                     <div className="mb-4 flex items-center justify-between">
                       <div>
@@ -1275,25 +1295,6 @@ export default function EditResumePage() {
                     </div>
                   </section>}
 
-                  {analyzedWithJobLink && currentSuggestion && (
-                    <section className="border-t border-[#243026]/10 pt-10">
-                      <div className="flex items-center gap-2">
-                        <Sparkles size={17} />
-                        <h3 className={`${UI.subheading} text-white`}>
-                          {currentSuggestion.title}
-                        </h3>
-                      </div>
-                      <p className={`mt-3 ${UI.body} text-white/`}>
-                        {currentSuggestion.text}
-                      </p>
-                      <button
-                        onClick={openSuggestionRewrite}
-                        className="mt-4 w-full rounded-[1.2rem] bg-[#243026] px-4 py-3 text-xs font-bold text-white shadow-lg transition hover:scale-[1.01]"
-                      >
-                        Show Rewrite Suggestion
-                      </button>
-                    </section>
-                  )}
                 </>
               )}
 
