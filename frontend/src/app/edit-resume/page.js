@@ -437,11 +437,11 @@ export default function EditResumePage() {
 
   // Stream the LangGraph analysis pipeline (retrieve → ATS∥cover letter → rewrites).
   // Calls onStep(msg) for each progress event; resolves with the final result object.
-  async function streamAnalysis(appId, uid, onStep) {
+  async function streamAnalysis(appId, uid, onStep, resumeJson = null) {
     const response = await fetch(`${API_BASE_URL}/applications/${appId}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: uid }),
+      body: JSON.stringify({ user_id: uid, ...(resumeJson ? { resume_json: resumeJson } : {}) }),
     });
     if (!response.ok) {
       let detail = "";
@@ -571,8 +571,8 @@ export default function EditResumePage() {
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      // LangGraph pipeline: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites
-      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step));
+      // Pass current resumeData so approved rewrites are reflected in the ATS score
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step), resumeData);
 
       let jobSummaryText;
       if (!hasLink) {

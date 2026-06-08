@@ -360,7 +360,7 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
 
 
 @router.post("/{application_id}/analyze")
-async def analyze_application(application_id: str, request: GenericUserRequest) -> StreamingResponse:
+async def analyze_application(application_id: str, request: ExportResumeRequest) -> StreamingResponse:
     """Run the full analysis pipeline using LangGraph.
 
     Graph: analyze_job → retrieve_context → research_company → (evaluate_ats ∥ cover_letter) → rewrites
@@ -369,6 +369,9 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
       {"step": "[STATUS] <message>"}   — agent activity status (≤10 words)
       {"done": true, "result": {...}}  — final payload
       {"error": "..."}                 — on failure
+
+    Accepts an optional resume_json in the request body. When provided it
+    overrides the DB version so re-evaluation reflects approved rewrites.
     """
     from app.agents.graph import analysis_graph
     if analysis_graph is None:
@@ -390,7 +393,8 @@ async def analyze_application(application_id: str, request: GenericUserRequest) 
     resume_id = app_row["resume_id"]
     job_post_id = app_row["job_post_id"]
 
-    resume_json = _load_resume_json(db, resume_id)
+    # Prefer live resume from frontend (includes approved rewrites) over DB version
+    resume_json = request.resume_json or _load_resume_json(db, resume_id)
     if not resume_json:
         raw = db.table("resumes").select("raw_text").eq("id", resume_id).single().execute()
         raw_text = (raw.data or {}).get("raw_text", "") or ""
