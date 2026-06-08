@@ -2286,12 +2286,12 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                       className="text-gray-600"
                     />
                   )}
-                  <RewritableBullet text={edu.field_of_study || ""}>
+                  <RewritableBullet text={edu.field || edu.field_of_study || ""}>
                     <Editable
-                      value={edu.field_of_study || ""}
+                      value={edu.field || edu.field_of_study || ""}
                       onSave={upd ? (v) => {
                         const newEdu = education.map((e, ei) =>
-                          ei === i ? { ...e, field_of_study: v } : e
+                          ei === i ? { ...e, field: v } : e
                         );
                         upd({ education: newEdu });
                       } : null}
