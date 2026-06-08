@@ -2,9 +2,7 @@
 
 AI-powered resume optimizer. Upload your resume, get an ATS score, AI rewrite suggestions, a tailored cover letter, and matching job listings — all in one place.
 
-**Live app:** [reeracify.vercel.app](https://reeracify.vercel.app)  
-**API:** [reeracify-backend.onrender.com](https://reeracify-backend.onrender.com)  
-**API Docs:** [reeracify-backend.onrender.com/docs](https://reeracify-backend.onrender.com/docs)
+**Live app:** [reeracify.vercel.app](https://reeracify.vercel.app)
 
 ---
 
@@ -542,7 +540,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 ### Vercel (Frontend)
 1. Import repo → Framework: Next.js
-2. Add: `NEXT_PUBLIC_API_BASE_URL=https://reeracify-backend.onrender.com`
+2. Add: `NEXT_PUBLIC_API_BASE_URL=<your-backend-url>`
 3. Auto-deploys on push
 
 ---
