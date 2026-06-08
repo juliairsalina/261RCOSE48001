@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  Download,
   ZoomIn,
   ZoomOut,
   RotateCcw,
@@ -1096,7 +1097,7 @@ export default function EditResumePage() {
                       title="Download PDF"
                       className="flex h-8 w-8 items-center justify-center rounded-full bg-white/0 text-white transition hover:bg-white/40"
                     >
-                      <FileText size={18} />
+                      <Download size={18} />
                     </button>
                   </>
                 )}
