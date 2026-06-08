@@ -25,6 +25,7 @@ router = APIRouter()
 
 class GenericUserRequest(BaseModel):
     user_id: str
+    resume_json: dict | None = None  # current live resume from frontend (optional)
 
 
 class ReevaluateRequest(BaseModel):

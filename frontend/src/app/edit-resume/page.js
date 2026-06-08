@@ -389,11 +389,14 @@ export default function EditResumePage() {
 
   // Stream the LangGraph analysis pipeline (retrieve → ATS∥cover letter → rewrites).
   // Calls onStep(msg) for each progress event; resolves with the final result object.
-  async function streamAnalysis(appId, uid, onStep) {
+  // Pass resumeJson to override the DB version (e.g. after approving rewrites).
+  async function streamAnalysis(appId, uid, onStep, resumeJson = null) {
+    const body = { user_id: uid };
+    if (resumeJson) body.resume_json = resumeJson;
     const response = await fetch(`${API_BASE_URL}/applications/${appId}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: uid }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       let detail = "";
@@ -811,111 +814,30 @@ export default function EditResumePage() {
     setTimeout(() => window.print(), 50);
   }
 
-  // Apply ATS-only result from the /reevaluate endpoint.
-  // Does NOT touch rewriteList — existing suggestions are preserved.
-  function applyReEvaluationResult(ats) {
-    const score = ats.score || 0;
-    setAtsScoreValue(score);
-    setResumeLevel(getRankLabel(ats.rank));
-
-    const matched = ats.matched_skills?.length || 0;
-    const missing = ats.missing_skills?.length || 0;
-    const total = matched + missing || 1;
-
-    setMetrics({
-      clarity: Math.max(0, 100 - (ats.weaknesses?.length || 0) * 15),
-      keywordFit: Math.round((matched / total) * 100),
-      structure: score,
-      impact: Math.min(100, (ats.strengths?.length || 0) * 20),
-    });
-
-    setMetricHints({
-      clarity: ats.weaknesses?.[0] || (ats.weaknesses?.length === 0 ? "No major clarity issues detected." : ""),
-      keywordFit: missing > 0
-        ? `Missing: ${(ats.missing_skills || []).slice(0, 3).join(", ")}${missing > 3 ? ` +${missing - 3} more` : ""}.`
-        : matched > 0 ? `All key skills matched (${matched} found).` : "",
-      structure: ats.improvement_priority?.[0] || (score >= 80 ? "Strong overall structure." : ""),
-      impact: ats.strengths?.[0] || (ats.strengths?.length === 0 ? "Add more measurable outcomes to bullet points." : ""),
-    });
-
-    const atsSuggestions = [
-      ...(ats.weaknesses || []).map((w, i) => ({
-        id: `weak-${i}`, title: "Weakness", type: "Impact", label: "AI comment",
-        text: w, suggestion: w,
-      })),
-      ...(ats.missing_skills || []).map((s, i) => ({
-        id: `missing-${i}`, title: `Missing: ${s}`, type: "ATS", label: "Keyword",
-        text: `"${s}" is required but not found in your resume.`,
-        suggestion: `Add "${s}" to your skills or experience section.`,
-      })),
-      ...(ats.improvement_priority || []).map((p, i) => ({
-        id: `priority-${i}`, title: "Priority", type: "Priority", label: "AI comment",
-        text: p, suggestion: p,
-      })),
-    ];
-    setBackendSuggestions(atsSuggestions);
-    if (atsSuggestions.length > 0) setActiveSuggestion(atsSuggestions[0].id);
-
-    setIsLoading(false);
-    setStatusMessage(`Re-evaluated — ATS score: ${score}/100`);
-    setErrorMessage("");
-  }
-
-  // ↻ Re-evaluate: calls the backend ATS evaluator with the current resume state.
-  // Reuses cached job JSON and RAG context — only the scoring step is re-run.
-  // Existing rewrite suggestions are preserved.
+  // ↻ Re-evaluate: runs the full LangGraph pipeline with the current live resume.
+  // Sends resume_json from the frontend so approved rewrites + manual edits are reflected.
+  // Produces a fresh ATS score, cover letter, AND new rewrite suggestions.
   async function reevaluateResume() {
     if (!applicationId) {
-      // No prior analysis session — run full evaluate instead.
       await evaluateResume();
       return;
     }
 
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
 
-    saveSnapshot();
     setIsLoading(true);
-    setStatusMessage("Re-evaluating with latest resume...");
+    setStatusMessage("Re-analyzing with your latest resume...");
     setErrorMessage("");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/applications/${applicationId}/reevaluate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: uid,
-          resume_json: toResumeJson(resumeData),
-        }),
-      });
-
-      if (!response.ok) {
-        let detail = "";
-        try { detail = (await response.json()).detail || ""; } catch {}
-        throw new Error(`Re-evaluation failed ${response.status}${detail ? `: ${detail}` : ""}`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let boundary;
-        while ((boundary = buffer.indexOf("\n\n")) !== -1) {
-          const msg = buffer.slice(0, boundary);
-          buffer = buffer.slice(boundary + 2);
-          if (!msg.startsWith("data: ")) continue;
-          const data = JSON.parse(msg.slice(6));
-          if (data.step) setStatusMessage(data.step);
-          if (data.error) throw new Error(data.error);
-          if (data.done) {
-            applyReEvaluationResult(data.result.ats);
-            return;
-          }
-        }
-      }
-      throw new Error("Re-evaluation stream ended without a result.");
+      const result = await streamAnalysis(
+        applicationId,
+        uid,
+        (step) => setLoadingState(step),
+        toResumeJson(resumeData),
+      );
+      applyAnalysisResult(result, jobSummary);
+      setStatusMessage(`Re-analyzed — ATS score: ${result?.ats?.score ?? 0}/100`);
     } catch (error) {
       setIsLoading(false);
       setErrorMessage(error.message);
