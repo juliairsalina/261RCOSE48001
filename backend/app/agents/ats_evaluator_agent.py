@@ -27,6 +27,34 @@ def _normalise(text: str) -> str:
     return text.lower().strip()
 
 
+def _word_present(word: str, text: str) -> bool:
+    """Check if a word appears in text, with basic singular/plural tolerance."""
+    if word in text:
+        return True
+    # plural → singular: "platforms" → check "platform"
+    if word.endswith("s") and len(word) > 3 and word[:-1] in text:
+        return True
+    # singular → plural: "platform" → check "platforms"
+    if not word.endswith("s") and word + "s" in text:
+        return True
+    return False
+
+
+def _skill_in_text(skill: str, text: str) -> bool:
+    """Match a skill phrase against resume text.
+
+    Tries exact phrase first, then falls back to word-level match where every
+    significant word (>2 chars) of the skill must appear in the text.
+    Handles basic singular/plural differences ("platform" matches "platforms").
+    """
+    if skill in text:
+        return True
+    words = [w for w in skill.split() if len(w) > 2]
+    if not words:
+        return skill in text
+    return all(_word_present(w, text) for w in words)
+
+
 def _flatten_skills(skills: object) -> list[str]:
     """Convert skills field (str list, dict list, or dict) to a flat list of strings."""
     if not skills:
@@ -139,7 +167,7 @@ def _compute_ats_score(
     # Required skills: 40 pts
     required_skills = [_normalise(s) for s in requirements.get("required_skills", [])]
     if required_skills:
-        matched_required = [s for s in required_skills if s in resume_text]
+        matched_required = [s for s in required_skills if _skill_in_text(s, resume_text)]
         required_score = int(len(matched_required) / len(required_skills) * 40)
     else:
         matched_required = []
@@ -148,7 +176,7 @@ def _compute_ats_score(
     # Preferred skills: 20 pts
     preferred_skills = [_normalise(s) for s in requirements.get("preferred_skills", [])]
     if preferred_skills:
-        matched_preferred = [s for s in preferred_skills if s in resume_text]
+        matched_preferred = [s for s in preferred_skills if _skill_in_text(s, resume_text)]
         preferred_score = int(len(matched_preferred) / len(preferred_skills) * 20)
     else:
         matched_preferred = []
@@ -174,7 +202,7 @@ def _compute_ats_score(
     # Keywords: 10 pts
     keywords = [_normalise(k) for k in requirements.get("keywords", [])]
     if keywords:
-        matched_keywords = [k for k in keywords if k in resume_text]
+        matched_keywords = [k for k in keywords if _skill_in_text(k, resume_text)]
         keyword_score = int(len(matched_keywords) / len(keywords) * 10)
     else:
         matched_keywords = []
@@ -186,7 +214,7 @@ def _compute_ats_score(
     total = min(100, required_score + preferred_score + resp_score + keyword_score + depth_score)
 
     matched_all = list(set(matched_required + matched_preferred))
-    missing_all = [s for s in required_skills if s not in resume_text]
+    missing_all = [s for s in required_skills if not _skill_in_text(s, resume_text)]
 
     return total, matched_all, missing_all
 

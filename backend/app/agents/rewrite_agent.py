@@ -34,13 +34,13 @@ WHAT NOT TO REWRITE:
 REWRITE RULES:
 - Keep the same experience — never fabricate achievements or tools the candidate didn't use
 - Add measurable outcomes only if there's existing evidence to support them
-- Weave in missing job keywords naturally, not forcefully
 - Keep the same approximate length
+- CRITICAL — KEYWORD EMBEDDING: When a missing skill is listed (e.g. "cloud platforms"), you MUST use that EXACT phrase verbatim in suggested_text. Do not paraphrase, rephrase, or use synonyms. The ATS scorer does literal string matching — if "cloud platforms" is missing, write "cloud platforms" somewhere in the text. This is non-negotiable.
 
 Return a JSON object with key "suggestions" containing a list. Each object must have:
 - section: "work_experience", "projects", "leadership", "achievements" or "certifications" only
 - original_text: exact original text (copy precisely)
-- suggested_text: the rewritten version
+- suggested_text: the rewritten version (MUST contain exact missing keyword strings verbatim)
 - reason: one sentence — which specific keyword or weakness this fixes and how it raises the ATS score
 
 If no bullet points genuinely need improvement, return {"suggestions": []}.
