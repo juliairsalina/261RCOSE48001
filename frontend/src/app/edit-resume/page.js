@@ -158,6 +158,12 @@ export default function EditResumePage() {
     structure: 0,
     impact: 0,
   });
+  const [metricComments, setMetricComments] = useState({
+    clarity: "",
+    keywordFit: "",
+    structure: "",
+    impact: "",
+  });
 
   function saveSnapshot() {
     setPreviousState({
@@ -434,11 +440,43 @@ export default function EditResumePage() {
     const matched = ats.matched_skills?.length || 0;
     const missing = ats.missing_skills?.length || 0;
     const total = matched + missing || 1;
+    const clarityVal = Math.max(0, 100 - (ats.weaknesses?.length || 0) * 15);
+    const keywordVal = Math.round((matched / total) * 100);
+    const impactVal = Math.min(100, (ats.strengths?.length || 0) * 20);
     setMetrics({
-      clarity: Math.max(0, 100 - (ats.weaknesses?.length || 0) * 15),
-      keywordFit: Math.round((matched / total) * 100),
+      clarity: clarityVal,
+      keywordFit: keywordVal,
       structure: score,
-      impact: Math.min(100, (ats.strengths?.length || 0) * 20),
+      impact: impactVal,
+    });
+
+    const missingList = (ats.missing_skills || []).slice(0, 3);
+    const matchedList = (ats.matched_skills || []).slice(0, 3);
+    const topWeakness = (ats.weaknesses || [])[0] || "";
+    const topStrength = (ats.strengths || [])[0] || "";
+    const topPriority = (ats.improvement_priority || [])[0] || "";
+
+    setMetricComments({
+      clarity: clarityVal >= 85
+        ? "Your resume is clear and well-structured with minimal gaps."
+        : topWeakness
+        ? `Area to improve: ${topWeakness}`
+        : "Reduce vague language and add more specific, measurable details.",
+      keywordFit: missingList.length > 0
+        ? `Missing keywords: ${missingList.join(", ")}. Add these to your skills or experience.`
+        : matchedList.length > 0
+        ? `Strong keyword match — found: ${matchedList.join(", ")}.`
+        : "Paste a job vacancy URL to get a precise keyword match score.",
+      structure: topPriority
+        ? `Top priority: ${topPriority}`
+        : score >= 80
+        ? "Resume structure aligns well with the job requirements."
+        : "Ensure all key sections (summary, skills, experience) are present and complete.",
+      impact: impactVal >= 80
+        ? topStrength
+          ? `Key strength: ${topStrength}`
+          : "Your resume demonstrates strong measurable impact."
+        : "Add bullet points with quantifiable results (numbers, %, improvements) to raise impact.",
     });
 
     const atsSuggestions = [
@@ -1164,10 +1202,10 @@ export default function EditResumePage() {
                     </div>
 
                     <div className="mt-5 grid grid-cols-2 gap-3">
-                      <MetricBox title="Clarity" value={metrics.clarity} />
-                      <MetricBox title="Keyword" value={metrics.keywordFit} />
-                      <MetricBox title="Structure" value={metrics.structure} />
-                      <MetricBox title="Impact" value={metrics.impact} />
+                      <MetricBox title="Clarity" value={metrics.clarity} comment={metricComments.clarity} />
+                      <MetricBox title="Keyword" value={metrics.keywordFit} comment={metricComments.keywordFit} />
+                      <MetricBox title="Structure" value={metrics.structure} comment={metricComments.structure} />
+                      <MetricBox title="Impact" value={metrics.impact} comment={metricComments.impact} />
                     </div>
                   </section>
                   
@@ -1653,11 +1691,14 @@ function LevelPill({ label, active }) {
   );
 }
 
-function MetricBox({ title, value }) {
+function MetricBox({ title, value, comment }) {
   return (
-    <div className="rounded-[1.1rem] border border-white/35 bg-white/20 p-3 backdrop-blur-xl">
+    <div className="rounded-[1.1rem] border border-white/35 bg-white/20 p-3 backdrop-blur-xl flex flex-col gap-1">
       <p className="text-sm font-black text-white/88">{title}</p>
-      <p className="mt-1 text-3xl font-black text-white">{value}</p>
+      <p className="text-3xl font-black text-white">{value}</p>
+      {comment && (
+        <p className="mt-1 text-[11px] leading-[1.5] text-white/65">{comment}</p>
+      )}
     </div>
   );
 }
