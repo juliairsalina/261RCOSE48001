@@ -52,10 +52,10 @@ You land on the 5-tab editor. Click Analyze:
         │
         ├─ Cover Letter    → Edit and download as .txt
         │
-        ├─ Find Jobs       → JSearch / OpenAI web search for real postings
-        │                    → "Evaluate Fit" reruns full pipeline for any job
+        ├─ Career Profile  → Target roles, core skills, seniority, search queries
         │
-        └─ Career Profile  → Target roles, core skills, seniority, search queries
+        └─ Find Jobs       → JSearch / OpenAI web search for real postings
+                             → "Evaluate Fit" reruns full pipeline for any job
         │
         ▼
 Download DOCX — approved rewrites applied, all sections included
@@ -73,7 +73,7 @@ Download DOCX — approved rewrites applied, all sections included
 │  Home (page.js)           Edit Resume (/edit-resume/page.js)            │
 │  ─────────────            ────────────────────────────────              │
 │  Upload PDF/DOCX          Analysis │ Rewrites │ Cover Letter            │
-│  Show name + level        Find Jobs │ Career Profile                    │
+│  Show name + level        Career Profile │ Find Jobs                    │
 │  "Continue →"             Live preview + inline editing                 │
 └──────────┬──────────────────────────┬──────────────────────────────────┘
            │ HTTPS                    │ HTTPS  (SSE streaming on /analyze)
@@ -142,7 +142,7 @@ Download DOCX — approved rewrites applied, all sections included
 | **Backend** | FastAPI | 0.115+ | Async REST API, StreamingResponse for SSE |
 | **Backend** | Python | 3.11 | Runtime |
 | **Backend** | Uvicorn | 0.30+ | ASGI server |
-| **AI / LLM** | OpenAI GPT | configured via env | Parsing, scoring, rewrites, cover letters |
+| **AI / LLM** | OpenAI GPT | gpt-5 (default, override via `OPENAI_MODEL` env) | Parsing, scoring, rewrites, cover letters |
 | **Embeddings** | text-embedding-3-small | 1536-dim | Chunk vectorization for RAG |
 | **Agents** | LangGraph | 0.2+ | Stateful multi-step workflow with fan-out/fan-in |
 | **Agents** | LangChain | 0.3+ | LLM wrappers, prompt templates |
@@ -209,17 +209,21 @@ All nodes communicate through a single `AgentState` TypedDict that flows through
 ```python
 class AgentState(TypedDict):
     user_id: str
-    resume_id: str
-    application_id: str
-    resume_json: dict           # parsed resume (all sections)
-    candidate_profile: dict     # target roles, skills, seniority
-    job_json: dict              # job post + extracted requirements
-    retrieved_context: list     # top N pgvector chunks
-    company_background: str     # optional company research result
-    ats_result: dict            # score, rank, matched/missing skills
-    rewrite_suggestions: list   # per-bullet rewrites
-    cover_letter: str           # generated cover letter text
-    errors: list[str]           # non-fatal errors collected across nodes
+    resume_id: Optional[str]
+    candidate_profile_id: Optional[str]
+    job_post_ids: list[str]
+    selected_job_post_id: Optional[str]
+    application_id: Optional[str]
+    resume_json: Optional[dict]          # parsed resume (all sections)
+    candidate_profile: Optional[dict]    # target roles, skills, seniority
+    job_json: Optional[dict]             # job post + extracted requirements
+    retrieved_context: Optional[list]    # top N pgvector chunks
+    company_background: Optional[dict]   # optional company research result
+    ats_result: Optional[dict]           # score, rank, matched/missing skills
+    rewrite_suggestions: Optional[list]  # per-bullet rewrites
+    approved_rewrites: Optional[list]    # rewrites approved by user
+    cover_letter: Optional[str]          # generated cover letter text
+    errors: Annotated[list[str], operator.add]  # parallel branches append; LangGraph concatenates
 ```
 
 Each node reads what it needs, writes its result back, and passes the enriched state to the next node.
@@ -377,15 +381,15 @@ The resume preview updates instantly without a round-trip.
 - Editable textarea — make changes before downloading
 - Download as `.txt`
 
-### 5. Find Jobs Tab
+### 5. Career Profile Tab
+- Generates: seniority level, target roles, core skills, domain interests, strongest experiences
+- **Search Jobs with this Profile** → switches to Find Jobs tab and fires search
+
+### 6. Find Jobs Tab
 - 11 countries: 🇺🇸🇸🇬🇬🇧🇨🇦🇩🇪🇦🇺🇳🇱🇯🇵🇰🇷🇲🇾🇮🇳
 - Optional city / remote filter
 - Queries built from `candidate_profile.target_roles` (e.g. "Machine Learning Engineer Seoul")
 - **Evaluate Fit** on any job card → creates new application + runs full pipeline for that job
-
-### 6. Career Profile Tab
-- Generates: seniority level, target roles, core skills, domain interests, strongest experiences
-- **Search Jobs with this Profile** → switches to Find Jobs tab and fires search
 
 ### 7. Download DOCX
 - Sends live `resumeData` to backend (matches preview exactly)
