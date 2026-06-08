@@ -828,60 +828,64 @@ export default function EditResumePage() {
     const resumeEl = document.getElementById("resume-a4");
     if (!resumeEl) return;
 
-    // Clone the resume element and strip interactive/highlight artifacts
+    // Clone and strip interactive/highlight artifacts
     const clone = resumeEl.cloneNode(true);
-    clone.style.transform = "none";
-    clone.style.boxShadow = "none";
-    clone.style.borderRadius = "0";
-    clone.style.padding = "0";
-    clone.style.margin = "0";
-    clone.style.width = "210mm";
-    clone.style.minHeight = "0";
-    clone.style.position = "static";
-    clone.style.backgroundImage = "none";
+    clone.style.cssText =
+      "transform:none !important;box-shadow:none !important;border-radius:0 !important;" +
+      "background-image:none !important;width:210mm !important;min-height:0 !important;" +
+      "position:static !important;margin:0 !important;padding:16mm 20mm !important;" +
+      'font-family:Calibri,"Segoe UI",Arial,sans-serif !important;';
 
-    // Strip highlight spans (yellow/green/red rewrite backgrounds)
     clone.querySelectorAll("span").forEach((el) => {
       el.style.backgroundColor = "transparent";
       el.style.boxShadow = "none";
       el.style.outline = "none";
     });
-
-    // Remove any pending-rewrite banners
-    clone.querySelectorAll("[class*='yellow']").forEach((el) => el.remove());
-
-    // Make contenteditable fields look like plain text
     clone.querySelectorAll("[contenteditable]").forEach((el) => {
       el.removeAttribute("contenteditable");
       el.style.outline = "none";
       el.style.background = "transparent";
     });
+    // Remove rewrite banners / placeholder text
+    clone.querySelectorAll("[data-placeholder]").forEach((el) => {
+      el.removeAttribute("data-placeholder");
+    });
 
-    // Collect page stylesheets
-    const styleLinks = Array.from(
-      document.querySelectorAll('link[rel="stylesheet"]')
-    )
-      .map((l) => `<link rel="stylesheet" href="${l.href}" />`)
-      .join("\n");
+    // Inject print frame into the SAME document so all styles/fonts are available
+    const frame = document.createElement("div");
+    frame.id = "__rfy_print_frame__";
+    frame.style.cssText = "display:none;";
+    frame.appendChild(clone);
+    document.body.appendChild(frame);
 
-    const w = window.open("", "_blank");
-    if (!w) return;
+    const printStyle = document.createElement("style");
+    printStyle.id = "__rfy_print_style__";
+    printStyle.textContent = `
+      @media print {
+        @page { size: A4; margin: 0; }
+        body { visibility: hidden !important; background: white !important; }
+        #__rfy_print_frame__ {
+          display: block !important;
+          visibility: visible !important;
+          position: fixed !important;
+          top: 0 !important; left: 0 !important;
+          width: 210mm !important;
+          background: white !important;
+        }
+        #__rfy_print_frame__ * { visibility: visible !important; }
+      }
+    `;
+    document.head.appendChild(printStyle);
 
-    w.document.write(`<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-${styleLinks}
-<style>
-  @page { size: A4; margin: 12mm 16mm; }
-  html, body { margin: 0; padding: 0; background: white; }
-  body { font-family: Calibri, "Segoe UI", Arial, sans-serif !important; }
-</style>
-</head>
-<body>${clone.outerHTML}</body>
-</html>`);
-    w.document.close();
-    setTimeout(() => { w.print(); w.close(); }, 800);
+    const cleanup = () => {
+      document.getElementById("__rfy_print_frame__")?.remove();
+      document.getElementById("__rfy_print_style__")?.remove();
+    };
+
+    window.addEventListener("afterprint", cleanup, { once: true });
+    setTimeout(cleanup, 5000); // fallback in case afterprint doesn't fire
+
+    window.print();
   }
 
   function downloadCoverLetterPDF() {
