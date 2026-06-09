@@ -223,8 +223,8 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
             "improvement_suggestions": improvement_suggestions,
             # Frontend-compatible aliases
             "matched_skills": matched_requirements,
-            "missing_skills": missing_critical,
-            "weaknesses": missing_critical,
+            "missing_skills": missing_critical + missing_minor,
+            "weaknesses": missing_critical + missing_minor,
             "strengths": matched_requirements,
             "improvement_priority": improvement_suggestions,
         }
@@ -238,9 +238,9 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
                     "score": final_score,
                     "rank": rank,
                     "matched_skills": matched_requirements,
-                    "missing_skills": missing_critical,
+                    "missing_skills": missing_critical + missing_minor,
                     "strengths": matched_requirements,
-                    "weaknesses": missing_critical,
+                    "weaknesses": missing_critical + missing_minor,
                     "evidence": [],
                 }
             ).execute()
