@@ -202,18 +202,31 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
         match_level = gpt_result.get("match_level", "")
         rank = _score_to_rank(final_score)
 
+        matched_requirements = gpt_result.get("matched_requirements", [])
+        missing_critical = gpt_result.get("missing_critical_requirements", [])
+        missing_minor = gpt_result.get("missing_minor_requirements", [])
+        improvement_suggestions = gpt_result.get("improvement_suggestions", [])
+        transferable_skills = gpt_result.get("transferable_skills", [])
+
         ats_result = {
             "score": final_score,
             "rank": rank,
             "match_level": match_level,
             "cosine_similarity_score": gpt_result.get("cosine_similarity_score", cosine_similarity),
             "score_breakdown": gpt_result.get("score_breakdown", {}),
-            "matched_requirements": gpt_result.get("matched_requirements", []),
-            "missing_critical_requirements": gpt_result.get("missing_critical_requirements", []),
-            "missing_minor_requirements": gpt_result.get("missing_minor_requirements", []),
-            "transferable_skills": gpt_result.get("transferable_skills", []),
+            # New field names
+            "matched_requirements": matched_requirements,
+            "missing_critical_requirements": missing_critical,
+            "missing_minor_requirements": missing_minor,
+            "transferable_skills": transferable_skills,
             "reasoning": gpt_result.get("reasoning", ""),
-            "improvement_suggestions": gpt_result.get("improvement_suggestions", []),
+            "improvement_suggestions": improvement_suggestions,
+            # Frontend-compatible aliases
+            "matched_skills": matched_requirements,
+            "missing_skills": missing_critical,
+            "weaknesses": missing_critical,
+            "strengths": matched_requirements,
+            "improvement_priority": improvement_suggestions,
         }
 
         # 4. Save to ats_evaluations
@@ -224,10 +237,10 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
                     "application_id": application_id,
                     "score": final_score,
                     "rank": rank,
-                    "matched_skills": gpt_result.get("matched_requirements", []),
-                    "missing_skills": gpt_result.get("missing_critical_requirements", []),
-                    "strengths": [],
-                    "weaknesses": [],
+                    "matched_skills": matched_requirements,
+                    "missing_skills": missing_critical,
+                    "strengths": matched_requirements,
+                    "weaknesses": missing_critical,
                     "evidence": [],
                 }
             ).execute()
