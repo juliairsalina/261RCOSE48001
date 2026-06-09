@@ -10,125 +10,14 @@ AI-powered resume optimizer. Upload your resume, get an ATS score, AI rewrite su
 
 ## How It Works
 
-```
-You upload a resume PDF/DOCX
-        │
-        ▼
-Backend extracts text (pypdf / python-docx)
-        │
-        ▼
-GPT parses into structured JSON → resume_id returned
-  Sections: name, email, phone, summary, skills, education,
-            work_experience, projects, leadership, achievements,
-            certifications, languages
-        │
-        ▼
-Text chunks embedded (text-embedding-3-small, 1536-dim) → stored in pgvector
-        │
-        ▼
-You land on the 5-tab editor. Click Analyze:
-        │
-        ├─── POST /applications/{id}/analyze  (SSE streaming)
-        │         │
-        │         ▼  LangGraph analysis_graph runs sequentially:
-        │
-        │    [1] analyze_job        Extract structured requirements from job URL
-        │         │
-        │    [2] retrieve_context   pgvector cosine similarity search over resume chunks
-        │         │
-        │    [3] research_company   Gather company background (optional MCP / web)
-        │         │
-        │         ├────────────────────────────────┐  (parallel fan-out)
-        │    [4a] evaluate_ats              [4b] generate_cover_letter
-        │         └────────────────────────────────┘  (fan-in)
-        │         │
-        │    [5] generate_rewrites   Per-bullet rewrite suggestions
-        │         │
-        │         ▼  {"done": true, "result": {...}} SSE event
-        │
-        ├─ Analysis tab    → ATS score 0-100 + strength/weakness breakdown
-        │
-        ├─ Rewrites tab    → Approve/Reject bullets → resume preview updates live
-        │
-        ├─ Cover Letter    → Edit and download as .txt
-        │
-        ├─ Career Profile  → Target roles, core skills, seniority, search queries
-        │
-        └─ Find Jobs       → JSearch / OpenAI web search for real postings
-                             → "Evaluate Fit" reruns full pipeline for any job
-        │
-        ▼
-Download DOCX — approved rewrites applied, all sections included
-```
+![Pipeline](pic/Flow.png)
 
 ---
 
 ## Cloud Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              USER BROWSER                               │
-│                    Next.js 16.2.6 + React 19 (Vercel)                  │
-│                                                                         │
-│  Home (page.js)           Edit Resume (/edit-resume/page.js)            │
-│  ─────────────            ────────────────────────────────              │
-│  Upload PDF/DOCX          Analysis │ Rewrites │ Cover Letter            │
-│  Show name + level        Career Profile │ Find Jobs                    │
-│  "Continue →"             Live preview + inline editing                 │
-└──────────┬──────────────────────────┬──────────────────────────────────┘
-           │ HTTPS                    │ HTTPS  (SSE streaming on /analyze)
-           ▼                          ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    FastAPI Backend (Render, Python 3.11)                 │
-│                                                                         │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │  API Routers                                                     │  │
-│  │  /resumes/*  /applications/*  /jobs/*  /job-posts/*              │  │
-│  │  /rewrite-suggestions/*  /cover-letters/*                        │  │
-│  └─────────────────────────┬────────────────────────────────────────┘  │
-│                             │                                            │
-│  ┌──────────────────────────▼────────────────────────────────────────┐  │
-│  │  LangGraph  analysis_graph  (graph.py)                           │  │
-│  │                                                                   │  │
-│  │  START → analyze_job → retrieve_context → research_company       │  │
-│  │                                │                                  │  │
-│  │                    ┌───────────┴──────────────┐                  │  │
-│  │              evaluate_ats          generate_cover_letter          │  │
-│  │                    └───────────┬──────────────┘                  │  │
-│  │                        generate_rewrites → END                   │  │
-│  │                                                                   │  │
-│  │  Each node streams a [STATUS] SSE event as it starts             │  │
-│  └─────────────────────────┬─────────────────────────────────────────┘  │
-│                             │                                            │
-│  ┌──────────────┐  ┌────────▼────────┐  ┌──────────────────────────┐  │
-│  │ document_    │  │ openai_client   │  │ job_search_service       │  │
-│  │ parser.py    │  │ chat_completion │  │ cascade: JSearch (non-KR)│  │
-│  │ pypdf/docx   │  │ get_embedding   │  │ then OpenAI web fallback  │  │
-│  └──────────────┘  └─────────────────┘  │ openai_web: always GPT   │  │
-│                                          │ dummy: test stub          │  │
-│                                          └──────────────────────────┘  │
-└──────────────┬──────────────────────────────────────────────────────────┘
-               │
-    ┌──────────┼────────────────────────────┐
-    ▼          ▼                            ▼
-┌────────┐  ┌──────────────────────────┐  ┌────────────────────────┐
-│ OpenAI │  │  Supabase (Postgres +    │  │  Supabase Storage      │
-│        │  │  pgvector extension)     │  │                        │
-│ GPT    │  │                          │  │  Uploaded PDFs/DOCX    │
-│ text-  │  │  resumes                 │  │  Exported DOCX files   │
-│ embed- │  │  resume_chunks           │  └────────────────────────┘
-│ ding-  │  │   └ embedding vector(1536)│
-│ 3-small│  │  candidate_profiles      │  ┌────────────────────────┐
-│        │  │  applications            │  │  LangSmith             │
-│ web_   │  │  retrieved_contexts      │  │  (optional tracing)    │
-│ search │  │  ats_evaluations         │  │  Every LLM call logged │
-└────────┘  │  rewrite_suggestions     │  │  with input/output/    │
-            │  cover_letters           │  │  latency/tokens        │
-            │  job_posts               │  └────────────────────────┘
-            │  job_recommendations     │
-            │  agent_runs              │
-            └──────────────────────────┘
-```
+![Architecture](pic/Architecture.png)
+
 
 ---
 
@@ -202,31 +91,6 @@ SSE events emitted at each node:
   {"done": true, "result": { ats, suggestions, cover_letter, errors }}
 ```
 
-### Shared Agent State
-
-All nodes communicate through a single `AgentState` TypedDict that flows through the graph:
-
-```python
-class AgentState(TypedDict):
-    user_id: str
-    resume_id: Optional[str]
-    candidate_profile_id: Optional[str]
-    job_post_ids: list[str]
-    selected_job_post_id: Optional[str]
-    application_id: Optional[str]
-    resume_json: Optional[dict]          # parsed resume (all sections)
-    candidate_profile: Optional[dict]    # target roles, skills, seniority
-    job_json: Optional[dict]             # job post + extracted requirements
-    retrieved_context: Optional[list]    # top N pgvector chunks
-    company_background: Optional[dict]   # optional company research result
-    ats_result: Optional[dict]           # score, rank, matched/missing skills
-    rewrite_suggestions: Optional[list]  # per-bullet rewrites
-    approved_rewrites: Optional[list]    # rewrites approved by user
-    cover_letter: Optional[str]          # generated cover letter text
-    errors: Annotated[list[str], operator.add]  # parallel branches append; LangGraph concatenates
-```
-
-Each node reads what it needs, writes its result back, and passes the enriched state to the next node.
 
 ### Agent Descriptions
 
@@ -249,16 +113,18 @@ The score is computed by GPT using a weighted six-dimension rubric. Cosine simil
 
 ### Scoring dimensions
 
-| Dimension | Weight | Logic |
-|-----------|--------|-------|
-| Required skills match | 35% | Whether the resume contains the must-have skills listed in the job description |
-| Role/project relevance | 25% | Whether work experience, projects, education, and achievements are relevant to the target role |
-| Experience level fit | 15% | Whether the candidate fits the expected seniority (intern/junior/mid/senior). For internship roles, academic projects, hackathons, and coursework count as relevant experience. |
-| Preferred skills match | 10% | Nice-to-have skills — improves score but does not heavily penalise if missing |
-| Semantic similarity | 10% | General text similarity (cosine similarity from pgvector RAG scores) — a realistic good match is 65–85%; 90%+ requires near-complete requirement satisfaction |
-| Education/domain fit | 5% | Degree, field of study, and domain relevance |
+| Evaluation Criteria | Weight | Evaluation Method |
+|----------|--------|------------------|
+| Required Skills Match | 35% | Evaluates whether the required skills listed in the job description are present in the candidate's resume. |
+| Role / Project Relevance | 25% | Evaluates how relevant the candidate's experience, projects, education, and achievements are to the target role. |
+| Experience Level Fit | 15% | Evaluates whether the candidate matches the expected level (Intern, Junior, Mid-level, Senior). For internship roles, academic projects, hackathons, and coursework are also considered relevant experience. |
+| Preferred Skills Match | 10% | Evaluates whether the candidate possesses preferred or nice-to-have skills. Missing preferred skills do not significantly reduce the score. |
+| Semantic Similarity (Cosine Similarity) | 10% | Uses RAG-based cosine similarity as one signal among multiple factors. A similarity score between 65% and 85% is considered a realistic strong match. |
+| Education / Domain Fit | 5% | Evaluates the relevance of the candidate's academic background, degree, and domain knowledge to the position. |
 
-**Transferable skill credit:** GPT gives partial credit for related experience even without exact keyword matches (e.g. PyTorch → deep learning, OCR project → computer vision, SQL + data cleaning → data analytics).
+**Scoring Philosophy**
+
+Unlike traditional ATS systems that rely primarily on keyword matching, the final score is calculated using a weighted combination of required skills, role relevance, experience level, preferred skills, semantic similarity, and education fit. This approach provides a more realistic assessment of candidate-job compatibility, as real-world applicants rarely match a job description 100%.
 
 ### Score interpretation
 
@@ -628,62 +494,3 @@ Tests cover: ATS scoring logic, DOCX export + rewrite application, API endpoints
 | Supabase `Invalid API key` | Check `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env` |
 | `pyo3_runtime.PanicException` on PDF | Install `pycryptodome` — C extension conflict with old cryptography package |
 | ATS score always 90-100 | Fixed — GPT-driven scoring uses realistic hiring logic; scores above 90 require near-complete requirement satisfaction |
-
----
-
-## File Structure
-
-```
-reeracify/
-├── backend/
-│   ├── app/
-│   │   ├── agents/
-│   │   │   ├── graph.py                  # LangGraph analysis_graph (DAG definition)
-│   │   │   ├── state.py                  # AgentState TypedDict
-│   │   │   ├── resume_parser_agent.py    # GPT: raw text → structured JSON
-│   │   │   ├── ats_evaluator_agent.py    # GPT-driven weighted score + transferable skill credit
-│   │   │   ├── rewrite_agent.py          # Per-bullet rewrite suggestions
-│   │   │   ├── cover_letter_agent.py     # Tailored cover letter generation
-│   │   │   ├── candidate_profile_agent.py # Target roles, skills, search queries
-│   │   │   ├── job_analyzer_agent.py     # Job requirements extraction
-│   │   │   ├── rag_retriever_agent.py    # pgvector similarity search
-│   │   │   └── company_research_agent.py # Company background (optional MCP)
-│   │   ├── api/
-│   │   │   ├── resumes.py                # /resumes/*
-│   │   │   ├── applications.py           # /applications/* (includes SSE /analyze)
-│   │   │   ├── jobs.py                   # /jobs/*
-│   │   │   ├── job_posts.py              # /job-posts/*
-│   │   │   ├── rewrites.py               # /rewrite-suggestions/*
-│   │   │   └── cover_letters.py          # /cover-letters/*
-│   │   ├── services/
-│   │   │   ├── openai_client.py          # GPT chat + embedding wrapper
-│   │   │   ├── supabase_client.py        # DB client singleton
-│   │   │   ├── job_search_service.py     # JSearch / OpenAI web / cascade / dummy
-│   │   │   ├── document_parser.py        # PDF/DOCX text extraction
-│   │   │   ├── embedding_service.py      # Chunk + embed resume text
-│   │   │   ├── vector_store.py           # pgvector insert + cosine search
-│   │   │   └── docx_exporter.py          # DOCX generation with rewrite application
-│   │   ├── schemas/                      # Pydantic request/response models
-│   │   ├── config.py                     # Pydantic Settings (env var loading)
-│   │   └── main.py                       # FastAPI app + CORS + router registration
-│   ├── requirements.txt
-│   └── .env.example
-│
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.js                   # Home: upload + parse
-│   │   │   ├── edit-resume/page.js       # 5-tab editor (main file ~2400 lines)
-│   │   │   ├── contact/page.js
-│   │   │   ├── layout.js
-│   │   │   └── globals.css
-│   │   └── utils/
-│   │       └── cleanBullet.js            # Bullet glyph stripper (imported where needed)
-│   ├── package.json
-│   └── next.config.js
-│
-├── .github/workflows/ci.yml              # Backend lint+test, frontend build
-├── README.md
-├── AGENTS.md                             # LLM agent instructions (Next.js breaking changes)
-└── CLAUDE.md
-```
