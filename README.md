@@ -182,8 +182,8 @@ research_company ─────────────── gathers company b
   ├──────────────────────────────────────────────────────┐
   ▼                                                      ▼
 evaluate_ats                                  generate_cover_letter
-  │  deterministic score (0–100)                │  tailored letter from
-  │  + GPT qualitative analysis                 │  resume + job + context
+  │  GPT-driven weighted score (0–100)          │  tailored letter from
+  │  cosine similarity from RAG scores          │  resume + job + context
   │  → ats_result saved to DB                   │  → cover_letter saved to DB
   └──────────────────────────┬───────────────────┘
                              ▼
@@ -235,61 +235,94 @@ Each node reads what it needs, writes its result back, and passes the enriched s
 | `analyze_job` | `job_analyzer_agent.py` | GPT | Extracts `required_skills`, `preferred_skills`, `responsibilities`, `keywords`, `seniority_level`, `job_type` from the raw job description into structured JSON. Always runs first so every downstream node has clean requirements. |
 | `retrieve_context` | `rag_retriever_agent.py` | pgvector | Embeds the job description, runs cosine similarity against the user's `resume_chunks` table, returns top N most relevant chunks. These chunks give ATS evaluator and rewrite agent focused context rather than sending the full resume. |
 | `research_company` | `company_research_agent.py` | optional | Gathers background on the company (industry, size, culture) via MCP browser tool or web search. Runs as a no-op if tools are unavailable. Result enriches cover letter tone. |
-| `evaluate_ats` | `ats_evaluator_agent.py` | GPT | Two-part: (1) deterministic score 0–100 computed from keyword matching with no LLM call; (2) GPT qualitative analysis for strengths, weaknesses, improvement priorities, and evidence. Runs in parallel with cover letter. |
+| `evaluate_ats` | `ats_evaluator_agent.py` | GPT | GPT-driven weighted scoring (0–100) across six dimensions: required skills match (35%), role/project relevance (25%), experience level fit (15%), preferred skills match (10%), semantic similarity (10%), education/domain fit (5%). Cosine similarity is derived from RAG retrieval scores and passed as one input signal — not the final score. Returns `matched_requirements`, `missing_critical_requirements`, `missing_minor_requirements`, `transferable_skills`, `reasoning`, and `improvement_suggestions`. Runs in parallel with cover letter. |
 | `generate_cover_letter` | `cover_letter_agent.py` | GPT | Writes a tailored cover letter using resume JSON + job requirements + retrieved context. Runs in parallel with ATS evaluation. |
 | `generate_rewrites` | `rewrite_agent.py` | GPT | Generates per-bullet rewrite suggestions (original → suggested + reason). Runs after both parallel branches complete. Saved to `rewrite_suggestions` table with `pending` status. |
-| `resume_parser` | `resume_parser_agent.py` | GPT | Called separately on upload (not in `analysis_graph`). Parses raw resume text into structured JSON including: `work_experience`, `projects`, `education`, `leadership`, `achievements`, `certifications`, `languages`. Strict schema enforcement via system prompt. |
+| `resume_parser` | `resume_parser_agent.py` | GPT | Called separately on upload (not in `analysis_graph`). Uses a structured six-step internal process: detect sections → identify entries → determine boundaries → associate bullets → map to schema → emit JSON. Handles imperfect formatting (multi-column PDFs, missing headers, broken spacing). Enforces entry boundary rules to avoid merging or splitting entries. Flattens skills into individual strings. Extracts all eight sections: `work_experience`, `projects`, `education`, `leadership`, `achievements`, `certifications`, `languages`, `skills`. |
 | `candidate_profile` | `candidate_profile_agent.py` | GPT | Called separately via `/resumes/{id}/candidate-profile`. Infers `target_roles`, `core_skills`, `domain_interests`, `seniority_level`, `job_search_queries` from the parsed resume. Powers the Career Profile tab and Find Jobs queries. |
 
 ---
 
 ## ATS Scoring Logic
 
-The score is computed deterministically in `_compute_ats_score()` — no LLM involved. Fast, consistent, explainable.
+The score is computed by GPT using a weighted six-dimension rubric. Cosine similarity (derived from RAG retrieval scores) is passed as one input signal — not used as the final score. This approach rewards transferable skills and realistic hiring fit rather than exact keyword overlap.
 
-### With a job posting (0–100)
+### Scoring dimensions
 
-| Component | Points | Logic |
+| Dimension | Weight | Logic |
 |-----------|--------|-------|
-| Required skills match | 40 | `matched / total × 40` — pure ratio, 0 if none match |
-| Preferred skills match | 20 | `matched / total × 20` — pure ratio |
-| Responsibilities match | 20 | Phrase-level: a responsibility counts only when ≥50% of its meaningful words (length > 3) appear in the resume. Prevents single common words from scoring. |
-| Keyword density | 10 | `matched / total × 10` |
-| Resume depth (bullets) | 10 | 1 pt per bullet point, capped at 10 |
+| Required skills match | 35% | Whether the resume contains the must-have skills listed in the job description |
+| Role/project relevance | 25% | Whether work experience, projects, education, and achievements are relevant to the target role |
+| Experience level fit | 15% | Whether the candidate fits the expected seniority (intern/junior/mid/senior). For internship roles, academic projects, hackathons, and coursework count as relevant experience. |
+| Preferred skills match | 10% | Nice-to-have skills — improves score but does not heavily penalise if missing |
+| Semantic similarity | 10% | General text similarity (cosine similarity from pgvector RAG scores) — a realistic good match is 65–85%; 90%+ requires near-complete requirement satisfaction |
+| Education/domain fit | 5% | Degree, field of study, and domain relevance |
 
-`resume_text` for matching includes: skills, work experience bullets/descriptions, project bullets/descriptions/technologies, leadership bullets/descriptions/titles, achievement titles/descriptions, and certification names.
+**Transferable skill credit:** GPT gives partial credit for related experience even without exact keyword matches (e.g. PyTorch → deep learning, OCR project → computer vision, SQL + data cleaning → data analytics).
 
-**Rank thresholds:** `score ≥ 80` → Advanced (상) · `score ≥ 55` → Intermediate (중) · `score < 55` → Beginner (하)
+### Score interpretation
 
-### Without a job posting (general evaluation)
+| Range | Level |
+|-------|-------|
+| 85–100 | Strong match (상) |
+| 70–84 | Good match |
+| 55–69 | Partial match (중) |
+| 40–54 | Weak match |
+| below 40 | Poor match (하) |
 
-Scores resume completeness and depth instead:
+### ATS result fields
 
-| Component | Points |
-|-----------|--------|
-| Contact info | 8 if name + email present |
-| Education | 7 if any education entry exists |
-| Skills | 2 pts/skill up to 30 |
-| Work experience | 8 pts/role up to 25 |
-| Bullet points | 2 pts/bullet up to 20 |
-| Projects | 5 pts/project up to 15 |
+```
+final_match_score          — 0–100
+match_level                — "Strong match" / "Good match" / etc.
+cosine_similarity_score    — raw semantic similarity (0–100)
+score_breakdown            — per-dimension scores
+matched_requirements       — skills/requirements the resume satisfies
+missing_critical_requirements — must-have gaps
+missing_minor_requirements — nice-to-have gaps
+transferable_skills        — related experience credited even without exact match
+reasoning                  — GPT explanation of the score
+improvement_suggestions    — ordered list of actions to improve the match
+```
 
 ---
 
 ## Resume Parser — Supported Sections
 
-The parser (`resume_parser_agent.py`) extracts every section it finds and enforces strict classification rules so nothing ends up in the wrong bucket:
+The parser (`resume_parser_agent.py`) uses a structured six-step internal process before emitting JSON:
 
-| Section | Schema fields | Classification rules |
-|---------|--------------|---------------------|
-| `work_experience` | company, title, location, start_date, end_date, is_current, description, bullets | Internships, freelance, mentoring, datathon/hackathon participation (technical work), volunteer with responsibilities |
+1. Identify all major resume sections
+2. Identify all entries within each section
+3. Determine the boundary of each entry
+4. Associate descriptions and bullet points with the correct entry
+5. Map each entry into the correct schema field
+6. Emit the final JSON object
+
+The parser is designed to handle imperfect real-world formatting: missing section headers, multi-column PDFs, dates on separate lines, inconsistent spacing, and unusual section names. It infers sections from content meaning when headers are absent, and uses entry boundary rules to avoid merging adjacent entries.
+
+### Entry boundary rule
+
+When a new title, role, project name, company, institution, or date range appears, a new entry begins. Adjacent entries are never merged unless there is strong evidence they belong together.
+
+### Description vs bullets
+
+- **Bullet-style lines** → `bullets` array (wording preserved exactly, bullet symbols stripped)
+- **Paragraph-style overview** → `description` field
+
+### Schema sections
+
+| Section | Schema fields | Classification |
+|---------|--------------|----------------|
+| `work_experience` | company, title, location, start_date, end_date, is_current, description, bullets | Internships, freelance, mentoring, assistantships, datathon/hackathon participation (technical work), volunteer with responsibilities |
 | `education` | institution, degree, field_of_study, start_date, end_date, gpa, description, bullets | All formal education |
-| `projects` | name, description, technologies, url, start_date, end_date, bullets | Personal/academic projects |
-| `leadership` | title, organization, start_date, end_date, description, bullets | Club officers, student ambassadors, committee members, society roles, publication editors |
-| `achievements` | title, date, description | Awards, scholarships, competition wins, honours, dean's list, medals |
-| `certifications` | name, issuer, date, description | AWS certs, TOPIK, IELTS, professional credentials, training certificates |
-| `languages` | language, proficiency | All language entries |
-| `skills` | `[]` of strings | Flat list, preserves all categories |
+| `projects` | name, description, technologies, url, start_date, end_date, bullets | Software, data, AI/ML, web, mobile, research, academic, personal builds |
+| `leadership` | title, organization, start_date, end_date, description, bullets | Club officers, student ambassadors, committee members, society roles, publication editors, representative roles |
+| `achievements` | title, date, description | Awards, scholarships, competition wins, honours, dean's list, medals, rankings |
+| `certifications` | name, issuer, date, description | AWS certs, TOPIK, IELTS, professional credentials, training certificates, language exams |
+| `languages` | language, proficiency | All human language entries |
+| `skills` | `[]` of strings | Individual skill strings — never comma-joined. Grouped skills are flattened while preserving names. |
+
+If the section header and content conflict, classification follows the actual content.
 
 ---
 
@@ -594,7 +627,7 @@ Tests cover: ATS scoring logic, DOCX export + rewrite application, API endpoints
 | Jobs found: 0 | Generate Career Profile first (provides `target_roles`), or try a different country |
 | Supabase `Invalid API key` | Check `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env` |
 | `pyo3_runtime.PanicException` on PDF | Install `pycryptodome` — C extension conflict with old cryptography package |
-| ATS score always 90-100 | Fixed — scoring uses no floors for job-based mode; phrase-level responsibility matching |
+| ATS score always 90-100 | Fixed — GPT-driven scoring uses realistic hiring logic; scores above 90 require near-complete requirement satisfaction |
 
 ---
 
@@ -608,7 +641,7 @@ reeracify/
 │   │   │   ├── graph.py                  # LangGraph analysis_graph (DAG definition)
 │   │   │   ├── state.py                  # AgentState TypedDict
 │   │   │   ├── resume_parser_agent.py    # GPT: raw text → structured JSON
-│   │   │   ├── ats_evaluator_agent.py    # Deterministic score + GPT analysis
+│   │   │   ├── ats_evaluator_agent.py    # GPT-driven weighted score + transferable skill credit
 │   │   │   ├── rewrite_agent.py          # Per-bullet rewrite suggestions
 │   │   │   ├── cover_letter_agent.py     # Tailored cover letter generation
 │   │   │   ├── candidate_profile_agent.py # Target roles, skills, search queries

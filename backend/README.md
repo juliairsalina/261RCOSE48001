@@ -12,13 +12,13 @@ This backend provides an end-to-end AI-powered pipeline that takes a candidate f
 
 ## MVP Features
 
-1. **Resume Upload & Parsing** — Upload PDF or DOCX; GPT-4o extracts structured JSON (name, experience, skills, education, etc.)
+1. **Resume Upload & Parsing** — Upload PDF or DOCX; GPT extracts structured JSON using a six-step parsing process with entry boundary detection, description-vs-bullet classification, and individual skill flattening. Handles imperfect PDF formatting.
 2. **Semantic Chunking & Embedding** — LangChain splits resume text; OpenAI embeddings stored in Supabase pgvector
 3. **Candidate Profile Generation** — GPT infers target roles, seniority, core skills, and generates 5–8 job search queries
 4. **Job Discovery** — Adzuna API search (with realistic dummy fallback); each result scored and ranked for fit
 5. **Job Analysis** — GPT extracts structured requirements (required/preferred skills, responsibilities, keywords) from job postings
 6. **RAG Retrieval** — Cosine similarity search pulls the most relevant resume chunks for the selected job
-7. **ATS Evaluation** — Deterministic scoring (0–100) + GPT qualitative analysis with rank (상/중/하)
+7. **ATS Evaluation** — GPT-driven weighted scoring (0–100) across six dimensions with transferable skill credit. Cosine similarity from RAG retrieval scores used as one signal. Rank: Strong (상) / Partial (중) / Poor (하).
 8. **Resume Rewrite Suggestions** — GPT generates targeted rewrite suggestions; user approves/rejects each
 9. **Resume DOCX Export** — Approved rewrites applied; styled DOCX generated with python-docx and uploaded to Supabase Storage
 10. **Cover Letter Generation** — GPT writes a 250–400 word personalised cover letter using all gathered context
@@ -113,12 +113,12 @@ The RAG pipeline ensures GPT evaluations and rewrites are grounded in the candid
 
 | Agent | File | Responsibility |
 |-------|------|----------------|
-| Resume Parser | `agents/resume_parser_agent.py` | Extracts structured JSON from raw resume text using GPT-4o |
+| Resume Parser | `agents/resume_parser_agent.py` | Extracts structured JSON from raw resume text using a six-step internal process: detect sections → identify entries → determine boundaries → associate bullets → map to schema → emit JSON. Handles imperfect formatting (multi-column PDFs, missing headers). Skills are always flattened to individual strings. |
 | Candidate Profile | `agents/candidate_profile_agent.py` | Infers target roles, skills, and generates search queries |
 | Job Discovery | `agents/job_discovery_agent.py` | Searches Adzuna, scores and ranks job matches |
 | Job Analyzer | `agents/job_analyzer_agent.py` | Extracts structured requirements from job descriptions |
 | RAG Retriever | `agents/rag_retriever_agent.py` | Retrieves relevant resume chunks via pgvector cosine search |
-| ATS Evaluator | `agents/ats_evaluator_agent.py` | Scores resume vs job (0-100), GPT generates qualitative feedback |
+| ATS Evaluator | `agents/ats_evaluator_agent.py` | GPT-driven weighted scoring (0–100) across six dimensions: required skills (35%), role/project relevance (25%), experience level fit (15%), preferred skills (10%), semantic similarity (10%), education fit (5%). Cosine similarity is derived from RAG retrieval scores and passed as one signal. Transfers credit for related skills (e.g. PyTorch → deep learning). Returns score breakdown, matched/missing requirements, transferable skills, reasoning, and improvement suggestions. |
 | Rewrite Agent | `agents/rewrite_agent.py` | Suggests targeted resume improvements without inventing experience |
 | Cover Letter | `agents/cover_letter_agent.py` | Writes a 250-400 word personalised cover letter |
 
