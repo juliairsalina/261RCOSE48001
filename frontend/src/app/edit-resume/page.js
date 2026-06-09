@@ -1284,7 +1284,7 @@ export default function EditResumePage() {
                     <p className="text-xl font-black text-[#243026]">Job Link Summary</p>
                     <p className={`mt-1 ${UI.bodyStrong}`}>{jobSummary}</p>
                     {jobDescription && (
-                      <p className="mt-2 text-[12px] leading-[1.6] text-[#243026]/65 line-clamp-6">
+                      <p className="mt-2 text-[12px] leading-[1.6] text-white/75 line-clamp-6">
                         {jobDescription}
                       </p>
                     )}
