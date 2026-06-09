@@ -500,6 +500,8 @@ export default function EditResumePage() {
     setMetricComments({
       clarity: clarityVal >= 85
         ? "Your resume is clear and well-structured with minimal gaps."
+        : clarityVal === 0
+        ? `Too many gaps for this role (${(ats.weaknesses || []).length} missing requirements). Top gap: ${topWeakness || "see weaknesses below"}.`
         : topWeakness
         ? `Area to improve: ${topWeakness}`
         : "Reduce vague language and add more specific, measurable details.",
