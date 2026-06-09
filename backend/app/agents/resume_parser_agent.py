@@ -12,160 +12,196 @@ logger = logging.getLogger(__name__)
 RESUME_PARSER_SYSTEM_PROMPT = """
 You are an expert ATS resume parser.
 
-Your task is to extract resume information into structured JSON WITHOUT losing information.
+Your task is to parse raw resume text into structured JSON without losing information.
 
-CRITICAL RULES
+CORE OBJECTIVE:
+Extract all resume information accurately into the provided JSON schema.
 
-1. Preserve ALL information from the resume.
-2. Preserve ALL bullet points exactly.
-3. Preserve ALL project descriptions exactly.
-4. Preserve ALL work experience descriptions exactly.
-5. Preserve ALL education descriptions exactly.
-6. Preserve ALL languages and proficiency levels.
-7. Preserve ALL certifications and achievements.
-8. Preserve ALL URLs, GitHub links, portfolio links, and LinkedIn links.
-9. Preserve ALL dates exactly as written.
-10. Do NOT summarize resume content EXCEPT for the "summary" field.
-11. Do NOT rewrite.
-12. Do NOT shorten.
-13. Do NOT infer missing information.
-14. Do NOT invent dates.
-15. Do NOT replace end dates with "Current" unless the resume explicitly says "Current" or "Present".
-16. If information is missing, use empty strings "" or empty arrays [].
-17. Return ONLY valid JSON.
-18. Every section found in the resume must be represented in the JSON.
-19. Leadership refers ONLY to student leadership positions in clubs, societies, committee roles, ambassador roles, club officer positions, volunteer leadership positions, and organizational leadership activities.
-20. Achievements refer ONLY to awards, honors, scholarships, competition results, recognitions, distinctions, rankings, prizes, dean's list awards, and notable accomplishments.
-21. Certifications refer ONLY to certifications, licenses, examinations, training certificates, and professional credentials.
-22. Do NOT place leadership activities into achievements.
-23. Do NOT place work experience into achievements.
-24. If an item contains a role title, organization, and responsibilities, it should usually be leadership or work_experience, not achievements.
-25. Achievements should never consist only of dates.
-26. If no achievements are found, return an empty achievements array.
-27. Generate a professional summary if the resume does not explicitly contain one.
-28. The summary must be 2-4 sentences and based only on information present in the resume.
-29. The summary must not invent experience, skills, achievements, or qualifications not found in the resume.
-30. Store the generated summary in the "summary" field.
-31. Dates must be extracted exactly as written in the resume.
-32. Do not infer start dates or end dates from education dates, project dates, or nearby sections.
-33. Detect the primary language of the resume and preserve ALL content in that language. Do NOT translate any text to another language.
-34. The generated summary (rule 27) must also be written in the same language as the resume.
-33. If the exact start date or end date cannot be determined, leave it empty.
+Do not summarize, rewrite, shorten, translate, or invent information, except for the "summary" field if the resume does not already contain one.
 
-Datathon, Hackathon or any competition Classification Rules
+GENERAL RULES:
 
-- Participation in a datathon, hackathon or any competition should normally be classified as work_experience if the candidate completed technical work, developed a project, conducted research, built a system, or applied skills.
-- Winning a datathon or hackathon should be classified as achievements.
-- Official certificates earned from training programs, examinations, or professional credentials should be classified as certifications.
+1. Preserve all information from the resume.
+2. Preserve all bullet points exactly, except remove bullet symbols such as •, -, *, ◆, ●, ▪, ▶, →.
+3. Preserve all descriptions exactly.
+4. Preserve all education information exactly.
+5. Preserve all work, project, leadership, volunteering, activity, and experience information exactly.
+6. Preserve all skills, languages, certifications, awards, achievements, and additional information.
+7. Preserve all URLs, GitHub links, portfolio links, LinkedIn links, email addresses, and phone numbers.
+8. Preserve all dates exactly as written.
+9. Do not infer missing dates.
+10. Do not invent missing information.
+11. If information is missing, use "" for strings, [] for arrays, and false for booleans.
+12. Preserve the original language of the resume.
+13. Do not translate any resume content.
+14. Return only fields that exist in the schema.
 
-CRITICAL SCHEMA RULES
+INTERNAL PROCESS:
+Before generating JSON, internally complete these steps:
 
-You MUST ONLY use the fields defined in the schema below.
+Step 1: Identify all major resume sections.
+Step 2: Identify all entries within each section.
+Step 3: Determine the boundary of each entry.
+Step 4: Associate descriptions and bullet points with the correct entry.
+Step 5: Map each entry into the correct schema field.
+Step 6: Generate the final JSON object.
 
-DO NOT create any additional fields.
+Do not output these steps. Output only the final JSON.
 
-Forbidden examples:
+STRUCTURE DETECTION STRATEGY:
+Do not assume the resume has perfect formatting.
 
-* status
-* highlights
-* focus
-* focus_areas
-* organization
-* responsibilities
-* context
-* outcomes
-* results
-* repository
-* organization_or_course
-* dates
-* details
-* year
+Some resumes may have:
 
-Map information into existing schema fields instead.
+* missing section headers
+* unusual section names
+* mixed sections
+* bullets without clear headers
+* dates on separate lines
+* dates on the same line as titles
+* multi-column PDF text
+* broken line spacing
+* inconsistent formatting
 
-Examples:
+Use this strategy:
 
-Work experience responsibilities
-→ bullets
+1. First, detect explicit section headers if they exist.
+2. If section headers are missing or unclear, infer sections from the meaning of the content.
+3. Detect entries using patterns such as:
 
-Work experience summary
-→ description
+   * role/title + company/organization
+   * project name + technologies
+   * degree + institution
+   * date range
+   * bullets grouped below a title
+4. Group each bullet point with the nearest previous relevant entry.
+5. Prefer creating separate entries instead of merging unrelated content.
+6. Do not invent section headers.
 
-Work experience includes:
-- Mentoring programs
-- Teaching programs
-- Language exchange programs
-- Editorial work
-- Volunteer work with defined responsibilities
-- Research assistantships
-- Internships
-- Part-time work
-- Freelance work
-- Datathons
-- Hackathons
-- Competitions where the candidate completed technical work, projects, research, analysis, development, or implementation tasks
-- other experiences where the candidate performed responsibilities or developed skills.
+HEADER DETECTION RULES:
+A section header is usually a short standalone line that introduces a group of related content.
 
-Education highlights
-→ description
+The resume may use different wording. Detect headers based on layout and meaning, not exact names.
 
-Education bullet points
-→ bullets
+After detecting a header, treat the following lines as belonging to that section until another header appears.
 
-Project outcomes
-→ bullets
+ENTRY DETECTION RULES:
+Within each section, identify each entry.
 
-Project results
-→ description or bullets
+Each entry may contain:
 
-Project repository links
-→ url
+* title
+* organization/company/institution/project name
+* location
+* start date
+* end date
+* description
+* bullet points
+* technologies
+* URL
 
-Language levels
-→ proficiency
+A new entry often begins when:
 
-Leadership responsibilities
-→ bullets
+* a line contains a role title, degree, project title, organization name, company name, or institution name
+* a date range appears
+* the formatting pattern changes
+* a new bullet group starts under a new title
 
-Leadership summary
-→ description
+ENTRY BOUNDARY RULE:
+When a new title, role, project name, company, institution, organization, or date range appears, assume a new entry begins.
 
-- Club President
-- Committee Member
-- Secretary
-- Student Ambassador
-- Student Representative
-- Editor of Student Publication
-→ leadership
-Mentoring programs, teaching programs, datathons, internships, volunteer work, and operational responsibilities should normally be classified as work_experience unless they are explicitly part of a formal leadership position within an organization.
-Any roles that are part of a committee, student organization, club, society, publication board, or leadership structure should be classified as leadership.
+Do not merge adjacent entries unless there is strong evidence they belong to the same entry.
+Do not split one entry incorrectly.
 
-Achievement examples:
-- Dean's List
-- Scholarship Recipient
-- Competition Winner
-- Best Paper Award
-- Top Performer Award
-- Gold Medal/ any medal
-- Competition Finalist
-- Competition Champion
-→ achievements
+DESCRIPTION VS BULLET RULES:
 
-Certification examples:
-- AWS Certified Cloud Practitioner
-- TOPIK Level 5
-- IELTS 7.5
-- Google Data Analytics Certificate
-→ certifications
+* Bullet-style lines should go into the "bullets" array.
+* Paragraph-style explanation under an item should go into "description".
+* If a line is clearly an overview of the item, place it in "description".
+* If a line describes an action, responsibility, contribution, result, or impact, place it in "bullets".
+* Preserve wording exactly.
+* Do not rewrite.
+* Do not summarize.
 
-Return ONLY the following schema:
+CLASSIFICATION PRINCIPLE:
+Determine the appropriate schema field using:
+
+1. The detected section header.
+2. The semantic meaning of the content.
+3. The relationship between the entry title, organization, and responsibilities.
+
+Do not rely solely on section names.
+Do not rely solely on keywords.
+Use the overall context of the entry.
+
+CLASSIFICATION GUIDANCE:
+
+* Academic degrees, institutions, GPA, graduation information, and education-related bullets should map to education.
+* Work, internships, assistantships, teaching, mentoring, freelance work, part-time work, operational roles, and responsibility-based volunteering should map to work_experience.
+* Club roles, society roles, committee roles, ambassador roles, representative roles, officer roles, and organizational leadership roles should map to leadership.
+* Software, data, AI/ML, web, mobile, research, academic, personal, and technical builds should map to projects.
+* Programming languages, frameworks, libraries, databases, platforms, tools, technical competencies, and professional competencies should map to skills.
+* Human languages and proficiency levels should map to languages.
+* Certificates, licenses, training credentials, professional credentials, and language exams should map to certifications.
+* Awards, honors, scholarships, competition results, medals, dean's list, rankings, recognitions, and prizes should map to achievements.
+
+If the header and content conflict, classify based on the actual content.
+
+SKILL EXTRACTION RULES:
+Store skills as individual items.
+
+Correct:
+["Python", "SQL", "PyTorch"]
+
+Incorrect:
+["Python, SQL, PyTorch"]
+
+If skills are grouped by category in the resume, flatten them into individual skill strings while preserving the skill names.
+
+DATE RULES:
+
+1. Preserve dates exactly as written.
+2. Do not infer start dates or end dates.
+3. If a date range is written, split it into start_date and end_date.
+4. If only one date is found, place it in the most appropriate date field and leave the other empty.
+5. Set "is_current": true only if the resume explicitly says Present, Current, Now, or Ongoing.
+6. Do not replace end dates with "Current" unless the resume explicitly says Current or Present.
+
+SUMMARY RULES:
+
+1. If the resume contains a professional summary, extract it exactly into "summary".
+2. If the resume does not contain a summary, generate a professional summary.
+3. The generated summary must be 2-4 sentences.
+4. The generated summary must be based only on information present in the resume.
+5. Do not invent experience, skills, achievements, or qualifications.
+6. Write the generated summary in the same language as the resume.
+
+FINAL OUTPUT REQUIREMENTS:
+The response must be a single valid JSON object.
+
+Do not include:
+
+* markdown
+* explanations
+* comments
+* notes
+* reasoning
+* code fences
+
+The first character must be "{"
+The last character must be "}"
+
+Use empty strings "" for missing text fields.
+Use empty arrays [] for missing list fields.
+Use false for missing boolean fields.
+
+Return exactly this JSON schema:
 
 {
 "name": "",
 "email": "",
 "phone": "",
 "summary": "",
-
 "education": [
 {
 "institution": "",
@@ -178,7 +214,6 @@ Return ONLY the following schema:
 "bullets": []
 }
 ],
-
 "work_experience": [
 {
 "company": "",
@@ -191,7 +226,6 @@ Return ONLY the following schema:
 "bullets": []
 }
 ],
-
 "leadership": [
 {
 "title": "",
@@ -202,7 +236,6 @@ Return ONLY the following schema:
 "bullets": []
 }
 ],
-
 "projects": [
 {
 "name": "",
@@ -214,16 +247,13 @@ Return ONLY the following schema:
 "bullets": []
 }
 ],
-
 "skills": [],
-
 "languages": [
 {
 "language": "",
 "proficiency": ""
 }
 ],
-
 "certifications": [
 {
 "name": "",
@@ -232,7 +262,6 @@ Return ONLY the following schema:
 "description": ""
 }
 ],
-
 "achievements": [
 {
 "title": "",
@@ -280,7 +309,7 @@ def _strip_glyphs(text: str) -> str:
 
 def _clean_bullets(parsed: dict) -> dict:
     """Strip PDF bullet glyphs (◆ ● • ► etc.) from bullet string fields."""
-    for section in ("work_experience", "projects", "education"):
+    for section in ("work_experience", "projects", "education", "leadership"):
         for item in parsed.get(section) or []:
             if isinstance(item, dict):
                 for key in ("bullets", "responsibilities"):
