@@ -406,6 +406,68 @@ npm run dev
 # App: http://localhost:3000
 ```
 
+---
+
+### Windows Setup
+
+The steps above use Mac/Linux syntax. If you are on Windows, follow this instead.
+
+**Prerequisites**
+- Python 3.11 — download from python.org (check "Add to PATH" during install)
+- Node.js 20+ — download from nodejs.org
+- Git — download from git-scm.com
+
+**Backend**
+
+Open Command Prompt or PowerShell in the `backend` folder:
+
+```bat
+cd backend
+
+pip install uv
+uv venv
+.venv\Scripts\activate
+
+pip install --upgrade pycryptodome
+uv pip install -r requirements.txt
+
+copy .env.example .env
+```
+
+Open `.env` in Notepad and fill in:
+```
+OPENAI_API_KEY=sk-...
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_ANON_KEY=eyJ...
+```
+
+Run the backend — **do not use `--reload`** on Windows, it causes port conflicts:
+```bat
+uvicorn app.main:app --port 8000
+```
+
+**Frontend**
+
+Open a new Command Prompt or PowerShell in the `frontend` folder:
+
+```bat
+cd frontend
+npm install
+echo NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 > .env.local
+npm run dev
+```
+
+**Windows Troubleshooting**
+
+| Problem | Fix |
+|---------|-----|
+| `uv` or `uvicorn` not found after install | Close and reopen the terminal, or run `python -m uvicorn app.main:app --port 8000` |
+| Port 8000 already in use | Run `netstat -ano \| findstr :8000` to find the process, then kill it in Task Manager |
+| `pyo3_runtime.PanicException` on PDF upload | Run `pip install --upgrade pycryptodome` then restart the backend |
+| `.venv\Scripts\activate` blocked by execution policy | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` in PowerShell first |
+| App starts but crashes on first action | `.env` file is missing or keys are empty — double-check all three required keys |
+
 ### Environment Variables
 
 **`backend/.env`:**
