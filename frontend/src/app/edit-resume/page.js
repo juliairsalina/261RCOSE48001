@@ -545,7 +545,20 @@ export default function EditResumePage() {
       setErrorMessage("Please upload your resume on the home page first.");
       return;
     }
+
+    // Clear stale results from the previous evaluation immediately so the UI
+    // never shows old data alongside the new evaluation's loading state.
     setJobDescription("");
+    setRewriteList([]);
+    setBackendSuggestions([]);
+    setCoverLetterText("");
+    setAtsScoreValue(0);
+    setResumeLevel("Waiting for evaluation");
+    setMetrics({ clarity: 0, keywordFit: 0, structure: 0, impact: 0 });
+    setMetricComments({ clarity: "", keywordFit: "", structure: "", impact: "" });
+    setMissingSkills([]);
+    setHasAnalyzed(false);
+    setJobSummary("Evaluating...");
 
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";

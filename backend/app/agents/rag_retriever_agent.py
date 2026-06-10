@@ -80,7 +80,8 @@ async def retrieve_resume_context_node(state: AgentState) -> AgentState:
             top_k=5,
         )
 
-        # 4. Save to retrieved_contexts
+        # 4. Save to retrieved_contexts — replace any previous entry for this
+        # application so re-runs don't accumulate stale rows.
         if application_id and chunks:
             db = supabase_client.get_client()
             chunk_ids = [c.get("id") for c in chunks if c.get("id")]
@@ -88,6 +89,7 @@ async def retrieve_resume_context_node(state: AgentState) -> AgentState:
                 {"chunk_text": c.get("chunk_text", ""), "section": c.get("section", ""), "similarity": c.get("similarity", 0.0)}
                 for c in chunks
             ]
+            db.table("retrieved_contexts").delete().eq("application_id", application_id).execute()
             db.table("retrieved_contexts").insert(
                 {
                     "application_id": application_id,

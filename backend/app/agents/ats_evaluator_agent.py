@@ -229,9 +229,11 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
             "improvement_priority": improvement_suggestions,
         }
 
-        # 4. Save to ats_evaluations
+        # 4. Save to ats_evaluations — replace any previous result for this
+        # application so re-evaluations don't accumulate stale rows.
         if application_id:
             db = supabase_client.get_client()
+            db.table("ats_evaluations").delete().eq("application_id", application_id).execute()
             db.table("ats_evaluations").insert(
                 {
                     "application_id": application_id,
