@@ -339,7 +339,7 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
     # Fetch saved suggestions from DB to include their IDs
     saved = (
         db.table("rewrite_suggestions")
-        .select("id, section, original_text, suggested_text, reason, status")
+        .select("id, section, item_label, original_text, suggested_text, reason, status")
         .eq("application_id", application_id)
         .order("created_at")
         .execute()
@@ -348,6 +348,7 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
         RewriteSuggestion(
             id=row["id"],
             section=row.get("section", ""),
+            item_label=row.get("item_label", ""),
             original_text=row.get("original_text", ""),
             suggested_text=row.get("suggested_text", ""),
             reason=row.get("reason", ""),
@@ -443,7 +444,7 @@ async def analyze_application(application_id: str, request: ExportResumeRequest)
 
             saved = (
                 db.table("rewrite_suggestions")
-                .select("id, section, original_text, suggested_text, reason, status")
+                .select("id, section, item_label, original_text, suggested_text, reason, status")
                 .eq("application_id", application_id)
                 .order("created_at")
                 .execute()
@@ -514,7 +515,7 @@ async def export_resume(application_id: str, request: ExportResumeRequest) -> di
     # Load approved rewrites
     rewrites_result = (
         db.table("rewrite_suggestions")
-        .select("section, original_text, suggested_text, reason")
+        .select("section, item_label, original_text, suggested_text, reason")
         .eq("application_id", application_id)
         .eq("status", "approved")
         .execute()

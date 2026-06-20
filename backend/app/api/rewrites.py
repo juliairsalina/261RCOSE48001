@@ -49,6 +49,7 @@ async def update_rewrite_suggestion(
         "id": row.get("id"),
         "application_id": row.get("application_id"),
         "section": row.get("section"),
+        "item_label": row.get("item_label"),
         "original_text": row.get("original_text"),
         "suggested_text": row.get("suggested_text"),
         "reason": row.get("reason"),

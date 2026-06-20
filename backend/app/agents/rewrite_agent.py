@@ -39,7 +39,8 @@ REWRITE RULES:
 
 Return a JSON object with key "suggestions" containing a list. Each object must have:
 - section: "work_experience", "projects", "leadership", "achievements" or "certifications" only
-- original_text: exact original text (copy precisely)
+- item_label: identifies which entry this belongs to — for work_experience use "company - title", for projects use the project name, for leadership use "title - organization", for achievements/certifications use the title/name. Copy this exactly from the resume data provided.
+- original_text: exact original text (copy precisely). If the description is blank/empty, use an empty string "".
 - suggested_text: the rewritten version
 - reason: one sentence — which specific keyword or weakness this fixes and how it raises the ATS score
 
@@ -129,6 +130,7 @@ async def generate_rewrite_suggestions_node(state: AgentState) -> AgentState:
                     {
                         "application_id": application_id,
                         "section": suggestion.get("section", ""),
+                        "item_label": suggestion.get("item_label", ""),
                         "original_text": suggestion.get("original_text", ""),
                         "suggested_text": suggestion.get("suggested_text", ""),
                         "reason": suggestion.get("reason", ""),

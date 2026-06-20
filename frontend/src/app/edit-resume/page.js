@@ -594,8 +594,9 @@ export default function EditResumePage() {
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      // Pass current resumeData so approved rewrites are reflected in the ATS score
-      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step), resumeData);
+      // Pass current resumeData (converted to backend's parser shape) so approved
+      // rewrites are reflected in the ATS score and new rewrite suggestions.
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step), toResumeJson(resumeData));
 
       let jobSummaryText;
       if (!hasLink) {
@@ -2075,6 +2076,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   {(exp.bullets?.length
                     ? exp.bullets
                     : exp.responsibilities || []).map((b, j) => (
+                    !cleanBullet(b).trim() ? null :
                     <li key={j}>
                       <RewritableBullet text={cleanBullet(b)}>
                         <Editable
@@ -2088,7 +2090,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                                   ? [...e.bullets]
                                   : [...(e.responsibilities || [])];
 
-                              currentBullets[j] = v;
+                              if (v) {
+                                currentBullets[j] = v;
+                              } else {
+                                currentBullets.splice(j, 1);
+                              }
 
                               return e.bullets?.length
                                 ? { ...e, bullets: currentBullets }
@@ -2203,6 +2209,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
               {(proj.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
                   {proj.bullets.map((b, j) => (
+                    !cleanBullet(b).trim() ? null :
                     <li key={j}>
                       <RewritableBullet text={cleanBullet(b)}>
                         <Editable
@@ -2212,7 +2219,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                               if (pi !== i) return p;
 
                               const newBullets = [...(p.bullets || [])];
-                              newBullets[j] = v;
+                              if (v) {
+                                newBullets[j] = v;
+                              } else {
+                                newBullets.splice(j, 1);
+                              }
 
                               return {
                                 ...p,
@@ -2326,6 +2337,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
               {(item.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc pl-5">
                   {item.bullets.map((b, j) => (
+                    !(b || "").trim() ? null :
                     <li key={j}>
                       <RewritableBullet text={b}>
                         <Editable
@@ -2335,7 +2347,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                               if (li !== i) return l;
 
                               const newBullets = [...(l.bullets || [])];
-                              newBullets[j] = v;
+                              if (v) {
+                                newBullets[j] = v;
+                              } else {
+                                newBullets.splice(j, 1);
+                              }
 
                               return {
                                 ...l,
@@ -2736,11 +2752,23 @@ function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
   );
 }
 
+function itemMatchesLabel(item, label, nameKeys) {
+  if (!label) return false;
+  const labelLower = label.toLowerCase();
+  const itemText = nameKeys.map((k) => item[k] || "").join(" ").trim().toLowerCase();
+  return Boolean(itemText) && (itemText.includes(labelLower) || labelLower.includes(itemText));
+}
+
 function applyRewriteToResume(rewrite, rd) {
   const section = (rewrite.section || "").toLowerCase();
+  const itemLabel = rewrite.item_label || "";
   const original = (rewrite.original_text || "").trim();
   const suggested = rewrite.suggested_text || "";
-  if (!original || !suggested) return rd;
+  if (!suggested) return rd;
+
+  // A blank original_text means the suggestion fills in a missing description —
+  // there's no text to match against, so target the specific entry via item_label.
+  const isBlankFill = !original;
 
   const replaceBullets = (bullets) =>
     (bullets || []).map((b) => {
@@ -2752,57 +2780,81 @@ function applyRewriteToResume(rewrite, rd) {
     typeof desc === "string" ? desc.replace(original, suggested) : desc;
 
   if (["summary", "profile", "objective"].includes(section)) {
+    if (isBlankFill) return rd;
     return { ...rd, summary: replaceDesc(rd.summary) };
   }
   if (["skills", "skill"].includes(section)) {
+    if (isBlankFill) return rd;
     return { ...rd, skills: (rd.skills || []).map((s) => (s === original ? suggested : s)) };
   }
   if (["work_experience", "experience", "work experience"].includes(section)) {
     return {
       ...rd,
-      experience: (rd.experience || []).map((e) => ({
-        ...e,
-        bullets: replaceBullets(e.bullets),
-        description: replaceDesc(e.description),
-      })),
+      experience: (rd.experience || []).map((e) =>
+        isBlankFill
+          ? itemMatchesLabel(e, itemLabel, ["company", "role", "title"])
+            ? { ...e, description: suggested }
+            : e
+          : { ...e, bullets: replaceBullets(e.bullets), description: replaceDesc(e.description) }
+      ),
     };
   }
   if (["projects", "project"].includes(section)) {
     return {
       ...rd,
-      projects: (rd.projects || []).map((p) => ({
-        ...p,
-        bullets: replaceBullets(p.bullets),
-        description: replaceDesc(p.description),
-      })),
+      projects: (rd.projects || []).map((p) =>
+        isBlankFill
+          ? itemMatchesLabel(p, itemLabel, ["name"])
+            ? { ...p, description: suggested }
+            : p
+          : { ...p, bullets: replaceBullets(p.bullets), description: replaceDesc(p.description) }
+      ),
     };
   }
   if (section === "leadership") {
     return {
       ...rd,
-      leadership: (rd.leadership || []).map((l) => ({
-        ...l,
-        bullets: replaceBullets(l.bullets),
-        description: replaceDesc(l.description),
-      })),
+      leadership: (rd.leadership || []).map((l) =>
+        isBlankFill
+          ? itemMatchesLabel(l, itemLabel, ["title", "organization"])
+            ? { ...l, description: suggested }
+            : l
+          : { ...l, bullets: replaceBullets(l.bullets), description: replaceDesc(l.description) }
+      ),
     };
   }
   if (["achievements", "achievement"].includes(section)) {
     return {
       ...rd,
-      achievements: (rd.achievements || []).map((a) => ({
-        ...a,
-        description: replaceDesc(a.description),
-      })),
+      achievements: (rd.achievements || []).map((a) =>
+        isBlankFill
+          ? itemMatchesLabel(a, itemLabel, ["title"])
+            ? { ...a, description: suggested }
+            : a
+          : { ...a, description: replaceDesc(a.description) }
+      ),
     };
   }
   if (section === "education") {
+    if (isBlankFill) return rd;
     return {
       ...rd,
       education: (rd.education || []).map((e) => ({
         ...e,
         description: replaceDesc(e.description),
       })),
+    };
+  }
+  if (["certifications", "certification"].includes(section)) {
+    return {
+      ...rd,
+      certifications: (rd.certifications || []).map((c) =>
+        isBlankFill
+          ? itemMatchesLabel(c, itemLabel, ["name"])
+            ? { ...c, description: suggested }
+            : c
+          : { ...c, description: replaceDesc(c.description) }
+      ),
     };
   }
   return rd;
