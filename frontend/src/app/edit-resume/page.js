@@ -1491,6 +1491,9 @@ export default function EditResumePage() {
                         rows={18}
                         className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 p-4 text-sm leading-6 text-[#243026] outline-none focus:border-[#243026]/30 focus:bg-white/70"
                       />
+                      <p className="text-right text-xs font-bold text-[#243026]/60">
+                        {coverLetterText.trim().split(/\s+/).filter(Boolean).length} words
+                      </p>
                       <button
                         onClick={downloadCoverLetterPDF}
                         className="w-full rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80"
