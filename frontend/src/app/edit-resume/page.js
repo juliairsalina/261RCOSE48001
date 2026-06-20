@@ -331,6 +331,8 @@ export default function EditResumePage() {
   useEffect(() => {
     if (vacancyLink) {
       localStorage.setItem("reeracifyVacancyLink", vacancyLink);
+    } else {
+      localStorage.removeItem("reeracifyVacancyLink");
     }
   }, [vacancyLink]);
 
