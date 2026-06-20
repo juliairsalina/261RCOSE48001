@@ -22,5 +22,6 @@ class AgentState(TypedDict):
     rewrite_suggestions: Optional[list]
     approved_rewrites: Optional[list]
     cover_letter: Optional[str]
+    cover_letter_word_limit: Optional[int]
     # Annotated reducer: parallel branches append their own errors; LangGraph concatenates them
     errors: Annotated[list[str], operator.add]

@@ -130,6 +130,7 @@ export default function EditResumePage() {
   // Cover letter tab
   const [coverLetterText, setCoverLetterText] = useState("");
   const [coverLetterLoading, setCoverLetterLoading] = useState(false);
+  const [coverLetterWordLimit, setCoverLetterWordLimit] = useState("");
 
   // Active rewrite highlight in resume preview
   const [activeRewriteId, setActiveRewriteId] = useState(null);
@@ -654,12 +655,16 @@ export default function EditResumePage() {
       return;
     }
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    const wordLimit = parseInt(coverLetterWordLimit, 10);
     setCoverLetterLoading(true);
     setErrorMessage("");
     try {
       const result = await callBackend(`/applications/${applicationId}/cover-letter`, {
         method: "POST",
-        body: JSON.stringify({ user_id: uid }),
+        body: JSON.stringify({
+          user_id: uid,
+          ...(Number.isInteger(wordLimit) && wordLimit > 0 ? { word_limit: wordLimit } : {}),
+        }),
       });
       setCoverLetterText(result.content || "");
     } catch (error) {
@@ -1439,6 +1444,22 @@ export default function EditResumePage() {
                     <div className="rounded-2xl bg-[#dfe9ff]/80 p-2 text-[#2f5fa8]">
                       <FileText size={18} />
                     </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="cover-letter-word-limit" className="text-xs font-bold text-[#243026]/70">
+                      Word limit (optional)
+                    </label>
+                    <input
+                      id="cover-letter-word-limit"
+                      type="number"
+                      min="50"
+                      max="1000"
+                      placeholder="e.g. 300"
+                      value={coverLetterWordLimit}
+                      onChange={(e) => setCoverLetterWordLimit(e.target.value)}
+                      className="w-24 rounded-xl border border-white/45 bg-white/55 px-3 py-2 text-sm text-[#243026] outline-none focus:border-[#243026]/30 focus:bg-white/70"
+                    />
                   </div>
 
                   <button

@@ -27,6 +27,11 @@ class GenericUserRequest(BaseModel):
     user_id: str
 
 
+class CoverLetterRequest(BaseModel):
+    user_id: str
+    word_limit: int | None = None
+
+
 class ExportResumeRequest(BaseModel):
     user_id: str
     resume_json: dict | None = None  # current live resume from frontend; overrides DB version
@@ -49,6 +54,7 @@ def _build_initial_state(user_id: str, resume_id: str, job_post_id: str, applica
         rewrite_suggestions=None,
         approved_rewrites=None,
         cover_letter=None,
+        cover_letter_word_limit=None,
         errors=[],
     )
 
@@ -537,7 +543,7 @@ async def export_resume(application_id: str, request: ExportResumeRequest) -> di
 
 @router.post("/{application_id}/cover-letter", response_model=CoverLetterResponse)
 async def generate_cover_letter_endpoint(
-    application_id: str, request: GenericUserRequest
+    application_id: str, request: CoverLetterRequest
 ) -> CoverLetterResponse:
     """Generate a personalised cover letter for the application.
 
@@ -585,6 +591,7 @@ async def generate_cover_letter_endpoint(
     state["resume_json"] = resume_json
     state["job_json"] = job_json
     state["retrieved_context"] = retrieved_context
+    state["cover_letter_word_limit"] = request.word_limit
 
     updated_state = await generate_cover_letter_node(state)
 
