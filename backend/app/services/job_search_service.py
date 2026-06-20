@@ -15,6 +15,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+import httpx
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -129,8 +131,6 @@ class JSearchProvider(JobSearchProvider):
         country: str = "",
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        import httpx
-
         if not settings.jsearch_api_key:
             logger.warning("JSearch API key missing — falling back to dummy jobs.")
             return DUMMY_JOBS[:limit]
@@ -498,8 +498,6 @@ async def _filter_dead_links(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]
     they're shown to the user.
     """
     import asyncio
-
-    import httpx
 
     if not jobs:
         return jobs
