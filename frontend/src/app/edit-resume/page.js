@@ -1861,22 +1861,43 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     return m;
   }, [rewriteList]);
 
-  function matchRewrite(text) {
-    if (!text) return null;
-    const t = text.trim();
-    for (const [orig, rw] of rewriteMap) {
-      if (t === orig || t.includes(orig) || orig.includes(t)) return rw;
-      // After approval the resume text becomes suggested_text — match that too
-      if (rw.status === "approved") {
-        const sug = (rw.suggested_text || "").trim();
-        if (sug && (t === sug || t.includes(sug) || sug.includes(t))) return rw;
+  // Suggestions for a blank description can't be matched by text content,
+  // so they're matched by section + item_label instead.
+  const blankRewrites = useMemo(
+    () => rewriteList.filter((rw) => !rw.original_text?.trim() && rw.item_label),
+    [rewriteList]
+  );
+
+  function matchRewrite(text, section, itemLabel) {
+    const t = (text || "").trim();
+    if (t) {
+      for (const [orig, rw] of rewriteMap) {
+        if (t === orig || t.includes(orig) || orig.includes(t)) return rw;
+        // After approval the resume text becomes suggested_text — match that too
+        if (rw.status === "approved") {
+          const sug = (rw.suggested_text || "").trim();
+          if (sug && (t === sug || t.includes(sug) || sug.includes(t))) return rw;
+        }
+      }
+    }
+    // Blank-description suggestions (matched by section + item_label, not
+    // text content) — also covers the post-approval case where the text is
+    // no longer blank because the fill-in (suggested_text) was applied.
+    if (itemLabel) {
+      const labelLower = itemLabel.toLowerCase().trim();
+      for (const rw of blankRewrites) {
+        if (section && rw.section !== section) continue;
+        const rwLabel = (rw.item_label || "").toLowerCase().trim();
+        if (!rwLabel || !(rwLabel.includes(labelLower) || labelLower.includes(rwLabel))) continue;
+        if (!t) return rw;
+        if (rw.status === "approved" && (rw.suggested_text || "").trim() === t) return rw;
       }
     }
     return null;
   }
 
-  function RewritableBullet({ text, children }) {
-    const rw = matchRewrite(text);
+  function RewritableBullet({ text, children, section, itemLabel }) {
+    const rw = matchRewrite(text, section, itemLabel);
 
     if (!rw) {
       return children || <>{text}</>;
@@ -2052,23 +2073,25 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              {/* Description paragraph — shown when present, rewritable */}
-              {(exp.description) && (
-                <RewritableBullet text={exp.description}>
-                  <Editable
-                    value={exp.description}
-                    onSave={upd ? (v) => {
-                      const newExp = experience.map((e, ei) =>
-                        ei === i ? { ...e, description: v } : e
-                      );
-                      upd({ experience: newExp });
-                    } : null}
-                    as="p"
-                    placeholder="Describe your role..."
-                    className="mt-1 text-gray-700"
-                  />
-                </RewritableBullet>
-              )}
+              {/* Description paragraph — rewritable, including blank ones so approved fill-ins highlight */}
+              <RewritableBullet
+                text={exp.description || ""}
+                section="work_experience"
+                itemLabel={`${exp.company || exp.organization || ""} - ${exp.role || exp.title || ""}`}
+              >
+                <Editable
+                  value={exp.description || ""}
+                  onSave={upd ? (v) => {
+                    const newExp = experience.map((e, ei) =>
+                      ei === i ? { ...e, description: v } : e
+                    );
+                    upd({ experience: newExp });
+                  } : null}
+                  as="p"
+                  placeholder="Describe your role..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
               {(exp.bullets?.length
                 ? exp.bullets
                 : exp.responsibilities || []).length > 0 && (
@@ -2157,7 +2180,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              <RewritableBullet text={proj.description || ""}>
+              <RewritableBullet
+                text={proj.description || ""}
+                section="projects"
+                itemLabel={proj.name || proj.title || ""}
+              >
                 <Editable
                   value={proj.description || ""}
                   onSave={upd ? (v) => {
@@ -2318,21 +2345,24 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              {item.description && (
-                <RewritableBullet text={item.description}>
-                  <Editable
-                    value={item.description}
-                    onSave={upd ? (v) => {
-                      const newLeadership = leadership.map((l, li) =>
-                        li === i ? { ...l, description: v } : l
-                      );
-                      upd({ leadership: newLeadership });
-                    } : null}
-                    as="p"
-                    className="mt-1 text-gray-700"
-                  />
-                </RewritableBullet>
-              )}
+              <RewritableBullet
+                text={item.description || ""}
+                section="leadership"
+                itemLabel={`${item.title || ""} - ${item.organization || ""}`}
+              >
+                <Editable
+                  value={item.description || ""}
+                  onSave={upd ? (v) => {
+                    const newLeadership = leadership.map((l, li) =>
+                      li === i ? { ...l, description: v } : l
+                    );
+                    upd({ leadership: newLeadership });
+                  } : null}
+                  as="p"
+                  placeholder="Describe this role..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
 
               {(item.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc pl-5">
@@ -2412,7 +2442,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              <RewritableBullet text={a.description || ""}>
+              <RewritableBullet
+                text={a.description || ""}
+                section="achievements"
+                itemLabel={a.title || ""}
+              >
                 <Editable
                   value={a.description || ""}
                   onSave={upd ? (v) => {
@@ -2487,7 +2521,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              <RewritableBullet text={c.description || ""}>
+              <RewritableBullet
+                text={c.description || ""}
+                section="certifications"
+                itemLabel={c.name || ""}
+              >
                 <Editable
                   value={c.description || ""}
                   onSave={upd ? (v) => {
