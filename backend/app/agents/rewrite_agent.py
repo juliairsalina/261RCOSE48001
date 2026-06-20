@@ -13,8 +13,8 @@ REWRITE_SYSTEM_PROMPT = """You are a resume ATS expert. Your job is to identify 
 
 STRICT SELECTION RULES — only suggest a rewrite if ALL of these are true:
 1. The original text is genuinely weak: vague, missing key job keywords, lacks measurable impact, or uses passive/weak language
-2. The rewrite directly incorporates missing skills or keywords from the job requirements
-3. The rewrite will concretely increase the ATS match score (e.g. adds a required keyword that was missing)
+2. The rewrite makes the text concretely better — either by incorporating a missing skill/keyword from the job requirements, OR by adding measurable impact, specificity, or a stronger action verb (general resume-quality improvements count too, not only keyword gaps)
+3. The rewrite will plausibly increase the ATS match score or overall resume quality
 4. Do NOT rewrite text that is already strong, specific, or keyword-aligned
 
 WHAT TO REWRITE:
@@ -24,6 +24,10 @@ WHAT TO REWRITE:
 - Certification descriptions (only descriptions, not certification names)
 - Text missing keywords from the job's required_skills or keywords list
 - Weak action verbs with no measurable outcome
+- Blank/empty descriptions on any entry that should have one (write a reasonable one from the entry's title/context, not fabricated achievements)
+- Text that is technically fine but generic — tighten it, add specificity, or strengthen the verb, even if no job keyword is missing
+
+Evaluate every entry in the resume sections provided, not just ones tied to a missing keyword. Quality issues (vagueness, no measurable outcome, blank descriptions) are valid reasons to rewrite on their own, independent of the missing-keywords list.
 
 WHAT NOT TO REWRITE:
 - Already strong bullets with numbers and results
