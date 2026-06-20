@@ -36,6 +36,23 @@ export default function EditResumePage() {
   const [totalPages, setTotalPages] = useState(1);
   const scrollContainerRef = useRef(null);
 
+  // Auto-shrink the A4 preview to fit narrow viewports (phone/tablet) so it
+  // doesn't force horizontal scrolling; never grows zoom past the desktop default.
+  useEffect(() => {
+    const PAGE_W = 794; // A4 width in px at 100% zoom
+    function fitZoom() {
+      const el = scrollContainerRef.current;
+      if (!el) return;
+      const available = el.clientWidth - 32;
+      if (available > 0 && available < PAGE_W) {
+        setZoom(Math.max(0.35, available / PAGE_W));
+      }
+    }
+    fitZoom();
+    window.addEventListener("resize", fitZoom);
+    return () => window.removeEventListener("resize", fitZoom);
+  }, []);
+
   const UI = {
   heading: "text-[2rem] font-black tracking-tight text-white",
   subheading: "text-xl font-black uppercase tracking-[0.24em] text-white/88",
@@ -1065,7 +1082,7 @@ export default function EditResumePage() {
                 value={vacancyLink}
                 onChange={(e) => { vacancyLinkRef.current = e.target.value; setVacancyLink(e.target.value); }}
                 placeholder=" → Paste job vacancy URL here"
-                className="h-8 w-[200px] rounded-xl border border-white/25 bg-white/12 px-5 text-xs font-semibold text-white outline-none backdrop-blur-xl placeholder:text-white/45 transition focus:border-white/45 focus:bg-white/18"
+                className="h-8 w-[120px] rounded-xl border border-white/25 bg-white/12 px-3 text-xs font-semibold text-white outline-none backdrop-blur-xl placeholder:text-white/45 transition focus:border-white/45 focus:bg-white/18 sm:w-[200px] sm:px-5"
               />
             <button
               onClick={() => setProfileOpen((prev) => !prev)}
@@ -1081,10 +1098,10 @@ export default function EditResumePage() {
         </header>
 
         {/* Main content */}
-        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] gap-0 divide-x divide-white/70 px-0 py-0">
-          
+        <section className="grid grid-cols-1 flex-none gap-0 divide-y divide-white/70 px-0 py-0 md:min-h-0 md:flex-1 md:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] md:divide-x md:divide-y-0">
+
           {/* Resume workspace */}
-          <div className="relative flex h-full min-w-0 flex-col">
+          <div className="relative flex h-auto min-w-0 flex-col md:h-full">
             
            {/* Top action row */}
             <div className="mb-4 mt-4 flex items-center justify-center px-2">
@@ -1162,7 +1179,7 @@ export default function EditResumePage() {
             
 
             {/* One resume section only */}
-            <div ref={scrollContainerRef} className="flex min-h-0 flex-1 items-start justify-center overflow-auto bg-transparent">
+            <div ref={scrollContainerRef} className="flex min-h-0 flex-1 items-start justify-center overflow-visible bg-transparent md:overflow-auto">
               <div
               id = "resume-a4"
                 style={{
@@ -1189,7 +1206,7 @@ export default function EditResumePage() {
             </div>
 
             {/* Floating document controls */}
-            <div className="fixed bottom-6 left-[30%] z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/15 bg-[#243026]/75 px-4 py-0.2 text-white shadow-xl backdrop-blur-xl">
+            <div className="fixed bottom-6 left-1/2 z-[1000] hidden -translate-x-1/2 items-center gap-3 rounded-xl border border-white/15 bg-[#243026]/75 px-4 py-0.2 text-white shadow-xl backdrop-blur-xl md:left-[30%] md:flex">
               <span className="text-xs font-bold">Page</span>
 
               <span className="text-sm font-black">{currentPage} / {totalPages}</span>
@@ -1219,10 +1236,10 @@ export default function EditResumePage() {
           </div>
 
           {/* Right evaluation panel */}
-          <aside className="flex h-full min-h-0 flex-col">
+          <aside className="flex h-auto min-h-0 flex-col md:h-full">
 
             {/* Tab bar */}
-            <div className="flex shrink-0 gap-1 px-4 pt-4">
+            <div className="flex shrink-0 flex-wrap gap-1 px-4 pt-4">
               {["analysis", "rewrites", "cover-letter", "profile", "find-jobs"].map((tab) => (
                 <button
                   key={tab}
@@ -1243,7 +1260,7 @@ export default function EditResumePage() {
             </div>
 
             {/* Tab content */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
+            <div className="flex min-h-0 flex-1 flex-col overflow-visible p-5 md:overflow-y-auto">
 
               {/* ── Analysis tab ── */}
               {activeTab === "analysis" && (
