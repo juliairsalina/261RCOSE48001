@@ -8,11 +8,6 @@ AI-powered resume optimization platform that helps job seekers improve resumes, 
 ## Live Demo
 
 🌐 https://reeracify.vercel.app
-
-Scan the QR code to access the platform.
-
-![QR Code](./pic/qr_code.png)
-
 ---
 
 ## Project Overview
