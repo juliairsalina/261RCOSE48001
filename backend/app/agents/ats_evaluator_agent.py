@@ -79,6 +79,20 @@ Return only valid JSON.
 Do not include markdown.
 Do not include explanation outside JSON.
 
+CONTENT RULES FOR LIST ENTRIES (does not change the scoring/weights above):
+Each entry in matched_requirements, missing_critical_requirements,
+missing_minor_requirements, and improvement_suggestions does not need to be a
+full paragraph, but it must explain what is driving the score, not just name a
+skill in isolation. For example:
+- Bad: "Excel"
+- Good: "Missing advanced Excel skills (e.g. pivot tables, VLOOKUP) — adding
+  these would raise the required skills match"
+- Bad: "Quantified impact"
+- Good: "Work experience bullets lack quantified impact (numbers, %, scale) —
+  adding metrics would raise the role/project relevance score"
+Always connect the point to why it affects the score or what would
+concretely raise it (a tool, metric, certification, or example to add).
+
 Return this JSON structure:
 
 {
