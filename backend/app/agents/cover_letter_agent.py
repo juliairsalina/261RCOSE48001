@@ -89,9 +89,10 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
             temperature=0.4,
         )
 
-        # 4. Save to cover_letters table
+        # 4. Save to cover_letters table (replace any previous letter for this application)
         if application_id:
             db = supabase_client.get_client()
+            db.table("cover_letters").delete().eq("application_id", application_id).execute()
             db.table("cover_letters").insert(
                 {
                     "application_id": application_id,

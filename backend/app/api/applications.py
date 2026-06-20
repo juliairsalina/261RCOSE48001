@@ -595,12 +595,14 @@ async def generate_cover_letter_endpoint(
 
     updated_state = await generate_cover_letter_node(state)
 
-    if updated_state.get("errors"):
-        logger.warning("Cover letter errors: %s", updated_state["errors"])
+    errors = updated_state.get("errors") or []
+    if errors:
+        logger.warning("Cover letter errors: %s", errors)
 
     cover_letter_text = updated_state.get("cover_letter", "")
     if not cover_letter_text:
-        raise HTTPException(status_code=500, detail="Cover letter generation failed.")
+        detail = "; ".join(errors) if errors else "Cover letter generation failed."
+        raise HTTPException(status_code=500, detail=detail)
 
     _update_application_status(db, application_id, ApplicationStatus.cover_letter_generated.value)
 
