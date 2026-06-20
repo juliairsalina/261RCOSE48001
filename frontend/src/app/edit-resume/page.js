@@ -568,9 +568,14 @@ export default function EditResumePage() {
       // Auto-generate career profile if not yet available
       await ensureCandidateProfile(uid, rid);
 
-      // Use ref to guarantee latest value regardless of closure age
-      const vl = (vacancyLinkRef.current || vacancyLink || localStorage.getItem("reeracifyVacancyLink") || "").trim();
-      if (vl) localStorage.setItem("reeracifyVacancyLink", vl);
+      // Use ref to guarantee latest value regardless of closure age.
+      // Don't fall back to localStorage here — an intentionally cleared field must stay empty.
+      const vl = (vacancyLinkRef.current ?? vacancyLink ?? "").trim();
+      if (vl) {
+        localStorage.setItem("reeracifyVacancyLink", vl);
+      } else {
+        localStorage.removeItem("reeracifyVacancyLink");
+      }
       const hasLink = vl.length > 0;
       setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing analysis...");
       const jobPost = await callBackend("/job-posts/create", {
