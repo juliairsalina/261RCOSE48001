@@ -15,6 +15,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+import httpx
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -129,8 +131,6 @@ class JSearchProvider(JobSearchProvider):
         country: str = "",
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        import httpx
-
         if not settings.jsearch_api_key:
             logger.warning("JSearch API key missing — falling back to dummy jobs.")
             return DUMMY_JOBS[:limit]
@@ -452,6 +452,71 @@ def _flatten_skills_from_dict(skills: object) -> list[str]:
     return []
 
 
+# Phrases job boards show on a 200 OK page when a posting has actually been
+# taken down (client-side "soft 404" — no HTTP error to detect via status alone).
+_DEAD_POSTING_PHRASES = (
+    "채용공고가 존재하지 않습니다",  # jobkorea.co.kr
+    "공고가 마감",  # generic Korean "posting closed"
+    "page not found",
+    "job has expired",
+    "this job is no longer available",
+    "posting has been removed",
+)
+
+
+async def _is_url_alive(client: "httpx.AsyncClient", url: str) -> bool:
+    """Best-effort liveness check for a job posting URL.
+
+    Treats network errors, timeouts, and 4xx/5xx as dead. Some sites reject
+    HEAD requests (405/403), so fall back to a GET before giving up. Also
+    scans the body for known "soft 404" phrases since some job boards (e.g.
+    jobkorea.co.kr) return 200 OK with a client-side JS alert instead of a
+    real HTTP error.
+    """
+    try:
+        resp = await client.head(url, follow_redirects=True)
+        if resp.status_code >= 400 and resp.status_code not in (405, 403):
+            return False
+    except Exception:
+        pass
+
+    try:
+        resp = await client.get(url, follow_redirects=True)
+        if resp.status_code >= 400:
+            return False
+        body_lower = resp.text[:5000].lower()
+        return not any(phrase.lower() in body_lower for phrase in _DEAD_POSTING_PHRASES)
+    except Exception:
+        return False
+
+
+async def _filter_dead_links(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop jobs whose job_url no longer resolves to a live page.
+
+    LLM web search and stale job board indexes both surface links to
+    postings that have since been taken down — this catches those before
+    they're shown to the user.
+    """
+    import asyncio
+
+    if not jobs:
+        return jobs
+
+    async with httpx.AsyncClient(timeout=6.0) as client:
+        alive_flags = await asyncio.gather(
+            *(_is_url_alive(client, job["job_url"]) for job in jobs),
+            return_exceptions=True,
+        )
+
+    alive_jobs = []
+    for job, alive in zip(jobs, alive_flags):
+        if alive is True:
+            alive_jobs.append(job)
+        else:
+            logger.info("Dropping dead job link: %s", job.get("job_url"))
+    return alive_jobs
+
+
 async def search_jobs(
     queries: list[str],
     location: str = "",
@@ -462,6 +527,10 @@ async def search_jobs(
     """Search jobs using the configured provider.
 
     Returns normalized dicts: source, job_url, company_name, role_title,
-    location, job_description.
+    location, job_description. Dead links (404s, taken-down postings) are
+    filtered out before returning.
     """
-    return await get_provider().search(queries, location=location, job_type=job_type, country=country, limit=limit)
+    results = await get_provider().search(queries, location=location, job_type=job_type, country=country, limit=limit)
+    with_urls = [j for j in results if j.get("job_url")]
+    without_urls = [j for j in results if not j.get("job_url")]
+    return (await _filter_dead_links(with_urls)) + without_urls

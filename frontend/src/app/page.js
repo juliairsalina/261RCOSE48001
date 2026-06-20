@@ -157,10 +157,10 @@ useEffect(() => {
     setParsedName("");
 
     // Clear stale data from any previous resume session
-    localStorage.removeItem("reeracifyVacancyLink");
     localStorage.removeItem("reeracifyApplicationId");
     localStorage.removeItem("reeracifyParsedResume");
     localStorage.removeItem("reeracifyCandidateProfile");
+    localStorage.removeItem("reeracifyVacancyLink");
     setVacancyLink("");
 
     let userId = localStorage.getItem("reeracifyUserId");

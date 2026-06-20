@@ -1,151 +1,124 @@
 # Reeracify
 
-AI-Powered Career Preparation Platform
-
-Reeracify helps job seekers improve resumes, evaluate ATS compatibility, generate tailored cover letters, and discover relevant jobs — all in one platform.
-
-**Live app:** [reeracify.vercel.app](https://reeracify.vercel.app)  
-**API:** [reeracify-backend.onrender.com](https://reeracify-backend.onrender.com)  
-**API Docs:** [reeracify-backend.onrender.com/docs](https://reeracify-backend.onrender.com/docs)
+AI-powered resume optimization platform that helps job seekers improve resumes, generate tailored cover letters, evaluate ATS compatibility, and discover relevant job opportunities — all in one place.
 
 
 ---
 
-## Website Preview
+## Live Demo
 
-![Landing Page](pic/Landing_Page.png)
+🌐 https://reeracify.vercel.app
 
-**Live Demo:** https://reeracify.vercel.app
+Scan the QR code to access the platform.
 
----
-
-## Table of Contents
-
-1. Architecture Overview
-2. Architecture Diagram
-3. Problem Statement
-4. Solution Approach
-5. Multi-Agent Design
-6. RAG Pipeline
-7. Technology Stack
-8. Sample Workflow
-9. Screenshots
-10. Key Features
-11. Future Work
-12. Team
+![QR Code](./pic/qr_code.png)
 
 ---
 
-# Architecture Overview
+## Project Overview
 
-### Frontend
-- Next.js
-- React
-- Tailwind CSS
+Finding a job often requires using multiple tools:
 
-### Backend
-- FastAPI
-- Python
+- Writing resumes in Word or Google Docs
+- Using AI tools to improve resume content
+- Checking ATS scores on separate platforms
+- Creating cover letters manually
+- Searching job postings across multiple websites
 
-### AI Technologies
-- GPT-5
-- LangGraph
-- LangChain
-- Retrieval-Augmented Generation (RAG)
+Reeracify combines these tasks into a single platform.
 
-### Database
-- Supabase
-- pgvector
-
-### Deployment
-- Vercel
-- Render
+Users can upload a resume, analyze ATS compatibility, receive rewrite suggestions, generate cover letters, and discover matching jobs through one workflow.
 
 ---
 
-# Architecture Diagram
+## Key Contributions
 
-![Architecture](pic/Architecture.png)
-
----
-
-# Problem Statement
-
-Many job seekers are rejected during the resume screening stage before reaching interviews.
-
-Current solutions have several limitations:
-
-- Professional resume review services are expensive.
-- Resume optimization can take several days.
-- Users often need multiple platforms for resume writing, ATS checking, cover letter generation, and job searching.
-- Existing tools rarely provide an end-to-end workflow.
-
-As students applying for internships and jobs ourselves, we experienced these challenges firsthand.
+| Contribution | Description |
+|-------------|-------------|
+| Multi-Agent AI Workflow | 8 specialized AI agents coordinated using LangGraph |
+| RAG-Based Evaluation | Retrieves only relevant resume content for focused analysis |
+| Direct Editing | Edit resumes and cover letters directly within the platform |
+| Global Job Discovery | Supports job search across 11 countries |
+| Multilingual Support | Supports resumes and job descriptions in multiple languages |
 
 ---
 
-# Solution Approach
+## System Workflow
 
-Reeracify provides an end-to-end AI-powered workflow.
+![Workflow](./pic/Flow.png)
 
-Users simply upload their resume and optionally provide a job posting URL.
+### Workflow Steps
 
-The platform then:
-
-1. Parses the resume
-2. Analyzes job requirements
-3. Evaluates ATS compatibility
-4. Generates rewrite suggestions
-5. Creates a tailored cover letter
-6. Recommends suitable jobs
-
-All within a single platform.
-
----
-
-# Multi-Agent Design
-
-Reeracify uses 8 specialized AI agents coordinated through LangGraph.
-
-## Resume Parser Agent
-Extracts resume information into structured JSON.
-
-## Job Analyzer Agent
-Identifies required skills, responsibilities, and keywords from job descriptions.
-
-## RAG Retriever Agent
-Retrieves the most relevant resume content using vector similarity search.
-
-## ATS Evaluator Agent
-Calculates ATS compatibility and identifies strengths and weaknesses.
-
-## Company Research Agent
-Collects company information to improve personalization.
-
-## Rewrite Agent
-Generates ATS-focused resume improvements.
-
-## Cover Letter Agent
-Creates personalized cover letters.
-
-## Candidate Profile Agent
-Builds a career profile and supports job recommendations.
+1. Upload Resume (PDF/DOCX)
+2. Parse Resume into Structured JSON
+3. Analyze Job Description
+4. Retrieve Relevant Resume Context using RAG
+5. Evaluate ATS Compatibility
+6. Generate Cover Letter
+7. Generate Rewrite Suggestions
+8. Edit Resume Directly
+9. Export Final Resume
 
 ---
 
-# RAG Pipeline
+## RAG-Based Resume Retrieval
 
-![Flow Diagram](pic/Flow.png)
+![RAG Pipeline](./pic/RAG.png)
 
-Reeracify uses Retrieval-Augmented Generation (RAG) to improve evaluation quality.
+Instead of sending the entire resume to the AI model every time, Reeracify:
 
-### Resume Processing
+1. Splits resumes into chunks
+2. Converts chunks into embeddings
+3. Stores embeddings in pgvector
+4. Retrieves only the most relevant chunks based on job requirements
+5. Uses retrieved content for ATS evaluation, cover letter generation, and rewrite suggestions
 
-Resume Upload
+### Benefits
 
-↓
+- Faster processing
+- Reduced token usage
+- More focused evaluation
+- Better scalability for long resumes
 
-Text Chunking
+---
+
+## System Architecture
+
+![Architecture](./pic/Architecture.png)
+Reeracify uses a LangGraph-based multi-agent workflow integrated with OpenAI models and Supabase vector storage to support ATS evaluation, rewrite generation, cover letter generation, and job discovery.
+
+
+| Layer | Technology |
+|---------|---------|
+| Frontend | Next.js, React, Tailwind |
+| Backend | FastAPI |
+| AI | GPT-5, LangGraph, LangChain |
+| Database | Supabase, pgvector |
+| Deployment | Vercel, Render |
+
+---
+
+# Features
+
+## ATS Analysis
+
+![ATS Analysis](./pic/ATS.png)
+
+- Resume-job compatibility scoring
+- ATS score (0–100)
+- Strength and weakness analysis
+- Improvement recommendations
+
+---
+
+## AI Rewrite Suggestions
+
+![Rewrite Suggestions](./pic/Rewrite_Agent.png)
+
+- ATS-focused rewrite recommendations
+- Keyword enhancement
+- One-click approve/reject workflow
+- Live resume preview updates
 
 ↓
 
@@ -153,183 +126,105 @@ Embedding Generation
 
 ↓
 
-Vector Database Storage
+## Cover Letter Generator
 
-### Evaluation Stage
+![Cover Letter](./pic/CoverLetter_Agent.png)
 
-Job Description
-
-↓
-
-Similarity Search
-
-↓
-
-Top Relevant Resume Chunks
-
-↓
-
-ATS Evaluation
-
-Cover Letter Generation
-
-Rewrite Suggestions
-
-Using only relevant resume sections improves efficiency and reduces unnecessary context.
-
----
-
-# Technology Stack
-
-| Layer | Technology |
-|---------|------------|
-| Frontend | Next.js, React, Tailwind CSS |
-| Backend | FastAPI, Python |
-| AI Models | GPT-5 |
-| Agent Framework | LangGraph, LangChain |
-| Embeddings | text-embedding-3-small |
-| Database | Supabase |
-| Vector Search | pgvector |
-| Deployment | Vercel, Render |
-
----
-
-# Sample Workflow
-
-User uploads Resume (PDF/DOCX)
-
-↓
-
-Resume Parser Agent
-
-↓
-
-Structured Resume JSON
-
-↓
-
-Job Analyzer Agent
-
-↓
-
-RAG Retriever Agent
-
-↓
-
-ATS Evaluation
-
-↓
-
-Rewrite Suggestions
-
-↓
-
-Cover Letter Generation
-
-↓
-
-Job Discovery
-
-↓
-
-Improved Resume Export
-
----
-
-# Screenshots
-
-## Resume Analysis
-
-![Parsed Resume](pic/Parsed_Resume.png)
-
----
-
-## ATS Evaluation
-
-![Resume Evaluation](pic/Sample_Resume1.png)
-
----
-
-## Rewrite Suggestions
-
-![Rewrite Suggestions](pic/Rewrite_Agent.png)
-
----
-
-## Cover Letter Generation
-
-![Cover Letter](pic/CoverLetter_Agent.png)
+- Generates tailored cover letters
+- Uses resume content and job requirements
+- Editable before download
 
 ---
 
 ## Job Discovery
 
-![Job Discovery](pic/Profile.png)
+![Job Discovery](./pic/job.png)
 
----
-
-# Key Features
-
-### ATS Evaluation
-- Resume-job compatibility analysis
-- Keyword matching
-- Strength and weakness identification
-
-### AI Rewrite Suggestions
-- ATS-focused improvements
-- One-click approve/reject workflow
-- Real-time updates
-
-### Cover Letter Generation
-- Personalized cover letters
-- Based on resume and job requirements
-
-### Job Discovery
-- Career-profile-based recommendations
-- Supports 11 countries
+- Career profile generation
+- Job recommendations
+- Support for 11 countries
 - Resume-job fit evaluation
 
-### Direct Editing
-- Edit resumes directly inside the platform
-- No need for Word or Google Docs
+---
+
+## Direct Editing
+
+Users can edit:
+
+- Resume sections
+- Bullet points
+- Skills
+- Work experience
+- Generated cover letters
+
+without switching to external tools such as Word or Google Docs.
 
 ---
 
-# What Makes Reeracify Different?
+## Global Support
 
-### LangGraph Multi-Agent Workflow
-8 specialized AI agents collaborate to automate career preparation.
+Reeracify supports multilingual resumes.
 
-### RAG-Based Retrieval
-Only relevant resume content is used during evaluation.
+![Korean Resume](./pic/Korean_Resume.png)
 
-### User-Controlled Experience
-Users remain fully in control of edits and approvals.
-
-### Global Support
-Supports multilingual resumes and job discovery across 11 countries.
+Example of a Korean-language resume successfully analyzed by Reeracify.
 
 ---
 
-# Future Work
+## Sample Outputs
 
-- Evaluate the system using more diverse resumes
+### Improved Resume
+
+![Improved Resume](./pic/sample_resume.png)
+
+Example of a resume improved using Reeracify's ATS evaluation and rewrite workflow.
+
+---
+
+### Generated Cover Letter
+
+![Cover Letter](./pic/cover_letter.png)
+
+Cover letter automatically generated based on the candidate's resume and target job description.
+
+
+---
+
+## Future Work
+
 - Improve ATS evaluation consistency and reliability
-- Expand support for recruiter-side candidate screening
-- Develop talent discovery and candidate recommendation features
+- Evaluate performance using more diverse resumes
+- Develop recruiter-focused features for candidate screening and talent discovery
 
 ---
 
-# Team
+## Team
 
 ### Powerpuff Girls
 
+Korea University – College of Informatics
+
 - Emira Syazwani
 - Julia Irsalina
-- Nur Musira
+- Nur Mushira
 
 ### Advisor
 Prof. 이숙윤
 
-### Department
-College of Informatics, Korea University
+### Mentor
+이세현 (UrbaneLab)
+
+Capstone Design Project 2026
+
+---
+
+## Project Resources
+
+Frontend:
+https://reeracify.vercel.app
+
+Backend API:
+https://reeracify-backend.onrender.com
+
+API Documentation:
+https://reeracify-backend.onrender.com/docs

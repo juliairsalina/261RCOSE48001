@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 COVER_LETTER_SYSTEM_PROMPT = """You are an expert cover letter writer for job seekers.
 
-Write a compelling, personalised cover letter (250-400 words) that:
+Write a compelling, personalised cover letter ({word_range} words) that:
 - Opens with a strong hook connecting the candidate's background to the role
 - Highlights 2-3 most relevant experiences or achievements
 - Shows genuine interest in the company and role
@@ -23,6 +23,7 @@ Write a compelling, personalised cover letter (250-400 words) that:
 - Start with "Dear Hiring Manager," and end with a signature like "Sincerely, [Candidate Name]".
 - If company background is presents, Add Date today, then add a new line then address block at the top before  "Dear Hiring Manager,".
 - If company background is missing, Only Add Date at the top before  "Dear Hiring Manager,".
+- Stay within the requested word count — this is a hard constraint, not a suggestion.
 
 Return only the cover letter text, no JSON, no markdown, no subject line."""
 
@@ -38,6 +39,7 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
     job_json = state.get("job_json")
     retrieved_context = state.get("retrieved_context") or []
     application_id = state.get("application_id")
+    word_limit = state.get("cover_letter_word_limit")
     new_errors: list[str] = []
 
     if not resume_json:
@@ -63,8 +65,9 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
         ) if retrieved_context else ""
 
         # 3. Call GPT to generate cover letter
+        word_range = f"approximately {word_limit}" if word_limit else "250-400"
         messages = [
-            {"role": "system", "content": COVER_LETTER_SYSTEM_PROMPT},
+            {"role": "system", "content": COVER_LETTER_SYSTEM_PROMPT.format(word_range=word_range)},
             {
                 "role": "user",
                 "content": (
@@ -86,9 +89,10 @@ async def generate_cover_letter_node(state: AgentState) -> AgentState:
             temperature=0.4,
         )
 
-        # 4. Save to cover_letters table
+        # 4. Save to cover_letters table (replace any previous letter for this application)
         if application_id:
             db = supabase_client.get_client()
+            db.table("cover_letters").delete().eq("application_id", application_id).execute()
             db.table("cover_letters").insert(
                 {
                     "application_id": application_id,

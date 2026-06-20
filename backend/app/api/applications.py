@@ -27,6 +27,11 @@ class GenericUserRequest(BaseModel):
     user_id: str
 
 
+class CoverLetterRequest(BaseModel):
+    user_id: str
+    word_limit: int | None = None
+
+
 class ExportResumeRequest(BaseModel):
     user_id: str
     resume_json: dict | None = None  # current live resume from frontend; overrides DB version
@@ -49,6 +54,7 @@ def _build_initial_state(user_id: str, resume_id: str, job_post_id: str, applica
         rewrite_suggestions=None,
         approved_rewrites=None,
         cover_letter=None,
+        cover_letter_word_limit=None,
         errors=[],
     )
 
@@ -333,7 +339,7 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
     # Fetch saved suggestions from DB to include their IDs
     saved = (
         db.table("rewrite_suggestions")
-        .select("id, section, original_text, suggested_text, reason, status")
+        .select("id, section, item_label, original_text, suggested_text, reason, status")
         .eq("application_id", application_id)
         .order("created_at")
         .execute()
@@ -342,6 +348,7 @@ async def get_rewrite_suggestions(application_id: str, request: GenericUserReque
         RewriteSuggestion(
             id=row["id"],
             section=row.get("section", ""),
+            item_label=row.get("item_label", ""),
             original_text=row.get("original_text", ""),
             suggested_text=row.get("suggested_text", ""),
             reason=row.get("reason", ""),
@@ -437,7 +444,7 @@ async def analyze_application(application_id: str, request: ExportResumeRequest)
 
             saved = (
                 db.table("rewrite_suggestions")
-                .select("id, section, original_text, suggested_text, reason, status")
+                .select("id, section, item_label, original_text, suggested_text, reason, status")
                 .eq("application_id", application_id)
                 .order("created_at")
                 .execute()
@@ -508,7 +515,7 @@ async def export_resume(application_id: str, request: ExportResumeRequest) -> di
     # Load approved rewrites
     rewrites_result = (
         db.table("rewrite_suggestions")
-        .select("section, original_text, suggested_text, reason")
+        .select("section, item_label, original_text, suggested_text, reason")
         .eq("application_id", application_id)
         .eq("status", "approved")
         .execute()
@@ -537,7 +544,7 @@ async def export_resume(application_id: str, request: ExportResumeRequest) -> di
 
 @router.post("/{application_id}/cover-letter", response_model=CoverLetterResponse)
 async def generate_cover_letter_endpoint(
-    application_id: str, request: GenericUserRequest
+    application_id: str, request: CoverLetterRequest
 ) -> CoverLetterResponse:
     """Generate a personalised cover letter for the application.
 
@@ -585,15 +592,18 @@ async def generate_cover_letter_endpoint(
     state["resume_json"] = resume_json
     state["job_json"] = job_json
     state["retrieved_context"] = retrieved_context
+    state["cover_letter_word_limit"] = request.word_limit
 
     updated_state = await generate_cover_letter_node(state)
 
-    if updated_state.get("errors"):
-        logger.warning("Cover letter errors: %s", updated_state["errors"])
+    errors = updated_state.get("errors") or []
+    if errors:
+        logger.warning("Cover letter errors: %s", errors)
 
     cover_letter_text = updated_state.get("cover_letter", "")
     if not cover_letter_text:
-        raise HTTPException(status_code=500, detail="Cover letter generation failed.")
+        detail = "; ".join(errors) if errors else "Cover letter generation failed."
+        raise HTTPException(status_code=500, detail=detail)
 
     _update_application_status(db, application_id, ApplicationStatus.cover_letter_generated.value)
 

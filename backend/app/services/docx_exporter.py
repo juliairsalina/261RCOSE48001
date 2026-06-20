@@ -47,48 +47,75 @@ def _to_str(value: Any) -> str:
     return str(value) if value is not None else ""
 
 
+def _item_matches_label(item: dict, label: str, name_keys: tuple[str, ...]) -> bool:
+    """Check whether a resume entry matches a rewrite's item_label.
+
+    Used to target a specific entry (e.g. which project) when original_text
+    is blank, since an empty string can't be matched by content.
+    """
+    if not label:
+        return False
+    label_lower = label.lower()
+    item_text = " ".join(str(item.get(k, "")) for k in name_keys).lower()
+    return bool(item_text) and (item_text in label_lower or label_lower in item_text)
+
+
 def _apply_rewrites(resume_json: dict, approved_rewrites: list[dict]) -> dict:
     """Apply approved rewrite suggestions to the resume_json dict.
 
     Returns a copy of resume_json with suggested_text replacing original_text
-    in the relevant section.
+    in the relevant section. When original_text is blank (a suggestion to
+    fill in a missing description), item_label is used to target the
+    specific entry instead of a content match.
     """
     import copy
     data = copy.deepcopy(resume_json)
 
     for rewrite in approved_rewrites:
         section = (rewrite.get("section") or "").lower()
+        item_label = rewrite.get("item_label", "")
         original = rewrite.get("original_text", "")
         suggested = rewrite.get("suggested_text", "")
 
-        if not original or not suggested:
+        if not suggested:
             continue
 
         if section in ("summary", "profile", "objective"):
+            if not original:
+                continue
             if isinstance(data.get("summary"), str):
                 data["summary"] = data["summary"].replace(original, suggested)
 
         elif section in ("skills", "skill"):
-            # Skills is a list; replace matching entries
+            if not original:
+                continue
             skills = data.get("skills", [])
             data["skills"] = [suggested if s == original else s for s in skills]
 
         elif section in ("work_experience", "experience", "work experience"):
             for exp in data.get("work_experience", []):
-                # Replace in bullets
+                if not original:
+                    if _item_matches_label(exp, item_label, ("company", "title")):
+                        exp["description"] = suggested
+                    continue
                 bullets = exp.get("bullets", [])
                 exp["bullets"] = [suggested if b == original else b for b in bullets]
-                # Replace in description
                 if isinstance(exp.get("description"), str):
                     exp["description"] = exp["description"].replace(original, suggested)
 
         elif section in ("education",):
+            if not original:
+                continue
             for edu in data.get("education", []):
                 if isinstance(edu.get("description"), str):
                     edu["description"] = edu["description"].replace(original, suggested)
 
         elif section in ("projects", "project"):
             for proj in data.get("projects", []):
+                if not original:
+                    if _item_matches_label(proj, item_label, ("name",)):
+                        proj["description"] = suggested
+                    continue
                 bullets = proj.get("bullets", [])
                 proj["bullets"] = [suggested if b == original else b for b in bullets]
                 if isinstance(proj.get("description"), str):
@@ -96,6 +123,10 @@ def _apply_rewrites(resume_json: dict, approved_rewrites: list[dict]) -> dict:
 
         elif section in ("leadership",):
             for item in data.get("leadership", []):
+                if not original:
+                    if _item_matches_label(item, item_label, ("title", "organization")):
+                        item["description"] = suggested
+                    continue
                 bullets = item.get("bullets", [])
                 item["bullets"] = [suggested if b == original else b for b in bullets]
                 if isinstance(item.get("description"), str):
@@ -103,11 +134,19 @@ def _apply_rewrites(resume_json: dict, approved_rewrites: list[dict]) -> dict:
 
         elif section in ("achievements", "achievement"):
             for ach in data.get("achievements", []):
+                if not original:
+                    if _item_matches_label(ach, item_label, ("title",)):
+                        ach["description"] = suggested
+                    continue
                 if isinstance(ach.get("description"), str):
                     ach["description"] = ach["description"].replace(original, suggested)
 
         elif section in ("certifications", "certification"):
             for cert in data.get("certifications", []):
+                if not original:
+                    if _item_matches_label(cert, item_label, ("name",)):
+                        cert["description"] = suggested
+                    continue
                 if isinstance(cert.get("description"), str):
                     cert["description"] = cert["description"].replace(original, suggested)
 

@@ -130,6 +130,7 @@ export default function EditResumePage() {
   // Cover letter tab
   const [coverLetterText, setCoverLetterText] = useState("");
   const [coverLetterLoading, setCoverLetterLoading] = useState(false);
+  const [coverLetterWordLimit, setCoverLetterWordLimit] = useState("");
 
   // Active rewrite highlight in resume preview
   const [activeRewriteId, setActiveRewriteId] = useState(null);
@@ -330,6 +331,8 @@ export default function EditResumePage() {
   useEffect(() => {
     if (vacancyLink) {
       localStorage.setItem("reeracifyVacancyLink", vacancyLink);
+    } else {
+      localStorage.removeItem("reeracifyVacancyLink");
     }
   }, [vacancyLink]);
 
@@ -500,6 +503,8 @@ export default function EditResumePage() {
     setMetricComments({
       clarity: clarityVal >= 85
         ? "Your resume is clear and well-structured with minimal gaps."
+        : clarityVal === 0
+        ? `Too many gaps for this role (${(ats.weaknesses || []).length} missing requirements). Top gap: ${topWeakness || "see weaknesses below"}.`
         : topWeakness
         ? `Area to improve: ${topWeakness}`
         : "Reduce vague language and add more specific, measurable details.",
@@ -543,7 +548,20 @@ export default function EditResumePage() {
       setErrorMessage("Please upload your resume on the home page first.");
       return;
     }
+
+    // Clear stale results from the previous evaluation immediately so the UI
+    // never shows old data alongside the new evaluation's loading state.
     setJobDescription("");
+    setRewriteList([]);
+    setBackendSuggestions([]);
+    setCoverLetterText("");
+    setAtsScoreValue(0);
+    setResumeLevel("Waiting for evaluation");
+    setMetrics({ clarity: 0, keywordFit: 0, structure: 0, impact: 0 });
+    setMetricComments({ clarity: "", keywordFit: "", structure: "", impact: "" });
+    setMissingSkills([]);
+    setHasAnalyzed(false);
+    setJobSummary("Evaluating...");
 
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
     const rid = resumeId || localStorage.getItem("reeracifyResumeId") || "";
@@ -552,9 +570,14 @@ export default function EditResumePage() {
       // Auto-generate career profile if not yet available
       await ensureCandidateProfile(uid, rid);
 
-      // Use ref to guarantee latest value regardless of closure age
-      const vl = (vacancyLinkRef.current || vacancyLink || localStorage.getItem("reeracifyVacancyLink") || "").trim();
-      if (vl) localStorage.setItem("reeracifyVacancyLink", vl);
+      // Use ref to guarantee latest value regardless of closure age.
+      // Don't fall back to localStorage here — an intentionally cleared field must stay empty.
+      const vl = (vacancyLinkRef.current ?? vacancyLink ?? "").trim();
+      if (vl) {
+        localStorage.setItem("reeracifyVacancyLink", vl);
+      } else {
+        localStorage.removeItem("reeracifyVacancyLink");
+      }
       const hasLink = vl.length > 0;
       setLoadingState(hasLink ? "Extracting job details from URL..." : "Preparing analysis...");
       const jobPost = await callBackend("/job-posts/create", {
@@ -571,8 +594,9 @@ export default function EditResumePage() {
       setApplicationId(appId);
       localStorage.setItem("reeracifyApplicationId", appId);
 
-      // Pass current resumeData so approved rewrites are reflected in the ATS score
-      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step), resumeData);
+      // Pass current resumeData (converted to backend's parser shape) so approved
+      // rewrites are reflected in the ATS score and new rewrite suggestions.
+      const result = await streamAnalysis(appId, uid, (step) => setLoadingState(step), toResumeJson(resumeData));
 
       let jobSummaryText;
       if (!hasLink) {
@@ -639,12 +663,16 @@ export default function EditResumePage() {
       return;
     }
     const uid = userId || localStorage.getItem("reeracifyUserId") || "";
+    const wordLimit = parseInt(coverLetterWordLimit, 10);
     setCoverLetterLoading(true);
     setErrorMessage("");
     try {
       const result = await callBackend(`/applications/${applicationId}/cover-letter`, {
         method: "POST",
-        body: JSON.stringify({ user_id: uid }),
+        body: JSON.stringify({
+          user_id: uid,
+          ...(Number.isInteger(wordLimit) && wordLimit > 0 ? { word_limit: wordLimit } : {}),
+        }),
       });
       setCoverLetterText(result.content || "");
     } catch (error) {
@@ -1284,7 +1312,7 @@ export default function EditResumePage() {
                     <p className="text-xl font-black text-[#243026]">Job Link Summary</p>
                     <p className={`mt-1 ${UI.bodyStrong}`}>{jobSummary}</p>
                     {jobDescription && (
-                      <p className="mt-2 text-[12px] leading-[1.6] text-[#243026]/65 line-clamp-6">
+                      <p className="mt-2 text-[12px] leading-[1.6] text-white/75 line-clamp-6">
                         {jobDescription}
                       </p>
                     )}
@@ -1426,6 +1454,22 @@ export default function EditResumePage() {
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="cover-letter-word-limit" className="text-xs font-bold text-[#243026]/70">
+                      Word limit (optional)
+                    </label>
+                    <input
+                      id="cover-letter-word-limit"
+                      type="number"
+                      min="50"
+                      max="1000"
+                      placeholder="e.g. 300"
+                      value={coverLetterWordLimit}
+                      onChange={(e) => setCoverLetterWordLimit(e.target.value)}
+                      className="w-24 rounded-xl border border-white/45 bg-white/55 px-3 py-2 text-sm text-[#243026] outline-none focus:border-[#243026]/30 focus:bg-white/70"
+                    />
+                  </div>
+
                   <button
                     onClick={generateCoverLetter}
                     disabled={coverLetterLoading || !applicationId}
@@ -1448,6 +1492,9 @@ export default function EditResumePage() {
                         rows={18}
                         className="w-full rounded-[1.2rem] border border-white/45 bg-white/55 p-4 text-sm leading-6 text-[#243026] outline-none focus:border-[#243026]/30 focus:bg-white/70"
                       />
+                      <p className="text-right text-xs font-bold text-[#243026]/60">
+                        {coverLetterText.trim().split(/\s+/).filter(Boolean).length} words
+                      </p>
                       <button
                         onClick={downloadCoverLetterPDF}
                         className="w-full rounded-[1.2rem] border border-[#243026]/20 bg-white/50 py-3 text-xs font-black text-[#243026] transition hover:bg-white/80"
@@ -1814,22 +1861,43 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     return m;
   }, [rewriteList]);
 
-  function matchRewrite(text) {
-    if (!text) return null;
-    const t = text.trim();
-    for (const [orig, rw] of rewriteMap) {
-      if (t === orig || t.includes(orig) || orig.includes(t)) return rw;
-      // After approval the resume text becomes suggested_text — match that too
-      if (rw.status === "approved") {
-        const sug = (rw.suggested_text || "").trim();
-        if (sug && (t === sug || t.includes(sug) || sug.includes(t))) return rw;
+  // Suggestions for a blank description can't be matched by text content,
+  // so they're matched by section + item_label instead.
+  const blankRewrites = useMemo(
+    () => rewriteList.filter((rw) => !rw.original_text?.trim() && rw.item_label),
+    [rewriteList]
+  );
+
+  function matchRewrite(text, section, itemLabel) {
+    const t = (text || "").trim();
+    if (t) {
+      for (const [orig, rw] of rewriteMap) {
+        if (t === orig || t.includes(orig) || orig.includes(t)) return rw;
+        // After approval the resume text becomes suggested_text — match that too
+        if (rw.status === "approved") {
+          const sug = (rw.suggested_text || "").trim();
+          if (sug && (t === sug || t.includes(sug) || sug.includes(t))) return rw;
+        }
+      }
+    }
+    // Blank-description suggestions (matched by section + item_label, not
+    // text content) — also covers the post-approval case where the text is
+    // no longer blank because the fill-in (suggested_text) was applied.
+    if (itemLabel) {
+      const labelLower = itemLabel.toLowerCase().trim();
+      for (const rw of blankRewrites) {
+        if (section && rw.section !== section) continue;
+        const rwLabel = (rw.item_label || "").toLowerCase().trim();
+        if (!rwLabel || !(rwLabel.includes(labelLower) || labelLower.includes(rwLabel))) continue;
+        if (!t) return rw;
+        if (rw.status === "approved" && (rw.suggested_text || "").trim() === t) return rw;
       }
     }
     return null;
   }
 
-  function RewritableBullet({ text, children }) {
-    const rw = matchRewrite(text);
+  function RewritableBullet({ text, children, section, itemLabel }) {
+    const rw = matchRewrite(text, section, itemLabel);
 
     if (!rw) {
       return children || <>{text}</>;
@@ -2005,23 +2073,25 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              {/* Description paragraph — shown when present, rewritable */}
-              {(exp.description) && (
-                <RewritableBullet text={exp.description}>
-                  <Editable
-                    value={exp.description}
-                    onSave={upd ? (v) => {
-                      const newExp = experience.map((e, ei) =>
-                        ei === i ? { ...e, description: v } : e
-                      );
-                      upd({ experience: newExp });
-                    } : null}
-                    as="p"
-                    placeholder="Describe your role..."
-                    className="mt-1 text-gray-700"
-                  />
-                </RewritableBullet>
-              )}
+              {/* Description paragraph — rewritable, including blank ones so approved fill-ins highlight */}
+              <RewritableBullet
+                text={exp.description || ""}
+                section="work_experience"
+                itemLabel={`${exp.company || exp.organization || ""} - ${exp.role || exp.title || ""}`}
+              >
+                <Editable
+                  value={exp.description || ""}
+                  onSave={upd ? (v) => {
+                    const newExp = experience.map((e, ei) =>
+                      ei === i ? { ...e, description: v } : e
+                    );
+                    upd({ experience: newExp });
+                  } : null}
+                  as="p"
+                  placeholder="Describe your role..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
               {(exp.bullets?.length
                 ? exp.bullets
                 : exp.responsibilities || []).length > 0 && (
@@ -2029,6 +2099,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   {(exp.bullets?.length
                     ? exp.bullets
                     : exp.responsibilities || []).map((b, j) => (
+                    !cleanBullet(b).trim() ? null :
                     <li key={j}>
                       <RewritableBullet text={cleanBullet(b)}>
                         <Editable
@@ -2042,7 +2113,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                                   ? [...e.bullets]
                                   : [...(e.responsibilities || [])];
 
-                              currentBullets[j] = v;
+                              if (v) {
+                                currentBullets[j] = v;
+                              } else {
+                                currentBullets.splice(j, 1);
+                              }
 
                               return e.bullets?.length
                                 ? { ...e, bullets: currentBullets }
@@ -2105,7 +2180,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                   />
                 </div>
               </div>
-              <RewritableBullet text={proj.description || ""}>
+              <RewritableBullet
+                text={proj.description || ""}
+                section="projects"
+                itemLabel={proj.name || proj.title || ""}
+              >
                 <Editable
                   value={proj.description || ""}
                   onSave={upd ? (v) => {
@@ -2157,6 +2236,7 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
               {(proj.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
                   {proj.bullets.map((b, j) => (
+                    !cleanBullet(b).trim() ? null :
                     <li key={j}>
                       <RewritableBullet text={cleanBullet(b)}>
                         <Editable
@@ -2166,7 +2246,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                               if (pi !== i) return p;
 
                               const newBullets = [...(p.bullets || [])];
-                              newBullets[j] = v;
+                              if (v) {
+                                newBullets[j] = v;
+                              } else {
+                                newBullets.splice(j, 1);
+                              }
 
                               return {
                                 ...p,
@@ -2261,25 +2345,29 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              {item.description && (
-                <RewritableBullet text={item.description}>
-                  <Editable
-                    value={item.description}
-                    onSave={upd ? (v) => {
-                      const newLeadership = leadership.map((l, li) =>
-                        li === i ? { ...l, description: v } : l
-                      );
-                      upd({ leadership: newLeadership });
-                    } : null}
-                    as="p"
-                    className="mt-1 text-gray-700"
-                  />
-                </RewritableBullet>
-              )}
+              <RewritableBullet
+                text={item.description || ""}
+                section="leadership"
+                itemLabel={`${item.title || ""} - ${item.organization || ""}`}
+              >
+                <Editable
+                  value={item.description || ""}
+                  onSave={upd ? (v) => {
+                    const newLeadership = leadership.map((l, li) =>
+                      li === i ? { ...l, description: v } : l
+                    );
+                    upd({ leadership: newLeadership });
+                  } : null}
+                  as="p"
+                  placeholder="Describe this role..."
+                  className="mt-1 text-gray-700"
+                />
+              </RewritableBullet>
 
               {(item.bullets || []).length > 0 && (
                 <ul className="mt-1.5 list-disc pl-5">
                   {item.bullets.map((b, j) => (
+                    !(b || "").trim() ? null :
                     <li key={j}>
                       <RewritableBullet text={b}>
                         <Editable
@@ -2289,7 +2377,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
                               if (li !== i) return l;
 
                               const newBullets = [...(l.bullets || [])];
-                              newBullets[j] = v;
+                              if (v) {
+                                newBullets[j] = v;
+                              } else {
+                                newBullets.splice(j, 1);
+                              }
 
                               return {
                                 ...l,
@@ -2350,7 +2442,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              <RewritableBullet text={a.description || ""}>
+              <RewritableBullet
+                text={a.description || ""}
+                section="achievements"
+                itemLabel={a.title || ""}
+              >
                 <Editable
                   value={a.description || ""}
                   onSave={upd ? (v) => {
@@ -2425,7 +2521,11 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
 
               </div>
 
-              <RewritableBullet text={c.description || ""}>
+              <RewritableBullet
+                text={c.description || ""}
+                section="certifications"
+                itemLabel={c.name || ""}
+              >
                 <Editable
                   value={c.description || ""}
                   onSave={upd ? (v) => {
@@ -2690,11 +2790,23 @@ function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
   );
 }
 
+function itemMatchesLabel(item, label, nameKeys) {
+  if (!label) return false;
+  const labelLower = label.toLowerCase();
+  const itemText = nameKeys.map((k) => item[k] || "").join(" ").trim().toLowerCase();
+  return Boolean(itemText) && (itemText.includes(labelLower) || labelLower.includes(itemText));
+}
+
 function applyRewriteToResume(rewrite, rd) {
   const section = (rewrite.section || "").toLowerCase();
+  const itemLabel = rewrite.item_label || "";
   const original = (rewrite.original_text || "").trim();
   const suggested = rewrite.suggested_text || "";
-  if (!original || !suggested) return rd;
+  if (!suggested) return rd;
+
+  // A blank original_text means the suggestion fills in a missing description —
+  // there's no text to match against, so target the specific entry via item_label.
+  const isBlankFill = !original;
 
   const replaceBullets = (bullets) =>
     (bullets || []).map((b) => {
@@ -2706,57 +2818,81 @@ function applyRewriteToResume(rewrite, rd) {
     typeof desc === "string" ? desc.replace(original, suggested) : desc;
 
   if (["summary", "profile", "objective"].includes(section)) {
+    if (isBlankFill) return rd;
     return { ...rd, summary: replaceDesc(rd.summary) };
   }
   if (["skills", "skill"].includes(section)) {
+    if (isBlankFill) return rd;
     return { ...rd, skills: (rd.skills || []).map((s) => (s === original ? suggested : s)) };
   }
   if (["work_experience", "experience", "work experience"].includes(section)) {
     return {
       ...rd,
-      experience: (rd.experience || []).map((e) => ({
-        ...e,
-        bullets: replaceBullets(e.bullets),
-        description: replaceDesc(e.description),
-      })),
+      experience: (rd.experience || []).map((e) =>
+        isBlankFill
+          ? itemMatchesLabel(e, itemLabel, ["company", "role", "title"])
+            ? { ...e, description: suggested }
+            : e
+          : { ...e, bullets: replaceBullets(e.bullets), description: replaceDesc(e.description) }
+      ),
     };
   }
   if (["projects", "project"].includes(section)) {
     return {
       ...rd,
-      projects: (rd.projects || []).map((p) => ({
-        ...p,
-        bullets: replaceBullets(p.bullets),
-        description: replaceDesc(p.description),
-      })),
+      projects: (rd.projects || []).map((p) =>
+        isBlankFill
+          ? itemMatchesLabel(p, itemLabel, ["name"])
+            ? { ...p, description: suggested }
+            : p
+          : { ...p, bullets: replaceBullets(p.bullets), description: replaceDesc(p.description) }
+      ),
     };
   }
   if (section === "leadership") {
     return {
       ...rd,
-      leadership: (rd.leadership || []).map((l) => ({
-        ...l,
-        bullets: replaceBullets(l.bullets),
-        description: replaceDesc(l.description),
-      })),
+      leadership: (rd.leadership || []).map((l) =>
+        isBlankFill
+          ? itemMatchesLabel(l, itemLabel, ["title", "organization"])
+            ? { ...l, description: suggested }
+            : l
+          : { ...l, bullets: replaceBullets(l.bullets), description: replaceDesc(l.description) }
+      ),
     };
   }
   if (["achievements", "achievement"].includes(section)) {
     return {
       ...rd,
-      achievements: (rd.achievements || []).map((a) => ({
-        ...a,
-        description: replaceDesc(a.description),
-      })),
+      achievements: (rd.achievements || []).map((a) =>
+        isBlankFill
+          ? itemMatchesLabel(a, itemLabel, ["title"])
+            ? { ...a, description: suggested }
+            : a
+          : { ...a, description: replaceDesc(a.description) }
+      ),
     };
   }
   if (section === "education") {
+    if (isBlankFill) return rd;
     return {
       ...rd,
       education: (rd.education || []).map((e) => ({
         ...e,
         description: replaceDesc(e.description),
       })),
+    };
+  }
+  if (["certifications", "certification"].includes(section)) {
+    return {
+      ...rd,
+      certifications: (rd.certifications || []).map((c) =>
+        isBlankFill
+          ? itemMatchesLabel(c, itemLabel, ["name"])
+            ? { ...c, description: suggested }
+            : c
+          : { ...c, description: replaceDesc(c.description) }
+      ),
     };
   }
   return rd;

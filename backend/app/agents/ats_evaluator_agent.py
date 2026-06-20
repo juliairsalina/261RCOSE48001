@@ -9,22 +9,111 @@ from app.services import openai_client, supabase_client
 
 logger = logging.getLogger(__name__)
 
-ATS_EVALUATOR_SYSTEM_PROMPT = """You are an ATS (Applicant Tracking System) expert evaluator.
+ATS_EVALUATOR_SYSTEM_PROMPT = """You are an ATS and job-resume matching evaluator.
 
-Given the job requirements, candidate's resume JSON, and retrieved resume context, produce a detailed evaluation.
+Your task is to evaluate how well a resume matches a job description.
 
-Return a valid JSON object with exactly these keys:
-- strengths: list of 3-5 specific strengths the candidate demonstrates for this role
-- weaknesses: list of 3-5 specific gaps or weaknesses relative to the job
-- improvement_priority: ordered list of 3-5 areas the candidate should prioritize to improve their match
-- evidence: list of objects with "claim" (a statement about the candidate) and "resume_evidence" (direct quote or reference from resume that supports it)
+IMPORTANT:
+Do not treat cosine similarity as the final score.
+Cosine similarity only measures semantic similarity between the resume text and job description text.
+A strong candidate does not need to match 100% of the job description.
 
-The score and rank will be calculated separately. Focus on qualitative analysis.
-Return only valid JSON. Do not add markdown or extra text."""
+Use cosine similarity as one signal only, then adjust the final score using realistic hiring logic.
 
+EVALUATION LOGIC:
 
-def _normalise(text: str) -> str:
-    return text.lower().strip()
+1. Required Skills Match
+   Check whether the resume contains the must-have skills from the job description.
+   This should have the highest weight.
+
+2. Preferred Skills Match
+   Check whether the resume contains nice-to-have skills.
+   These should improve the score but should not overly punish the candidate if missing.
+
+3. Role Relevance
+   Check whether the candidate's projects, experience, education, and achievements are relevant to the target role.
+
+4. Experience Level Fit
+   Check whether the candidate fits the expected level, such as intern, junior, mid-level, or senior.
+   For internship roles, academic projects, hackathons, coursework, and volunteering can count as relevant experience.
+
+5. Semantic Similarity
+   Use cosine similarity to understand general text similarity, but do not require 100% similarity.
+   A realistic good match may be between 65% and 85%.
+   A score above 90% should only happen when the resume strongly matches most required skills and responsibilities.
+
+6. Missing Gaps
+   Identify important missing requirements, but separate critical gaps from minor gaps.
+
+7. Transferable Skills
+   Give credit for related experience even if the exact keyword is different.
+   For example:
+
+* PyTorch experience can partially match deep learning requirements.
+* OCR project can partially match computer vision or document AI roles.
+* SQL and data cleaning can match data analytics requirements.
+
+SCORING RULES:
+
+Final score should be based on:
+
+* Required skills match: 35%
+* Role/project relevance: 25%
+* Experience level fit: 15%
+* Preferred skills match: 10%
+* Semantic similarity: 10%
+* Education/domain fit: 5%
+
+Do not output a perfect score unless the resume directly satisfies almost every important job requirement.
+
+Score interpretation:
+
+* 85-100: Strong match
+* 70-84: Good match
+* 55-69: Partial match
+* 40-54: Weak match
+* below 40: Poor match
+
+OUTPUT RULES:
+Return only valid JSON.
+Do not include markdown.
+Do not include explanation outside JSON.
+
+CONTENT RULES FOR LIST ENTRIES (does not change the scoring/weights above):
+Each entry in matched_requirements, missing_critical_requirements,
+missing_minor_requirements, and improvement_suggestions does not need to be a
+full paragraph, but it must explain what is driving the score, not just name a
+skill in isolation. For example:
+- Bad: "Excel"
+- Good: "Missing advanced Excel skills (e.g. pivot tables, VLOOKUP) — adding
+  these would raise the required skills match"
+- Bad: "Quantified impact"
+- Good: "Work experience bullets lack quantified impact (numbers, %, scale) —
+  adding metrics would raise the role/project relevance score"
+Always connect the point to why it affects the score or what would
+concretely raise it (a tool, metric, certification, or example to add).
+
+Return this JSON structure:
+
+{
+"final_match_score": 0,
+"match_level": "",
+"cosine_similarity_score": 0,
+"score_breakdown": {
+"required_skills_match": 0,
+"role_project_relevance": 0,
+"experience_level_fit": 0,
+"preferred_skills_match": 0,
+"semantic_similarity": 0,
+"education_domain_fit": 0
+},
+"matched_requirements": [],
+"missing_critical_requirements": [],
+"missing_minor_requirements": [],
+"transferable_skills": [],
+"reasoning": "",
+"improvement_suggestions": []
+}"""
 
 
 def _flatten_skills(skills: object) -> list[str]:
@@ -51,159 +140,63 @@ def _flatten_skills(skills: object) -> list[str]:
     return [str(skills)]
 
 
-def _compute_ats_score(
-    resume_json: dict[str, Any],
-    job_json: dict[str, Any],
-) -> tuple[int, list[str], list[str]]:
-    """Calculate a deterministic ATS score (0-100).
-
-    Job-based scoring (no floors — missing skills actively hurt):
-      - Required skills match:         40 pts  (pure ratio, 0 if nothing matches)
-      - Preferred skills match:        20 pts  (pure ratio)
-      - Responsibility/exp match:      20 pts  (phrase-level: ≥50% of meaningful
-                                                words in a responsibility must appear
-                                                in resume to count as matched)
-      - Keyword alignment:             10 pts  (pure ratio)
-      - Resume depth (bullet count):  10 pts  (1 pt/bullet, cap 10)
-
-    General evaluation (no job posting): scores resume completeness/depth.
-    """
-    requirements = job_json.get("extracted_requirements") or {}
-    job_description = (job_json.get("job_description") or "").strip()
-    is_placeholder = "general resume evaluation" in job_description.lower()
-
-    # Flatten resume content into a single searchable string
-    resume_skills = [_normalise(s) for s in _flatten_skills(resume_json.get("skills", []))]
-    work_experience = resume_json.get("work_experience", [])
-    projects = resume_json.get("projects", [])
-
-    leadership = resume_json.get("leadership", [])
-    achievements = resume_json.get("achievements", [])
-    certifications = resume_json.get("certifications", [])
-
-    resume_text = " ".join(resume_skills)
-    all_bullets: list[str] = []
-    for exp in work_experience:
-        for b in exp.get("bullets", []):
-            resume_text += " " + b.lower()
-            all_bullets.append(b)
-        resume_text += " " + (exp.get("description") or "").lower()
-    for proj in projects:
-        for b in proj.get("bullets", []):
-            resume_text += " " + b.lower()
-            all_bullets.append(b)
-        resume_text += " " + (proj.get("description") or "").lower()
-        for tech in proj.get("technologies", []):
-            resume_text += " " + tech.lower()
-    for item in leadership:
-        for b in item.get("bullets", []):
-            resume_text += " " + b.lower()
-            all_bullets.append(b)
-        resume_text += " " + (item.get("description") or "").lower()
-        resume_text += " " + (item.get("title") or "").lower()
-        resume_text += " " + (item.get("organization") or "").lower()
-    for ach in achievements:
-        resume_text += " " + (ach.get("title") or "").lower()
-        resume_text += " " + (ach.get("description") or "").lower()
-    for cert in certifications:
-        resume_text += " " + (cert.get("name") or "").lower()
-        resume_text += " " + (cert.get("issuer") or "").lower()
-
-    has_requirements = bool(
-        requirements.get("required_skills") or
-        requirements.get("preferred_skills") or
-        requirements.get("keywords")
-    )
-
-    # ── No job posting: score resume completeness/depth ──────────────────
-    if is_placeholder or not has_requirements:
-        skill_count = len(resume_skills)
-        exp_count = len(work_experience)
-        proj_count = len(projects)
-        bullet_count = len(all_bullets)
-        has_contact = bool(resume_json.get("name") and resume_json.get("email"))
-        has_education = bool(resume_json.get("education"))
-
-        # No free points — each component earned from zero
-        skill_score  = min(30, skill_count * 2)   # 2 pts/skill, need 15 for max
-        exp_score    = min(25, exp_count * 8)      # 8 pts/role, need 3 for max
-        bullet_score = min(20, bullet_count)       # 1 pt/bullet, need 20 for max
-        proj_score   = min(15, proj_count * 5)     # 5 pts/project, need 3 for max
-        base_score   = (5 if has_contact else 0) + (5 if has_education else 0)
-
-        total = min(100, skill_score + exp_score + bullet_score + proj_score + base_score)
-        return total, resume_skills[:10], []
-
-    # ── Job-based scoring (strict — no floors) ───────────────────────────
-
-    # Required skills: 40 pts
-    required_skills = [_normalise(s) for s in requirements.get("required_skills", [])]
-    if required_skills:
-        matched_required = [s for s in required_skills if s in resume_text]
-        required_score = int(len(matched_required) / len(required_skills) * 40)
-    else:
-        matched_required = []
-        required_score = 15  # job didn't list any → partial neutral credit
-
-    # Preferred skills: 20 pts
-    preferred_skills = [_normalise(s) for s in requirements.get("preferred_skills", [])]
-    if preferred_skills:
-        matched_preferred = [s for s in preferred_skills if s in resume_text]
-        preferred_score = int(len(matched_preferred) / len(preferred_skills) * 20)
-    else:
-        matched_preferred = []
-        preferred_score = 8  # job didn't list any → partial neutral credit
-
-    # Responsibilities: 20 pts
-    # A responsibility counts as matched only when ≥50% of its meaningful words
-    # (length > 3) appear in the resume — prevents single common words from scoring.
-    responsibilities = [_normalise(r) for r in requirements.get("responsibilities", [])]
-    if responsibilities:
-        resp_matched = 0
-        for r in responsibilities:
-            meaningful = [w for w in r.split() if len(w) > 3]
-            if not meaningful:
-                continue
-            hit_ratio = sum(1 for w in meaningful if w in resume_text) / len(meaningful)
-            if hit_ratio >= 0.5:
-                resp_matched += 1
-        resp_score = int(resp_matched / len(responsibilities) * 20)
-    else:
-        resp_score = 8  # job didn't list any → partial neutral credit
-
-    # Keywords: 10 pts
-    keywords = [_normalise(k) for k in requirements.get("keywords", [])]
-    if keywords:
-        matched_keywords = [k for k in keywords if k in resume_text]
-        keyword_score = int(len(matched_keywords) / len(keywords) * 10)
-    else:
-        matched_keywords = []
-        keyword_score = 4  # job didn't list any → partial neutral credit
-
-    # Resume depth: 10 pts (1 pt per bullet, capped at 10)
-    depth_score = min(10, len(all_bullets))
-
-    total = min(100, required_score + preferred_score + resp_score + keyword_score + depth_score)
-
-    matched_all = list(set(matched_required + matched_preferred))
-    missing_all = [s for s in required_skills if s not in resume_text]
-
-    return total, matched_all, missing_all
+def _compute_cosine_similarity(retrieved_context: list[dict[str, Any]]) -> float:
+    """Estimate cosine similarity from the average of top retrieved chunk similarities."""
+    scores = [
+        c.get("similarity", 0.0)
+        for c in retrieved_context
+        if isinstance(c.get("similarity"), (int, float))
+    ]
+    if not scores:
+        return 0.0
+    return round(sum(scores) / len(scores) * 100, 1)
 
 
 def _score_to_rank(score: int) -> str:
-    if score >= 80:
+    if score >= 85:
         return "상"
     if score >= 55:
         return "중"
     return "하"
 
 
+def _is_general_evaluation(job_json: dict[str, Any]) -> bool:
+    """True when there's no real job posting to match against (link-less evaluation)."""
+    job_description = (job_json.get("job_description") or "").lower()
+    requirements = job_json.get("extracted_requirements") or {}
+    has_requirements = bool(
+        requirements.get("required_skills")
+        or requirements.get("preferred_skills")
+        or requirements.get("keywords")
+    )
+    return "general resume evaluation" in job_description or not has_requirements
+
+
+GENERAL_EVALUATION_INSTRUCTIONS = """
+NOTE: No specific job posting was provided — this is a general resume quality
+evaluation, not a job-match evaluation. There are no job requirements to
+compare against, so do NOT return empty missing_critical_requirements /
+missing_minor_requirements just because nothing was "missing" from a job
+description.
+
+Instead, evaluate the resume on its own merits as a hiring manager would:
+- matched_requirements: notable strengths in the resume (skills, experience, achievements)
+- missing_critical_requirements / missing_minor_requirements: concrete weaknesses
+  in the resume itself — e.g. bullets lacking quantified impact, missing
+  certifications or tools relevant to the candidate's apparent target role,
+  thin experience depth, no leadership/ownership examples, weak skills section.
+- improvement_suggestions: specific, actionable fixes for those weaknesses.
+
+Still return the full JSON structure with a final_match_score representing
+overall resume quality/completeness (not job fit)."""
+
+
 async def evaluate_ats_node(state: AgentState) -> AgentState:
     """LangGraph node: evaluate ATS match between resume and job.
 
-    Computes a deterministic score, calls GPT for qualitative analysis,
-    saves to ats_evaluations, and updates state.
+    Computes cosine similarity from RAG retrieval scores, calls GPT for
+    full scoring and qualitative analysis, saves to ats_evaluations, and
+    updates state.
     """
     resume_json = state.get("resume_json")
     job_json = state.get("job_json")
@@ -220,29 +213,30 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
         return {"errors": new_errors}
 
     try:
-        # 1. Compute deterministic score
-        score, matched_skills, missing_skills = _compute_ats_score(resume_json, job_json)
-        rank = _score_to_rank(score)
+        # 1. Compute cosine similarity from RAG retrieval scores
+        cosine_similarity = _compute_cosine_similarity(retrieved_context)
 
         # 2. Build context string from retrieved chunks
-        context_text = "\n".join(
-            c.get("chunk_text", "") for c in retrieved_context[:5]
-        ) if retrieved_context else "No additional context retrieved."
+        context_text = (
+            "\n".join(c.get("chunk_text", "") for c in retrieved_context[:5])
+            if retrieved_context
+            else "No additional context retrieved."
+        )
 
-        # 3. Call GPT for qualitative analysis
+        # 3. Call GPT for full evaluation and scoring
+        is_general = _is_general_evaluation(job_json)
+        user_content = (
+            f"Cosine Similarity Score: {cosine_similarity}\n\n"
+            f"Job Description:\n{json.dumps(job_json, ensure_ascii=False)[:2000]}\n\n"
+            f"Resume JSON:\n{json.dumps(resume_json, ensure_ascii=False)[:3000]}\n\n"
+            f"Retrieved Resume Context:\n{context_text[:1500]}"
+        )
+        if is_general:
+            user_content += "\n\n" + GENERAL_EVALUATION_INSTRUCTIONS
+
         messages = [
             {"role": "system", "content": ATS_EVALUATOR_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"ATS Score: {score}/100 (Rank: {rank})\n"
-                    f"Matched Skills: {', '.join(matched_skills[:10])}\n"
-                    f"Missing Skills: {', '.join(missing_skills[:10])}\n\n"
-                    f"Job Requirements:\n{json.dumps(job_json.get('extracted_requirements', {}), ensure_ascii=False)}\n\n"
-                    f"Resume JSON:\n{json.dumps(resume_json, ensure_ascii=False)[:3000]}\n\n"
-                    f"Retrieved Resume Context:\n{context_text[:1500]}"
-                ),
-            },
+            {"role": "user", "content": user_content},
         ]
         raw_response = await openai_client.chat_completion(
             messages=messages,
@@ -251,30 +245,52 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
         )
         gpt_result: dict = json.loads(raw_response)
 
+        final_score = int(gpt_result.get("final_match_score", 0))
+        match_level = gpt_result.get("match_level", "")
+        rank = _score_to_rank(final_score)
+
+        matched_requirements = gpt_result.get("matched_requirements", [])
+        missing_critical = gpt_result.get("missing_critical_requirements", [])
+        missing_minor = gpt_result.get("missing_minor_requirements", [])
+        improvement_suggestions = gpt_result.get("improvement_suggestions", [])
+        transferable_skills = gpt_result.get("transferable_skills", [])
+
         ats_result = {
-            "score": score,
+            "score": final_score,
             "rank": rank,
-            "matched_skills": matched_skills,
-            "missing_skills": missing_skills,
-            "strengths": gpt_result.get("strengths", []),
-            "weaknesses": gpt_result.get("weaknesses", []),
-            "improvement_priority": gpt_result.get("improvement_priority", []),
-            "evidence": gpt_result.get("evidence", []),
+            "match_level": match_level,
+            "cosine_similarity_score": gpt_result.get("cosine_similarity_score", cosine_similarity),
+            "score_breakdown": gpt_result.get("score_breakdown", {}),
+            # New field names
+            "matched_requirements": matched_requirements,
+            "missing_critical_requirements": missing_critical,
+            "missing_minor_requirements": missing_minor,
+            "transferable_skills": transferable_skills,
+            "reasoning": gpt_result.get("reasoning", ""),
+            "improvement_suggestions": improvement_suggestions,
+            # Frontend-compatible aliases
+            "matched_skills": matched_requirements,
+            "missing_skills": missing_critical + missing_minor,
+            "weaknesses": missing_critical + missing_minor,
+            "strengths": matched_requirements,
+            "improvement_priority": improvement_suggestions,
         }
 
-        # 4. Save to ats_evaluations
+        # 4. Save to ats_evaluations — replace any previous result for this
+        # application so re-evaluations don't accumulate stale rows.
         if application_id:
             db = supabase_client.get_client()
+            db.table("ats_evaluations").delete().eq("application_id", application_id).execute()
             db.table("ats_evaluations").insert(
                 {
                     "application_id": application_id,
-                    "score": score,
+                    "score": final_score,
                     "rank": rank,
-                    "matched_skills": matched_skills,
-                    "missing_skills": missing_skills,
-                    "strengths": ats_result["strengths"],
-                    "weaknesses": ats_result["weaknesses"],
-                    "evidence": ats_result["evidence"],
+                    "matched_skills": matched_requirements,
+                    "missing_skills": missing_critical + missing_minor,
+                    "strengths": matched_requirements,
+                    "weaknesses": missing_critical + missing_minor,
+                    "evidence": [],
                 }
             ).execute()
 
