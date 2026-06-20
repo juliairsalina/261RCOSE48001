@@ -146,6 +146,37 @@ def _score_to_rank(score: int) -> str:
     return "하"
 
 
+def _is_general_evaluation(job_json: dict[str, Any]) -> bool:
+    """True when there's no real job posting to match against (link-less evaluation)."""
+    job_description = (job_json.get("job_description") or "").lower()
+    requirements = job_json.get("extracted_requirements") or {}
+    has_requirements = bool(
+        requirements.get("required_skills")
+        or requirements.get("preferred_skills")
+        or requirements.get("keywords")
+    )
+    return "general resume evaluation" in job_description or not has_requirements
+
+
+GENERAL_EVALUATION_INSTRUCTIONS = """
+NOTE: No specific job posting was provided — this is a general resume quality
+evaluation, not a job-match evaluation. There are no job requirements to
+compare against, so do NOT return empty missing_critical_requirements /
+missing_minor_requirements just because nothing was "missing" from a job
+description.
+
+Instead, evaluate the resume on its own merits as a hiring manager would:
+- matched_requirements: notable strengths in the resume (skills, experience, achievements)
+- missing_critical_requirements / missing_minor_requirements: concrete weaknesses
+  in the resume itself — e.g. bullets lacking quantified impact, missing
+  certifications or tools relevant to the candidate's apparent target role,
+  thin experience depth, no leadership/ownership examples, weak skills section.
+- improvement_suggestions: specific, actionable fixes for those weaknesses.
+
+Still return the full JSON structure with a final_match_score representing
+overall resume quality/completeness (not job fit)."""
+
+
 async def evaluate_ats_node(state: AgentState) -> AgentState:
     """LangGraph node: evaluate ATS match between resume and job.
 
@@ -179,17 +210,19 @@ async def evaluate_ats_node(state: AgentState) -> AgentState:
         )
 
         # 3. Call GPT for full evaluation and scoring
+        is_general = _is_general_evaluation(job_json)
+        user_content = (
+            f"Cosine Similarity Score: {cosine_similarity}\n\n"
+            f"Job Description:\n{json.dumps(job_json, ensure_ascii=False)[:2000]}\n\n"
+            f"Resume JSON:\n{json.dumps(resume_json, ensure_ascii=False)[:3000]}\n\n"
+            f"Retrieved Resume Context:\n{context_text[:1500]}"
+        )
+        if is_general:
+            user_content += "\n\n" + GENERAL_EVALUATION_INSTRUCTIONS
+
         messages = [
             {"role": "system", "content": ATS_EVALUATOR_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"Cosine Similarity Score: {cosine_similarity}\n\n"
-                    f"Job Description:\n{json.dumps(job_json, ensure_ascii=False)[:2000]}\n\n"
-                    f"Resume JSON:\n{json.dumps(resume_json, ensure_ascii=False)[:3000]}\n\n"
-                    f"Retrieved Resume Context:\n{context_text[:1500]}"
-                ),
-            },
+            {"role": "user", "content": user_content},
         ]
         raw_response = await openai_client.chat_completion(
             messages=messages,
