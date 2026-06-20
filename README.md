@@ -2,6 +2,7 @@
 
 AI-powered resume optimization platform that helps job seekers improve resumes, generate tailored cover letters, evaluate ATS compatibility, and discover relevant job opportunities — all in one place.
 
+
 ---
 
 ## Live Demo
@@ -119,7 +120,11 @@ Reeracify uses a LangGraph-based multi-agent workflow integrated with OpenAI mod
 - One-click approve/reject workflow
 - Live resume preview updates
 
----
+↓
+
+Embedding Generation
+
+↓
 
 ## Cover Letter Generator
 
