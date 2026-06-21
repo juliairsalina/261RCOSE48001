@@ -48,6 +48,7 @@ export default function HomePage() {
   const [parsedName, setParsedName] = useState("");
   const [parsedResumeData, setParsedResumeData] = useState(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
 
 useEffect(() => {
   if (!supabase) {
@@ -155,6 +156,7 @@ useEffect(() => {
     setUploading(true);
     setUploadError("");
     setParsedName("");
+    setReviewConfirmed(false);
 
     // Clear stale data from any previous resume session.
     // Don't touch reeracifyVacancyLink/vacancyLink — the user may have
@@ -223,22 +225,19 @@ useEffect(() => {
       alert("Please upload your resume first.");
       return;
     }
-    if (parsedResumeData) {
+    if (parsedResumeData && !reviewConfirmed) {
       setShowReviewModal(true);
-    } else {
-      if (vacancyLink.trim()) {
-        localStorage.setItem("reeracifyVacancyLink", vacancyLink.trim());
-      }
-      router.push("/edit-resume");
+      return;
     }
-  };
-
-  const handleConfirmAndContinue = () => {
     if (vacancyLink.trim()) {
       localStorage.setItem("reeracifyVacancyLink", vacancyLink.trim());
     }
-    setShowReviewModal(false);
     router.push("/edit-resume");
+  };
+
+  const handleConfirmAndContinue = () => {
+    setReviewConfirmed(true);
+    setShowReviewModal(false);
   };
 
   const handleContactUs = () => {
