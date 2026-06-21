@@ -98,26 +98,175 @@ Reeracify uses a LangGraph-based multi-agent workflow integrated with OpenAI mod
 
 ---
 
+## Local Development
+
+This guide will help you set up the project for local development.
+
+---
+
+## Prerequisites
+
+Make sure Python, pip, Node.js `18.0` or higher, and pnpm or npm are installed on your system before starting.
+
+---
+
+## Step 1: Install Backend Dependencies
+
+Go to the backend folder:
+
+```bash
+cd backend
+```
+
+Install the required Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## Step 2: Install Frontend Dependencies
+
+Go to the frontend folder:
+
+```bash
+cd frontend
+```
+
+Install the project dependencies:
+
+```bash
+pnpm install
+```
+
+Or using npm:
+
+```bash
+npm install
+```
+
+---
+
+## Step 3: Set Up Backend Environment Variables
+
+Create a `.env` file inside the `backend` folder:
+
+```env
+# OpenAI
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+
+# Supabase
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_ANON_KEY=
+SUPABASE_BUCKET=resumes
+
+# Job Search
+# Options:
+#   cascade    (recommended) — JSearch first, OpenAI web search fallback
+#   jsearch    — JSearch only (requires JSEARCH_API_KEY)
+#   openai_web — OpenAI web_search_preview only (uses OPENAI_API_KEY)
+#   dummy      — hardcoded test data
+JOB_SEARCH_PROVIDER=cascade
+JSEARCH_API_KEY=
+JSEARCH_COUNTRY=kr
+JSEARCH_LANGUAGE=en
+
+# LangSmith optional
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=
+LANGCHAIN_PROJECT=career-application-agent
+
+# App
+APP_ENV=development
+```
+
+---
+
+## Step 4: Set Up Frontend Environment Variables
+
+Create a `.env.local` file inside the `frontend` folder:
+
+```env
+# Local development
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+NEXT_PUBLIC_PREPROCESS_API_URL=http://localhost:8000
+
+# Production Render
+# Set these in Vercel environment variables instead
+# NEXT_PUBLIC_API_BASE_URL=https://reeracify-backend.onrender.com
+# NEXT_PUBLIC_PREPROCESS_API_URL=https://reeracify-backend.onrender.com
+```
+
+---
+
+## Step 5: Run the Backend Server
+
+From the `backend` folder, start the backend server:
+
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+The backend API will be available at:
+
+```text
+http://localhost:8000
+```
+
+---
+
+## Step 6: Run the Frontend Server
+
+From the `frontend` folder, start the frontend development server:
+
+```bash
+pnpm dev
+```
+
+Or using npm:
+
+```bash
+npm run dev
+```
+
+The frontend application will be available at:
+
+```text
+http://localhost:3000
+```
+
+---
+
+## Useful Local URLs
+
+| Service           | URL                          |
+| ----------------- | ---------------------------- |
+| Frontend App      | `http://localhost:3000`      |
+| Backend API       | `http://localhost:8000`      |
+| API Documentation | `http://localhost:8000/docs` |
 
 ---
 
 ## Important Notes
 
-Do not commit your real `.env.local` file to GitHub.
+Do not commit your real environment files to GitHub.
 
-Make sure this is included in `.gitignore`:
+Make sure these files are included in `.gitignore`:
 
 ```gitignore
-.env.local
+backend/.env
+frontend/.env.local
 .env
+.env.local
 ```
 
-Also, never expose this key in frontend code:
+The `SUPABASE_SERVICE_ROLE_KEY` should only be used in the backend and must not be exposed in frontend code.
 
-```env
-SUPABASE_SERVICE_ROLE_KEY
-```
-
+---
 
 # Features
 
