@@ -1,8 +1,31 @@
+## Team - Powerpuff Girls
+
+#### Capstone Design Project 2026 | Korea University, College of Informatics
+
+**Members:** Emira Syazwani, Julia Irsalina, Nur Mushira     
+**Advisor:** Prof. 이숙윤     
+**Mentor:** 이세현, UrbaneLab
+
+---
+
 # Reeracify
 
-AI-powered resume optimization platform that helps job seekers improve resumes, generate tailored cover letters, evaluate ATS compatibility, and discover relevant job opportunities — all in one place.
+### AI-powered resume optimization platform that helps job seekers improve resumes, generate tailored cover letters, evaluate ATS compatibility, and discover relevant job opportunities — all in one place.
+---
 
+## Table of Contents
 
+* [Live Demo](#live-demo)
+* [Project Overview](#project-overview)
+* [Key Contributions](#key-contributions)
+* [System Workflow](#system-workflow)
+* [RAG-Based Resume Retrieval](#rag-based-resume-retrieval)
+* [System Architecture](#system-architecture)
+* [Local Development](#local-development)
+* [Features](#features)
+* [Sample Outputs](#sample-outputs)
+* [Future Work](#future-work)
+* [Project Resources](#project-resources)
 ---
 
 ## Live Demo
@@ -365,26 +388,6 @@ Cover letter automatically generated based on the candidate's resume and target 
 - Improve ATS evaluation consistency and reliability
 - Evaluate performance using more diverse resumes
 - Develop recruiter-focused features for candidate screening and talent discovery
-
----
-
-## Team
-
-### Powerpuff Girls
-
-Korea University – College of Informatics
-
-- Emira Syazwani
-- Julia Irsalina
-- Nur Mushira
-
-### Advisor
-Prof. 이숙윤
-
-### Mentor
-이세현 (UrbaneLab)
-
-Capstone Design Project 2026
 
 ---
 
