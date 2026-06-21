@@ -169,6 +169,9 @@ export default function EditResumePage() {
 
   const [vacancyLink, setVacancyLink] = useState("");
   const vacancyLinkRef = useRef("");
+  // Guards against an older evaluateResume() call resolving after a newer one
+  // and overwriting its results (e.g. job description from a stale link).
+  const evalRequestIdRef = useRef(0);
   const [atsScoreValue, setAtsScoreValue] = useState(0);
   const [resumeLevel, setResumeLevel] = useState("Waiting for evaluation");
   const [jobSummary, setJobSummary] = useState(
@@ -564,6 +567,11 @@ export default function EditResumePage() {
       return;
     }
 
+    // Mark this call as the latest. Any earlier in-flight call checks this
+    // before writing results, so a slow/stale call can't clobber a newer one.
+    const requestId = ++evalRequestIdRef.current;
+    const isStale = () => requestId !== evalRequestIdRef.current;
+
     // Clear stale results from the previous evaluation immediately so the UI
     // never shows old data alongside the new evaluation's loading state.
     setJobDescription("");
@@ -624,10 +632,15 @@ export default function EditResumePage() {
           jobSummaryText = "Job posting provided";
         }
       }
+      // A newer evaluateResume() call has started since this one began —
+      // discard these results instead of overwriting the newer call's data.
+      if (isStale()) return;
+
       setJobDescription(jobPost.job_description || "");
       applyAnalysisResult(result, jobSummaryText);
 
     } catch (error) {
+      if (isStale()) return;
       setIsLoading(false);
       setErrorMessage(error.message);
     }
