@@ -187,7 +187,6 @@ export default function EditResumePage() {
     structure: "",
     impact: "",
   });
-  const [missingSkills, setMissingSkills] = useState([]);
 
   function saveSnapshot() {
     setPreviousState({
@@ -510,7 +509,6 @@ export default function EditResumePage() {
       impact: impactVal,
     });
 
-    setMissingSkills(ats.missing_skills || []);
     const missingList = (ats.missing_skills || []).slice(0, 3);
     const matchedList = (ats.matched_skills || []).slice(0, 3);
     const topWeakness = (ats.weaknesses || [])[0] || "";
@@ -576,7 +574,6 @@ export default function EditResumePage() {
     setResumeLevel("Waiting for evaluation");
     setMetrics({ clarity: 0, keywordFit: 0, structure: 0, impact: 0 });
     setMetricComments({ clarity: "", keywordFit: "", structure: "", impact: "" });
-    setMissingSkills([]);
     setHasAnalyzed(false);
     setJobSummary("Evaluating...");
 
@@ -1332,24 +1329,6 @@ export default function EditResumePage() {
                       <p className="mt-2 text-[12px] leading-[1.6] text-white/75 line-clamp-6">
                         {jobDescription}
                       </p>
-                    )}
-
-                    {missingSkills.length > 0 && (
-                      <div className="mt-4">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-white/55 mb-2">
-                          Missing Keywords
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {missingSkills.map((skill, i) => (
-                            <span
-                              key={i}
-                              className="rounded-full border border-red-300/50 bg-red-100/20 px-3 py-1 text-[11px] font-bold text-white/90"
-                            >
-                              {skill}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
                     )}
                   </section>
 
