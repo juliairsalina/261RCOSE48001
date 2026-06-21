@@ -21,18 +21,6 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Some job boards (e.g. Korean sites like Saramin/JobKorea/Wanted) reject
-# requests that don't look like a real browser, returning errors for live
-# postings. Spoofing a normal browser UA/Accept-Language avoids treating
-# those false blocks as "dead" links.
-_BROWSER_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-}
-
 # ── Shared dummy data (used when no API credentials are configured) ─────────
 
 DUMMY_JOBS: list[dict[str, Any]] = [
@@ -244,7 +232,6 @@ class OpenAIWebSearchProvider(JobSearchProvider):
             "kr": (
                 "Search Korean job boards 사람인(saramin.co.kr), 원티드(wanted.co.kr), "
                 "잡코리아(jobkorea.co.kr), 링크드인 코리아(linkedin.com/jobs). "
-                "Use Google Search to find currently available jobs in South Korea. "
                 "Write your search query in Korean. Job titles may appear in English or Korean."
             ),
             "jp": (
@@ -495,7 +482,7 @@ async def _is_url_alive(client: "httpx.AsyncClient", url: str) -> bool:
 
     try:
         resp = await client.get(url, follow_redirects=True)
-        if resp.status_code >= 400 and resp.status_code != 403:
+        if resp.status_code >= 400:
             return False
         body_lower = resp.text[:5000].lower()
         return not any(phrase.lower() in body_lower for phrase in _DEAD_POSTING_PHRASES)
@@ -515,7 +502,7 @@ async def _filter_dead_links(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]
     if not jobs:
         return jobs
 
-    async with httpx.AsyncClient(timeout=10.0, headers=_BROWSER_HEADERS) as client:
+    async with httpx.AsyncClient(timeout=6.0) as client:
         alive_flags = await asyncio.gather(
             *(_is_url_alive(client, job["job_url"]) for job in jobs),
             return_exceptions=True,

@@ -8,7 +8,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.services import openai_client, supabase_client
-from app.services.job_search_service import _BROWSER_HEADERS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -58,7 +57,10 @@ async def create_job_post(request: JobPostCreateRequest) -> dict:
             import httpx
 
             async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                resp = await client.get(request.job_url, headers=_BROWSER_HEADERS)
+                resp = await client.get(
+                    request.job_url,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; Reeracify/1.0)"},
+                )
                 resp.raise_for_status()
                 page_text = _strip_html(resp.text)
 
