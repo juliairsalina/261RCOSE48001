@@ -244,8 +244,7 @@ class OpenAIWebSearchProvider(JobSearchProvider):
             "kr": (
                 "Search Korean job boards 사람인(saramin.co.kr), 원티드(wanted.co.kr), "
                 "잡코리아(jobkorea.co.kr), 링크드인 코리아(linkedin.com/jobs). "
-                "Search for Korean job boards and company career pages."
-                "Search Google for available jobs in Korea."
+                "Use Google Search to find currently available jobs in South Korea. "
                 "Write your search query in Korean. Job titles may appear in English or Korean."
             ),
             "jp": (
