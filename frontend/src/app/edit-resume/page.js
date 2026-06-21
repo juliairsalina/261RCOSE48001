@@ -1898,10 +1898,10 @@ function ResumeDocument({ resumeData, rewriteList = [], activeRewriteId, onRewri
     // text content) — also covers the post-approval case where the text is
     // no longer blank because the fill-in (suggested_text) was applied.
     if (itemLabel) {
-      const labelLower = itemLabel.toLowerCase().trim();
+      const labelLower = normalizeLabel(itemLabel);
       for (const rw of blankRewrites) {
         if (section && rw.section !== section) continue;
-        const rwLabel = (rw.item_label || "").toLowerCase().trim();
+        const rwLabel = normalizeLabel(rw.item_label || "");
         if (!rwLabel || !(rwLabel.includes(labelLower) || labelLower.includes(rwLabel))) continue;
         if (!t) return rw;
         if (rw.status === "approved" && (rw.suggested_text || "").trim() === t) return rw;
@@ -2804,11 +2804,15 @@ function Editable({ value, onSave, as: Tag = "span", className, placeholder }) {
   );
 }
 
+function normalizeLabel(text) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 function itemMatchesLabel(item, label, nameKeys) {
   if (!label) return false;
-  const labelLower = label.toLowerCase();
-  const itemText = nameKeys.map((k) => item[k] || "").join(" ").trim().toLowerCase();
-  return Boolean(itemText) && (itemText.includes(labelLower) || labelLower.includes(itemText));
+  const labelNorm = normalizeLabel(label);
+  const itemText = normalizeLabel(nameKeys.map((k) => item[k] || "").join(" "));
+  return Boolean(itemText) && (itemText.includes(labelNorm) || labelNorm.includes(itemText));
 }
 
 function applyRewriteToResume(rewrite, rd) {
