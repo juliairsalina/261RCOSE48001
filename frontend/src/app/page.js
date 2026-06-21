@@ -231,6 +231,8 @@ useEffect(() => {
     }
     if (vacancyLink.trim()) {
       localStorage.setItem("reeracifyVacancyLink", vacancyLink.trim());
+    } else {
+      localStorage.removeItem("reeracifyVacancyLink");
     }
     router.push("/edit-resume");
   };
