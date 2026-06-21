@@ -9,14 +9,15 @@ logger = logging.getLogger(__name__)
 
 
 def _build_analysis_graph():
-    """Analysis sub-graph: analyze_job → retrieve → research → (ATS ∥ cover letter) → rewrites.
+    """Analysis sub-graph: analyze_job → retrieve → (ATS ∥ research → cover letter) → rewrites.
 
     analyze_job extracts structured requirements from the job description so that
     the ATS evaluator always has required_skills/keywords to match against.
 
-    Sequential chain: analyze_job → retrieve_context → research_company
-    Fan-out:          research_company → evaluate_ats ∥ generate_cover_letter
-    Fan-in:           both branches merge before generate_rewrites
+    Sequential chain: analyze_job → retrieve_context
+    Fan-out:          retrieve_context → evaluate_ats ∥ research_company
+    research_company → generate_cover_letter (only the cover letter needs company background)
+    Fan-in:           evaluate_ats + generate_cover_letter merge before generate_rewrites
     """
     from langgraph.graph import END, START, StateGraph
 
@@ -37,9 +38,10 @@ def _build_analysis_graph():
 
     builder.add_edge(START, "analyze_job")
     builder.add_edge("analyze_job", "retrieve_context")
+    # Fan-out: ATS evaluation doesn't need company research, so it no longer
+    # waits on it — only the cover letter branch depends on research_company.
+    builder.add_edge("retrieve_context", "evaluate_ats")
     builder.add_edge("retrieve_context", "research_company")
-    # Fan-out: both run in parallel after company research
-    builder.add_edge("research_company", "evaluate_ats")
     builder.add_edge("research_company", "generate_cover_letter")
     # Fan-in: rewrites wait for both branches
     builder.add_edge("evaluate_ats", "generate_rewrites")
