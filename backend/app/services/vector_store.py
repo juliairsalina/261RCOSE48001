@@ -45,6 +45,22 @@ def store_resume_chunks(
         client.table("resume_chunks").insert(rows).execute()
 
 
+def replace_resume_chunks(
+    resume_id: str,
+    user_id: str,
+    chunks_with_embeddings: list[dict[str, Any]],
+) -> None:
+    """Replace all stored chunks for a resume with a fresh set.
+
+    Used to re-embed a resume after the user edits it (e.g. approves a
+    rewrite suggestion), so RAG retrieval reflects the current text instead
+    of the embeddings generated at initial upload.
+    """
+    client = get_client()
+    client.table("resume_chunks").delete().eq("resume_id", resume_id).execute()
+    store_resume_chunks(resume_id, user_id, chunks_with_embeddings)
+
+
 def retrieve_similar_chunks(
     resume_id: str,
     query_embedding: list[float],
