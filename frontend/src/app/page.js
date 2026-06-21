@@ -156,12 +156,12 @@ useEffect(() => {
     setUploadError("");
     setParsedName("");
 
-    // Clear stale data from any previous resume session
+    // Clear stale data from any previous resume session.
+    // Don't touch reeracifyVacancyLink/vacancyLink — the user may have
+    // already pasted a job link before selecting the file.
     localStorage.removeItem("reeracifyApplicationId");
     localStorage.removeItem("reeracifyParsedResume");
     localStorage.removeItem("reeracifyCandidateProfile");
-    localStorage.removeItem("reeracifyVacancyLink");
-    setVacancyLink("");
 
     let userId = localStorage.getItem("reeracifyUserId");
     if (!userId) {
