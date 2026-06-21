@@ -246,14 +246,25 @@ export default function EditResumePage() {
   const currentSuggestion =
     suggestions.find((item) => item.id === activeSuggestion) || suggestions[0];
 
+  // Re-sync the vacancy link from localStorage on mount and whenever the
+  // tab regains focus — Next.js's client-side router cache can keep this
+  // page instance mounted across navigations, so a one-time mount effect
+  // alone would keep showing a stale link from a previous visit.
   useEffect(() => {
-    const savedVacancyLink = localStorage.getItem("reeracifyVacancyLink");
-    if (savedVacancyLink) {
+    function syncVacancyLink() {
+      const savedVacancyLink = localStorage.getItem("reeracifyVacancyLink") || "";
       vacancyLinkRef.current = savedVacancyLink;
       setVacancyLink(savedVacancyLink);
-      setJobSummary("Vacancy link loaded. Click Evaluate to analyze it.");
+      if (savedVacancyLink) {
+        setJobSummary("Vacancy link loaded. Click Evaluate to analyze it.");
+      }
     }
+    syncVacancyLink();
+    window.addEventListener("focus", syncVacancyLink);
+    return () => window.removeEventListener("focus", syncVacancyLink);
+  }, []);
 
+  useEffect(() => {
     const savedUserId = localStorage.getItem("reeracifyUserId");
     if (savedUserId) setUserId(savedUserId);
 
@@ -442,6 +453,13 @@ export default function EditResumePage() {
     return response.json();
   }
 
+  function truncateWords(text, maxWords) {
+    if (!text) return text;
+    const words = text.trim().split(/\s+/);
+    if (words.length <= maxWords) return text;
+    return words.slice(0, maxWords).join(" ") + "…";
+  }
+
   function setLoadingState(message) {
     setIsLoading(true);
     setStatusMessage(message);
@@ -516,28 +534,28 @@ export default function EditResumePage() {
     const topPriority = (ats.improvement_priority || [])[0] || "";
 
     setMetricComments({
-      clarity: clarityVal >= 85
+      clarity: truncateWords(clarityVal >= 85
         ? "Your resume is clear and well-structured with minimal gaps."
         : clarityVal === 0
         ? `Too many gaps for this role (${(ats.weaknesses || []).length} missing requirements). Top gap: ${topWeakness || "see weaknesses below"}.`
         : topWeakness
         ? `Area to improve: ${topWeakness}`
-        : "Reduce vague language and add more specific, measurable details.",
-      keywordFit: missingList.length > 0
+        : "Reduce vague language and add more specific, measurable details.", 50),
+      keywordFit: truncateWords(missingList.length > 0
         ? `Missing keywords: ${missingList.join(", ")}. Add these to your skills or experience.`
         : matchedList.length > 0
         ? `Strong keyword match — found: ${matchedList.join(", ")}.`
-        : "Paste a job vacancy URL to get a precise keyword match score.",
-      structure: topPriority
+        : "Paste a job vacancy URL to get a precise keyword match score.", 50),
+      structure: truncateWords(topPriority
         ? `Top priority: ${topPriority}`
         : score >= 80
         ? "Resume structure aligns well with the job requirements."
-        : "Ensure all key sections (summary, skills, experience) are present and complete.",
-      impact: impactVal >= 80
+        : "Ensure all key sections (summary, skills, experience) are present and complete.", 50),
+      impact: truncateWords(impactVal >= 80
         ? topStrength
           ? `Key strength: ${topStrength}`
           : "Your resume demonstrates strong measurable impact."
-        : "Add bullet points with quantifiable results (numbers, %, improvements) to raise impact.",
+        : "Add bullet points with quantifiable results (numbers, %, improvements) to raise impact.", 50),
     });
 
     const atsSuggestions = [
