@@ -98,6 +98,27 @@ Reeracify uses a LangGraph-based multi-agent workflow integrated with OpenAI mod
 
 ---
 
+
+---
+
+## Important Notes
+
+Do not commit your real `.env.local` file to GitHub.
+
+Make sure this is included in `.gitignore`:
+
+```gitignore
+.env.local
+.env
+```
+
+Also, never expose this key in frontend code:
+
+```env
+SUPABASE_SERVICE_ROLE_KEY
+```
+
+
 # Features
 
 ## ATS Analysis
