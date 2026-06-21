@@ -246,14 +246,25 @@ export default function EditResumePage() {
   const currentSuggestion =
     suggestions.find((item) => item.id === activeSuggestion) || suggestions[0];
 
+  // Re-sync the vacancy link from localStorage on mount and whenever the
+  // tab regains focus — Next.js's client-side router cache can keep this
+  // page instance mounted across navigations, so a one-time mount effect
+  // alone would keep showing a stale link from a previous visit.
   useEffect(() => {
-    const savedVacancyLink = localStorage.getItem("reeracifyVacancyLink");
-    if (savedVacancyLink) {
+    function syncVacancyLink() {
+      const savedVacancyLink = localStorage.getItem("reeracifyVacancyLink") || "";
       vacancyLinkRef.current = savedVacancyLink;
       setVacancyLink(savedVacancyLink);
-      setJobSummary("Vacancy link loaded. Click Evaluate to analyze it.");
+      if (savedVacancyLink) {
+        setJobSummary("Vacancy link loaded. Click Evaluate to analyze it.");
+      }
     }
+    syncVacancyLink();
+    window.addEventListener("focus", syncVacancyLink);
+    return () => window.removeEventListener("focus", syncVacancyLink);
+  }, []);
 
+  useEffect(() => {
     const savedUserId = localStorage.getItem("reeracifyUserId");
     if (savedUserId) setUserId(savedUserId);
 
