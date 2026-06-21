@@ -499,7 +499,7 @@ export default function EditResumePage() {
     const matched = ats.matched_skills?.length || 0;
     const missing = ats.missing_skills?.length || 0;
     const total = matched + missing || 1;
-    const clarityVal = Math.max(0, 100 - (ats.weaknesses?.length || 0) * 15);
+    const clarityVal = Math.max(20, 100 - (ats.weaknesses?.length || 0) * 8);
     const keywordVal = Math.round((matched / total) * 100);
     const impactVal = Math.min(100, (ats.strengths?.length || 0) * 20);
     setMetrics({
@@ -518,7 +518,7 @@ export default function EditResumePage() {
     setMetricComments({
       clarity: clarityVal >= 85
         ? "Your resume is clear and well-structured with minimal gaps."
-        : clarityVal === 0
+        : clarityVal <= 20
         ? `Too many gaps for this role (${(ats.weaknesses || []).length} missing requirements). Top gap: ${topWeakness || "see weaknesses below"}.`
         : topWeakness
         ? `Area to improve: ${topWeakness}`

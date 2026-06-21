@@ -59,6 +59,82 @@ def _build_initial_state(user_id: str, resume_id: str, job_post_id: str, applica
     )
 
 
+def _resume_json_to_text(resume_json: dict) -> str:
+    """Flatten a resume_json dict into plain text for chunking/embedding."""
+    parts: list[str] = []
+
+    def add(label: str, value) -> None:
+        if not value:
+            return
+        if isinstance(value, list):
+            value = ", ".join(str(v) for v in value)
+        parts.append(f"{label}: {value}")
+
+    add("Name", resume_json.get("name"))
+    add("Skills", resume_json.get("skills"))
+    add("Languages", resume_json.get("languages"))
+    add("Certifications", resume_json.get("certifications"))
+    add("Achievements", resume_json.get("achievements"))
+
+    for edu in resume_json.get("education", []) or []:
+        parts.append(
+            f"Education: {edu.get('degree', '')} {edu.get('field_of_study', '')} "
+            f"at {edu.get('institution', '')} {edu.get('description', '')}"
+        )
+
+    for exp in resume_json.get("work_experience", []) or []:
+        bullets = " ".join(exp.get("bullets", []) or [])
+        parts.append(
+            f"Experience: {exp.get('title', '')} at {exp.get('company', '')} "
+            f"{exp.get('description', '')} {bullets}"
+        )
+
+    for proj in resume_json.get("projects", []) or []:
+        bullets = " ".join(proj.get("bullets", []) or [])
+        techs = ", ".join(proj.get("technologies", []) or [])
+        parts.append(f"Project: {proj.get('name', '')} {proj.get('description', '')} {bullets} {techs}")
+
+    if resume_json.get("raw_text"):
+        parts.append(str(resume_json["raw_text"]))
+
+    return "\n".join(p for p in parts if p.strip())
+
+
+async def _reembed_resume_chunks(resume_id: str, user_id: str, resume_json: dict) -> None:
+    """Re-chunk and re-embed a resume after live edits (e.g. approved rewrites).
+
+    Without this, RAG retrieval keeps using the embeddings generated at
+    initial upload, so reevaluation surfaces stale, contradictory context
+    alongside the freshly edited resume_json.
+    """
+    text = _resume_json_to_text(resume_json)
+    if not text.strip():
+        return
+
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+    except ImportError:
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+    from app.services.embedding_service import generate_embeddings_batch
+    from app.services.vector_store import replace_resume_chunks
+
+    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+    chunks = splitter.split_text(text)
+    if not chunks:
+        return
+
+    try:
+        embeddings = await generate_embeddings_batch(chunks)
+        chunks_with_embeddings = [
+            {"chunk_text": chunk, "section": "general", "embedding": embedding}
+            for chunk, embedding in zip(chunks, embeddings)
+        ]
+        replace_resume_chunks(resume_id=resume_id, user_id=user_id, chunks_with_embeddings=chunks_with_embeddings)
+    except Exception as exc:
+        logger.warning("Failed to re-embed resume chunks for %s: %s", resume_id, exc)
+
+
 def _load_resume_json(db, resume_id: str) -> dict:
     result = db.table("resumes").select("parsed_json").eq("id", resume_id).single().execute()
     if not result.data:
@@ -406,6 +482,12 @@ async def analyze_application(application_id: str, request: ExportResumeRequest)
         raw = db.table("resumes").select("raw_text").eq("id", resume_id).single().execute()
         raw_text = (raw.data or {}).get("raw_text", "") or ""
         resume_json = {"raw_text": raw_text[:4000], "name": "", "skills": [], "work_experience": [], "projects": []}
+
+    # When the frontend sends a live (edited) resume, RAG retrieval must see
+    # the same edits — re-embed resume_chunks so it doesn't pull stale,
+    # pre-edit context for this reevaluation.
+    if request.resume_json:
+        await _reembed_resume_chunks(resume_id, request.user_id, resume_json)
 
     job_json = _load_job_json(db, job_post_id)
 
