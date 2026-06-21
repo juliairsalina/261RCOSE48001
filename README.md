@@ -1,4 +1,4 @@
-## Team - Powerpuff Girls
+# Team - Powerpuff Girls
 
 #### Capstone Design Project 2026 | Korea University, College of Informatics
 
@@ -8,9 +8,9 @@
 
 ---
 
-# Reeracify
+## Reeracify
 
-### AI-powered resume optimization platform that helps job seekers improve resumes, generate tailored cover letters, evaluate ATS compatibility, and discover relevant job opportunities — all in one place.
+#### AI-powered resume optimization platform that helps job seekers improve resumes, generate tailored cover letters, evaluate ATS compatibility, and discover relevant job opportunities — all in one place.
 ---
 
 ## Table of Contents
@@ -18,6 +18,7 @@
 * [Live Demo](#live-demo)
 * [Project Overview](#project-overview)
 * [Key Contributions](#key-contributions)
+* [AI Agents](#ai-agents)
 * [System Workflow](#system-workflow)
 * [RAG-Based Resume Retrieval](#rag-based-resume-retrieval)
 * [System Architecture](#system-architecture)
@@ -26,7 +27,8 @@
 * [Sample Outputs](#sample-outputs)
 * [Future Work](#future-work)
 * [Project Resources](#project-resources)
----
+* [Main API Routes](#main-api-routes)
+
 
 ## Live Demo
 
@@ -34,7 +36,10 @@
 
 Scan the QR code to access the platform.
 
-![QR Code](./pic/qr_code.png)
+<p align="center">
+  <img src="./pic/qr_code.png" alt="QR Code" width="380"/>
+</p>
+
 
 ---
 
@@ -66,9 +71,27 @@ Users can upload a resume, analyze ATS compatibility, receive rewrite suggestion
 
 ---
 
+## AI Agents
+
+| No. | Agent             | Responsibility                                                                                                                                                                                                                                                               |
+| --- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Resume Parser     | Extracts structured JSON from raw resume text using a six-step process: detect sections → identify entries → determine boundaries → associate bullets → map to schema → emit JSON. It also handles imperfect formatting and flattens skills into individual strings.         |
+| 2   | Candidate Profile | Infers target roles, skills, and generates job search queries.                                                                                                                                                                                                               |
+| 3   | Job Discovery     | Searches Adzuna, scores, and ranks matching job opportunities.                                                                                                                                                                                                               |
+| 4   | Job Analyzer      | Extracts structured requirements from job descriptions.                                                                                                                                                                                                                      |
+| 5   | RAG Retriever     | Retrieves relevant resume chunks using pgvector cosine search.                                                                                                                                                                                                               |
+| 6   | ATS Evaluator     | Calculates a GPT-driven ATS score from six dimensions: required skills, role relevance, experience fit, preferred skills, semantic similarity, and education fit. It also returns matched/missing requirements, transferable skills, reasoning, and improvement suggestions. |
+| 7   | Rewrite Agent     | Suggests targeted resume improvements without inventing experience.                                                                                                                                                                                                          |
+| 8   | Cover Letter      | Writes a 250–400 word personalised cover letter.                                                                                                                                                                                                                             |
+
+---
+
 ## System Workflow
 
-![Workflow](./pic/Flow.png)
+<p align="center">
+  <img src="./pic/Flow.png" alt="System Workflow" width="650"/>
+</p>
+
 
 ### Workflow Steps
 
@@ -86,7 +109,9 @@ Users can upload a resume, analyze ATS compatibility, receive rewrite suggestion
 
 ## RAG-Based Resume Retrieval
 
-![RAG Pipeline](./pic/RAG.png)
+<p align="center">
+  <img src="./pic/RAG.png" alt="RAG Pipeline" width="650"/>
+</p>
 
 Instead of sending the entire resume to the AI model every time, Reeracify:
 
@@ -107,7 +132,10 @@ Instead of sending the entire resume to the AI model every time, Reeracify:
 
 ## System Architecture
 
-![Architecture](./pic/Architecture.png)
+<p align="center">
+  <img src="./pic/Architecture.png" alt="System Architecture" width="650"/>
+</p>
+
 Reeracify uses a LangGraph-based multi-agent workflow integrated with OpenAI models and Supabase vector storage to support ATS evaluation, rewrite generation, cover letter generation, and job discovery.
 
 
@@ -127,13 +155,44 @@ This guide will help you set up the project for local development.
 
 ---
 
-## Prerequisites
+### Prerequisites
 
 Make sure Python, pip, Node.js `18.0` or higher, and pnpm or npm are installed on your system before starting.
 
 ---
 
-## Step 1: Install Backend Dependencies
+### Step 1: Clone the Repository
+
+Clone the project repository:
+
+```bash
+git clone https://github.com/your-username/reeracify.git
+```
+
+Go to the project folder:
+
+```bash
+cd reeracify
+```
+
+> Replace `your-username` with the actual GitHub username or organization name.
+
+---
+
+### Step 2: Set Up Supabase
+
+Reeracify uses Supabase for PostgreSQL storage, file storage, and vector search.
+
+Required Supabase setup:
+
+1. Enable the `vector` extension in Supabase.
+2. Run the database schema from `app/db/schema.sql`.
+3. Create the `match_resume_chunks` RPC function for resume chunk similarity search.
+4. Create a Supabase Storage bucket named `resumes`.
+
+---
+
+### Step 3: Install Backend Dependencies
 
 Go to the backend folder:
 
@@ -146,10 +205,9 @@ Install the required Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-
 ---
 
-## Step 2: Install Frontend Dependencies
+### Step 4: Install Frontend Dependencies
 
 Go to the frontend folder:
 
@@ -168,17 +226,15 @@ Or using npm:
 ```bash
 npm install
 ```
-
 ---
 
-## Step 3: Set Up Backend Environment Variables
-
-Create a `.env` file inside the `backend` folder:
+### Step 5: Set Up  Environment Variables
+#### Create a `.env` file inside the `backend` folder:
 
 ```env
 # OpenAI
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5
+OPENAI_MODEL=GPT-4o
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 # Supabase
@@ -207,11 +263,7 @@ LANGCHAIN_PROJECT=career-application-agent
 APP_ENV=development
 ```
 
----
-
-## Step 4: Set Up Frontend Environment Variables
-
-Create a `.env.local` file inside the `frontend` folder:
+#### Create a `.env.local` file inside the `frontend` folder:
 
 ```env
 # Local development
@@ -226,11 +278,12 @@ NEXT_PUBLIC_PREPROCESS_API_URL=http://localhost:8000
 
 ---
 
-## Step 5: Run the Backend Server
+### Step 6: Run the Backend Server
 
 From the `backend` folder, start the backend server:
 
 ```bash
+cd backend
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -242,17 +295,21 @@ http://localhost:8000
 
 ---
 
-## Step 6: Run the Frontend Server
+### Step 7: Run the Frontend Server
+
+Open a new terminal window.
 
 From the `frontend` folder, start the frontend development server:
 
 ```bash
+cd frontend
 pnpm dev
 ```
 
 Or using npm:
 
 ```bash
+cd frontend
 npm run dev
 ```
 
@@ -264,7 +321,7 @@ http://localhost:3000
 
 ---
 
-## Useful Local URLs
+### Useful Local URLs
 
 | Service           | URL                          |
 | ----------------- | ---------------------------- |
@@ -274,7 +331,7 @@ http://localhost:3000
 
 ---
 
-## Important Notes
+### Important Notes
 
 Do not commit your real environment files to GitHub.
 
@@ -295,7 +352,9 @@ The `SUPABASE_SERVICE_ROLE_KEY` should only be used in the backend and must not 
 
 ## ATS Analysis
 
-![ATS Analysis](./pic/ATS.png)
+<p align="center">
+  <img src="./pic/ATS.png" alt="ATS Analysis" width="650"/>
+</p>
 
 - Resume-job compatibility scoring
 - ATS score (0–100)
@@ -306,7 +365,9 @@ The `SUPABASE_SERVICE_ROLE_KEY` should only be used in the backend and must not 
 
 ## AI Rewrite Suggestions
 
-![Rewrite Suggestions](./pic/Rewrite_Agent.png)
+<p align="center">
+  <img src="./pic/Rewrite_Agent.png" alt="Rewrite Suggestions" width="650"/>
+</p>
 
 - ATS-focused rewrite recommendations
 - Keyword enhancement
@@ -321,7 +382,9 @@ Embedding Generation
 
 ## Cover Letter Generator
 
-![Cover Letter](./pic/CoverLetter_Agent.png)
+<p align="center">
+  <img src="./pic/CoverLetter_Agent.png" alt="Cover Letter Generator" width="650"/>
+</p>
 
 - Generates tailored cover letters
 - Uses resume content and job requirements
@@ -331,7 +394,9 @@ Embedding Generation
 
 ## Job Discovery
 
-![Job Discovery](./pic/job.png)
+<p align="center">
+  <img src="./pic/job.png" alt="Job Discovery" width="650"/>
+</p>
 
 - Career profile generation
 - Job recommendations
@@ -358,7 +423,10 @@ without switching to external tools such as Word or Google Docs.
 
 Reeracify supports multilingual resumes.
 
-![Korean Resume](./pic/Korean_Resume.png)
+<p align="center">
+  <img src="./pic/Korean_Resume.png" alt="Korean Resume Analysis" width="650"/>
+</p>
+
 
 Example of a Korean-language resume successfully analyzed by Reeracify.
 
@@ -368,7 +436,10 @@ Example of a Korean-language resume successfully analyzed by Reeracify.
 
 ### Improved Resume
 
-![Improved Resume](./pic/sample_resume.png)
+
+<p align="center">
+  <img src="./pic/sample_resume.png" alt="Improved Resume" width="650"/>
+</p>
 
 Example of a resume improved using Reeracify's ATS evaluation and rewrite workflow.
 
@@ -376,10 +447,11 @@ Example of a resume improved using Reeracify's ATS evaluation and rewrite workfl
 
 ### Generated Cover Letter
 
-![Cover Letter](./pic/cover_letter.png)
+<p align="center">
+  <img src="./pic/cover_letter.png" alt="Generated Cover Letter" width="650"/>
+</p>
 
 Cover letter automatically generated based on the candidate's resume and target job description.
-
 
 ---
 
@@ -401,3 +473,22 @@ https://reeracify-backend.onrender.com
 
 API Documentation:
 https://reeracify-backend.onrender.com/docs
+
+---
+
+## Main API Routes
+
+| Feature                    | Endpoint                                             |
+| -------------------------- | ---------------------------------------------------- |
+| Upload Resume              | `/resumes/upload`                                    |
+| Generate Candidate Profile | `/resumes/{resume_id}/candidate-profile`             |
+| Discover Jobs              | `/jobs/discover`                                     |
+| Analyze Job                | `/jobs/{job_post_id}/analyze`                        |
+| Create Application         | `/applications/create`                               |
+| Retrieve RAG Context       | `/applications/{application_id}/retrieve-context`    |
+| Evaluate ATS Score         | `/applications/{application_id}/evaluate`            |
+| Get Rewrite Suggestions    | `/applications/{application_id}/rewrite-suggestions` |
+| Export Resume              | `/applications/{application_id}/export-resume`       |
+| Generate Cover Letter      | `/applications/{application_id}/cover-letter`        |
+| Health Check               | `/health`                                            |
+
