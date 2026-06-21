@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from typing import Annotated
 
@@ -30,6 +31,15 @@ ALLOWED_EXTENSIONS = {"pdf", "docx"}
 def _get_file_extension(filename: str) -> str:
     parts = filename.rsplit(".", 1)
     return parts[-1].lower() if len(parts) == 2 else ""
+
+
+def _sanitize_storage_filename(filename: str) -> str:
+    """Strip characters Supabase Storage object keys don't allow (e.g. ~, #, %, ?).
+
+    The original filename is kept in the DB/response for display — this is
+    only used for the storage path itself.
+    """
+    return re.sub(r"[^A-Za-z0-9._-]", "_", filename)
 
 
 @router.post("/upload", response_model=ResumeUploadResponse)
@@ -84,7 +94,7 @@ async def upload_resume(
     supabase_client.ensure_user(user_id)
 
     # ── Upload file to Supabase Storage (non-fatal) ───────────────────────
-    storage_path = f"{user_id}/{uuid.uuid4()}/{filename}"
+    storage_path = f"{user_id}/{uuid.uuid4()}/{_sanitize_storage_filename(filename)}"
     file_url = ""
     try:
         file_url = supabase_client.upload_file(
