@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@supabase/supabase-js";
@@ -49,6 +49,24 @@ export default function HomePage() {
   const [parsedResumeData, setParsedResumeData] = useState(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
+
+  // Persist as the user types so the link survives regardless of which
+  // button they click next (e.g. closing the review modal without
+  // navigating) — handleContinue() alone isn't a reliable save point.
+  // Skip the very first run so mounting with the default empty state
+  // doesn't wipe a link already saved from a previous visit.
+  const vacancyLinkMountedRef = useRef(false);
+  useEffect(() => {
+    if (!vacancyLinkMountedRef.current) {
+      vacancyLinkMountedRef.current = true;
+      return;
+    }
+    if (vacancyLink.trim()) {
+      localStorage.setItem("reeracifyVacancyLink", vacancyLink.trim());
+    } else {
+      localStorage.removeItem("reeracifyVacancyLink");
+    }
+  }, [vacancyLink]);
 
 useEffect(() => {
   if (!supabase) {
